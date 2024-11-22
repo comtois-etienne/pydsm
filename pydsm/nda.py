@@ -18,11 +18,11 @@ def normalize(arr: np.ndarray) -> np.ndarray:
     return arr
 
 
-def __to_cmap(array: np.ndarray, cmap: str, nrm=True) -> np.ndarray:
+def to_cmap(array: np.ndarray, cmap: str='viridis', nrm=True) -> np.ndarray:
     """
     Applies the colormap to the array.
     
-    :param array: np.ndarray of shape (n, m).
+    :param array: np.ndarray of shape (n, m, 1).
     :param cmap: str, name of the matplotlib colormap.
     :param nrm: bool, if True, the array is normalized.
     """
@@ -49,7 +49,7 @@ def dsm_to_cmap(arr: np.ndarray, cmap: str='viridis') -> np.ndarray:
     min_val = np.min(arr[arr != dsm_mask_val])
     arr[arr == dsm_mask_val] = min_val
 
-    arr = __to_cmap(arr, cmap)
+    arr = to_cmap(arr, cmap)
     arr = np.dstack((arr, mask))
     arr = (arr * 255).astype(np.uint8)
     return arr
@@ -119,4 +119,17 @@ def remove_mask_values(nda: np.ndarray, min_value_ratio=0.02) -> np.ndarray:
     mask = get_mask(nda, min_value_ratio)
     nda[mask] = np.nan
     return nda
+
+
+def to_mm(nda: np.ndarray, dtype=np.float32) -> np.ndarray:
+    """
+    Converts from meters to millimeters
+    ~ assuming the tallest building on earth is (830m) on top of mount everest (8848m)
+    ~ 9,679,000mm -> fits in 32 signed bits (to keep negative values)
+    
+    :param nda: np.ndarray of shape (n, m).
+    :param dtype: data type of the output array (default np.float32).
+    :return: np.ndarray of shape (n, m) with values in millimeters.
+    """
+    return np.round(nda * 1000, 0).astype(dtype)
 
