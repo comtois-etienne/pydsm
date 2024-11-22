@@ -3,7 +3,7 @@ from osgeo import gdal, ogr, osr
 import numpy as np
 from skimage import draw
 
-from .nda import to_gdal
+from .nda import to_gdal, to_mm
 from .shp import get_coords
 
 
@@ -166,7 +166,7 @@ def to_gdal_like(nda: np.ndarray, gdal_like: gdal.Dataset) -> gdal.Dataset:
     return to_gdal(nda, epsg, origin, pixel_size)
 
 
-def to_ndsm(dsm_gdal: osgeo.gdal.Dataset, dtm_gdal: osgeo.gdal.Dataset) -> np.ndarray:
+def to_ndsm(dsm_gdal: osgeo.gdal.Dataset, dtm_gdal: osgeo.gdal.Dataset, round_to_mm=True) -> np.ndarray:
     """
     :param dsm_gdal: gdal dataset of the DSM
     :param dtm_gdal: gdal dataset of the DTM
@@ -181,6 +181,8 @@ def to_ndsm(dsm_gdal: osgeo.gdal.Dataset, dtm_gdal: osgeo.gdal.Dataset) -> np.nd
     dsm = to_ndarray(dsm_gdal)
     dtm = to_ndarray(dtm_gdal)
     ndsm = dsm - dtm
+    ndsm[ndsm < 0.0] = 0.0
+    ndsm = to_mm(ndsm) if round_to_mm else ndsm
     ndsm = to_gdal_like(ndsm, dsm_gdal)
     return ndsm
 
@@ -239,3 +241,16 @@ def crop_from_shapefile(gdal_file: osgeo.gdal.Dataset, shapefile_path: str, mask
         get_pixel_size(gdal_file)[0]
     )
     return gdal_croped
+
+
+def round_to_mm(gdal_file: osgeo.gdal.Dataset) -> osgeo.gdal.Dataset:
+    """
+    Rounds the values of the dataset to the nearest millimeter
+    
+    :param gdal_file: gdal dataset (dsm or dtm)
+    :return: gdal dataset with rounded height values
+    """
+    array = to_ndarray(gdal_file)
+    array = to_mm(array)
+    return to_gdal_like(array, gdal_file)
+
