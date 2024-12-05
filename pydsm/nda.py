@@ -4,18 +4,67 @@ import matplotlib.pyplot as plt
 from osgeo import gdal, ogr, osr
 
 
-def normalize(arr: np.ndarray) -> np.ndarray:
+def normalize(array: np.ndarray) -> np.ndarray:
     """
     Normalize the array to [0.0, 1.0]
     
     :param arr: np.ndarray of shape (n, m, k).
     """
-    min_val = np.min(arr)
-    max_val = np.max(arr)
-    arr = arr - min_val
+    min_val = np.min(array)
+    max_val = np.max(array)
+    array = array - min_val
     div = (max_val - min_val) if (max_val - min_val) != 0 else 1
-    arr = arr / div
-    return arr
+    array = array / div
+    return array
+
+
+def to_uint8(array: np.ndarray) -> np.ndarray:
+    """
+    Convert the array to an 8bit integer array.
+    
+    :param arr: np.ndarray of shape (n, m, k).
+    """
+    norm = normalize(array)
+    return (norm * 255).astype(np.uint8)
+
+
+def convert_2D_to_3D(array: np.array, rev=False) -> np.array:
+    """
+    2D array to 3D array
+    :param img: 2D image
+    :param rev: reverse the image so the color is applied to the black pixels
+    :return: 3D image
+    """
+    if rev: array = 1.0 - array
+    array = np.stack([array] * 3, axis=2)
+    return array
+
+
+def round(array: np.ndarray, decimals: int=2) -> np.ndarray:
+    """
+    Round the array to the specified number of decimals if the array is a float.
+    Round to the lower integer if the array is an integer.
+    
+    :param arr: np.ndarray of shape (n, m, k).
+    :param decimals: int, number of decimals or lower int bound
+    """
+    assert decimals >= 0, "decimals must be a positive integer"
+    if array.dtype == np.uint8:
+        if decimals == 0:
+            return array
+        else :
+            x = array // decimals
+            return x.astype(int) * decimals
+    else :
+        x = np.round(array, decimals)
+        return x.astype(int) if decimals == 0 else x
+
+
+def upscale_nearest_neighbour(array: np.ndarray, factor: int) -> np.ndarray:
+    """
+    Upscale an array using nearest neighbour interpolation
+    """
+    return np.repeat(np.repeat(array, factor, axis=0), factor, axis=1)
 
 
 def to_cmap(array: np.ndarray, cmap: str='viridis', nrm=True) -> np.ndarray:
@@ -32,7 +81,7 @@ def to_cmap(array: np.ndarray, cmap: str='viridis', nrm=True) -> np.ndarray:
     return array[:, :, :3]
 
 
-def dsm_to_cmap(arr: np.ndarray, cmap: str='viridis') -> np.ndarray:
+def dsm_to_cmap(array: np.ndarray, cmap: str='viridis') -> np.ndarray:
     """
     The 1 layer image is converted to a color image using a colormap.
     We assume linear values in float. The smallest value is used as a mask.
@@ -41,21 +90,21 @@ def dsm_to_cmap(arr: np.ndarray, cmap: str='viridis') -> np.ndarray:
     :param cmap: str, name of the matplotlib colormap.
     :return: np.ndarray of shape (n, m, 4) with the last channel as a transparency mask.
     """
-    dsm_mask_val = np.min(arr)
-    mask = arr != dsm_mask_val
+    dsm_mask_val = np.min(array)
+    mask = array != dsm_mask_val
     mask = mask.astype(np.float64)
 
-    arr = arr.astype(np.float64)
-    min_val = np.min(arr[arr != dsm_mask_val])
-    arr[arr == dsm_mask_val] = min_val
+    array = array.astype(np.float64)
+    min_val = np.min(array[array != dsm_mask_val])
+    array[array == dsm_mask_val] = min_val
 
-    arr = to_cmap(arr, cmap)
-    arr = np.dstack((arr, mask))
-    arr = (arr * 255).astype(np.uint8)
-    return arr
+    array = to_cmap(array, cmap)
+    array = np.dstack((array, mask))
+    array = (array * 255).astype(np.uint8)
+    return array
 
 
-def to_gdal(nda: np.ndarray, epsg: int, origin: tuple, pixel_size: float = 1.0) -> gdal.Dataset:
+def to_gdal(array: np.ndarray, epsg: int, origin: tuple, pixel_size: float = 1.0) -> gdal.Dataset:
     """
     Converts a NumPy array to a GDAL dataset.
     
@@ -66,8 +115,8 @@ def to_gdal(nda: np.ndarray, epsg: int, origin: tuple, pixel_size: float = 1.0) 
     :return: GDAL dataset
     """
     # Get dimensions
-    height, width = nda.shape[:2]
-    bands = nda.shape[2] if nda.ndim == 3 else 1
+    height, width = array.shape[:2]
+    bands = array.shape[2] if array.ndim == 3 else 1
 
     # Create an in-memory GDAL dataset
     driver = gdal.GetDriverByName("MEM")
@@ -85,7 +134,7 @@ def to_gdal(nda: np.ndarray, epsg: int, origin: tuple, pixel_size: float = 1.0) 
     
     # Write array data to bands
     for i in range(bands):
-        band_data = nda[:, :, i] if bands > 1 else nda
+        band_data = array[:, :, i] if bands > 1 else array
         dataset.GetRasterBand(i + 1).WriteArray(band_data)
     
     # Flush cache to ensure data is written
@@ -93,7 +142,7 @@ def to_gdal(nda: np.ndarray, epsg: int, origin: tuple, pixel_size: float = 1.0) 
     return dataset
 
 
-def get_mask(nda: np.ndarray, min_mask_size = 0.02) -> np.ndarray:
+def get_mask(array: np.ndarray, min_mask_size = 0.02) -> np.ndarray:
     """
     Returns the mask as the smallest value of the dataset if the mask is bigger than the minimum size.
 
@@ -101,13 +150,13 @@ def get_mask(nda: np.ndarray, min_mask_size = 0.02) -> np.ndarray:
     :param min_mask_size: minimum size of the mask in percentage of the total size (default 2%)
     :return: mask of the dataset if the mask is bigger than the minimum size (to avoid non-existing masks)
     """
-    mask_value = np.min(nda)
-    if np.count_nonzero(nda == mask_value) > int(nda.size * min_mask_size):
-        return nda == mask_value
-    return np.zeros_like(nda, dtype=bool)
+    mask_value = np.min(array)
+    if np.count_nonzero(array == mask_value) > int(array.size * min_mask_size):
+        return array == mask_value
+    return np.zeros_like(array, dtype=bool)
 
 
-def remove_mask_values(nda: np.ndarray, min_value_ratio=0.02) -> np.ndarray:
+def remove_mask_values(array: np.ndarray, min_value_ratio=0.02) -> np.ndarray:
     """
     Removes the lowest value of the array and replaces it with NaN
     Used to display a dsm
@@ -116,20 +165,123 @@ def remove_mask_values(nda: np.ndarray, min_value_ratio=0.02) -> np.ndarray:
     :param min_value_ratio: minimum size of the mask in percentage of the total size (default 2%)
     :return: array of the dataset with the mask applied (mask values are set to NaN)
     """
-    mask = get_mask(nda, min_value_ratio)
-    nda[mask] = np.nan
-    return nda
+    mask = get_mask(array, min_value_ratio)
+    array[mask] = np.nan
+    return array
 
 
-def to_mm(nda: np.ndarray, dtype=np.float32) -> np.ndarray:
+def round_to_mm(array: np.ndarray, dtype=np.float32) -> np.ndarray:
     """
-    Converts from meters to millimeters
+    Converts from meters to meters with a precision of millimeters.
     ~ assuming the tallest building on earth is (830m) on top of mount everest (8848m)
     ~ 9,679,000mm -> fits in 32 signed bits (to keep negative values)
     
     :param nda: np.ndarray of shape (n, m).
     :param dtype: data type of the output array (default np.float32).
-    :return: np.ndarray of shape (n, m) with values in millimeters.
+    :return: np.ndarray of shape (n, m) with values in meters.
     """
-    return np.round(nda * 1000, 0).astype(dtype)
+    return np.round(array, 3).astype(dtype)
+
+
+def add_values(array: np.ndarray, factor=64, font_size: float = 1.0, round_value=1, cmap: str = 'viridis', font_path='BAHNSCHRIFT.TTF') -> np.ndarray:
+    """
+    Add the values of each pixel to the image
+
+    :param arr: 2D+ array
+    :param factor: nearest neighbour upscale factor
+    :param font_size: font size multiplier (default 1.0 will be 1/3 of the pixel height)
+    :param round_value: round the value to this number of decimal places
+    :param cmap: colormap to use if the array is 2D
+    :param font_path: path to the font file (default is BAHNSCHRIFT.TTF)
+    """
+    from PIL import Image, ImageDraw, ImageFont
+
+    upscaled = to_uint8(array)
+    upscaled = upscale_nearest_neighbour(upscaled, factor)
+    if len(upscaled.shape) == 2:
+        upscaled = to_cmap(upscaled, cmap)
+        upscaled = to_uint8(upscaled)
+
+    # Drawing functions
+    pil_image = Image.fromarray(upscaled)
+    font_size = int(font_size * factor * 0.33)
+    font = ImageFont.truetype(font_path, size=font_size)
+    draw = ImageDraw.Draw(pil_image)
+
+    array = round(array, round_value)
+    for i in range(array.shape[0]):
+        for j in range(array.shape[1]):
+            background = upscaled[i * factor, j * factor]
+            color = (0,0,0) if background.mean() >= 128 else (255,255,255)
+            value = [array[i, j]] if len(array.shape) == 2 else array[i, j]
+            for k, e in enumerate(value):
+                draw.text(((j * factor) + 1, (i * factor) + (k * font_size) + 1), str(e), fill=color, font=font)
+    
+    return np.array(pil_image)
+
+
+def random_dtm(size: tuple=(512, 512), start=1) -> np.ndarray:
+    """
+    Create a random DSM with a mask
+    
+    :param size: size of the DTM
+    :param start: start of the random generation
+    :return: random DTM
+    """
+    import skimage.filters as filters
+
+    # log base 2 of the size
+    log_size = int(np.log2(max(size)))
+    render_size = 2 ** log_size
+
+    array = np.full((render_size, render_size), 0.0)
+    for e in range(start, log_size + 1):
+        # print(2 ** e)
+        sub_a = np.random.rand(2 ** e, 2 ** e)
+        sub_a = normalize(sub_a)
+        sub_a = upscale_nearest_neighbour(sub_a, 2 ** (log_size - e))
+        # sub_a = filters.gaussian(sub_a, sigma=(1 + log_size - e)**2)
+        # sub_a = filters.gaussian(sub_a, sigma=(log_size / e))
+        array = array + sub_a / e
+        # array = array + sub_a / (e**2)
+
+    return normalize(array)
+
+
+def to_wavefront(ndarray: np.ndarray, file_path, origin=(0.0, 0.0), pixel_size=(1.0, 1.0)):
+    """
+    # todo 
+    Good at small scale, but not at large scale
+    """
+    # mirror the image if the pixel size is negative
+    if pixel_size[0] < 0:
+        ndarray = np.flip(ndarray, axis=1)
+    if pixel_size[1] < 0:
+        ndarray = np.flip(ndarray, axis=0)
+
+    rows, cols = ndarray.shape
+    obj_lines = []
+
+    x = np.arange(cols) * abs(pixel_size[0]) + origin[0]
+    y = np.arange(rows) * abs(pixel_size[1]) + origin[1] # todo try without abs
+    xx, yy = np.meshgrid(x, y)
+
+    zz = ndarray.flatten()
+    vertices = np.column_stack((xx.flatten(), yy.flatten(), zz))
+    obj_lines.extend(f"v {x:.3f} {y:.3f} {z:.3f}" for x, y, z in vertices)
+
+    # Create faces using indices
+    for i in range(rows - 1):
+        for j in range(cols - 1):
+            # Calculate the 1D indices of the vertices
+            v1 = i * cols + j + 1
+            v2 = v1 + 1
+            v3 = v1 + cols
+            v4 = v3 + 1
+            # Add two triangular faces for the quad
+            obj_lines.append(f"f {v1} {v2} {v4}")
+            obj_lines.append(f"f {v1} {v4} {v3}")
+
+    with open(file_path, "w") as f:
+        f.write("\n".join(obj_lines))
 
