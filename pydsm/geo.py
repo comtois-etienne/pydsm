@@ -3,8 +3,10 @@ from osgeo import gdal, ogr, osr
 import numpy as np
 from skimage import draw
 
-from .nda import to_gdal, to_mm
-from .shp import get_coords
+from .nda import to_gdal as nda_to_gdal
+from .nda import round_to_mm as nda_round_to_mm
+from .nda import to_wavefront as nda_to_wavefront
+from .shp import get_coords as shp_get_coords
 
 
 def open(path: str) -> osgeo.gdal.Dataset:
@@ -163,10 +165,10 @@ def to_gdal_like(nda: np.ndarray, gdal_like: gdal.Dataset) -> gdal.Dataset:
     pixel_size = get_pixel_size(gdal_like)[0]
     origin = get_origin(gdal_like)
     epsg = get_epsg(gdal_like)
-    return to_gdal(nda, epsg, origin, pixel_size)
+    return nda_to_gdal(nda, epsg, origin, pixel_size)
 
 
-def to_ndsm(dsm_gdal: osgeo.gdal.Dataset, dtm_gdal: osgeo.gdal.Dataset, round_to_mm=True) -> np.ndarray:
+def to_ndsm(dsm_gdal: osgeo.gdal.Dataset, dtm_gdal: osgeo.gdal.Dataset, round_to_millimeters=True) -> np.ndarray:
     """
     :param dsm_gdal: gdal dataset of the DSM
     :param dtm_gdal: gdal dataset of the DTM
@@ -182,7 +184,7 @@ def to_ndsm(dsm_gdal: osgeo.gdal.Dataset, dtm_gdal: osgeo.gdal.Dataset, round_to
     dtm = to_ndarray(dtm_gdal)
     ndsm = dsm - dtm
     ndsm[ndsm < 0.0] = 0.0
-    ndsm = to_mm(ndsm) if round_to_mm else ndsm
+    ndsm = nda_round_to_mm(ndsm) if round_to_millimeters else ndsm
     ndsm = to_gdal_like(ndsm, dsm_gdal)
     return ndsm
 
@@ -214,7 +216,7 @@ def mask_from_shapefile(gdal_file: osgeo.gdal.Dataset, shapefile_path: str) -> n
     :param shapefile_path: path to the shapefile
     :return: mask of the shapefile in the dataset
     """
-    coords = get_coords(shapefile_path)
+    coords = shp_get_coords(shapefile_path)
     return mask_from_coords(gdal_file, coords)
 
 
@@ -225,7 +227,7 @@ def crop_from_shapefile(gdal_file: osgeo.gdal.Dataset, shapefile_path: str, mask
     :param mask_value: value to fill the mask
     :return: cropped gdal dataset from the shapefile
     """
-    coords = np.array(get_coords(shapefile_path))
+    coords = np.array(shp_get_coords(shapefile_path))
     pixels = get_pixels_at_coordinates(gdal_file, coords)
     mask = mask_from_coords(gdal_file, coords)
     array = to_ndarray(gdal_file)
@@ -234,7 +236,7 @@ def crop_from_shapefile(gdal_file: osgeo.gdal.Dataset, shapefile_path: str, mask
     min_px, min_py = np.min(pixels, axis=0)
     max_px, max_py = np.max(pixels, axis=0)
     array = array[min_py:max_py, min_px:max_px]
-    gdal_croped = to_gdal(
+    gdal_croped = nda_to_gdal(
         array, 
         get_epsg(gdal_file), 
         np.min(coords, axis=0), 
@@ -251,6 +253,14 @@ def round_to_mm(gdal_file: osgeo.gdal.Dataset) -> osgeo.gdal.Dataset:
     :return: gdal dataset with rounded height values
     """
     array = to_ndarray(gdal_file)
-    array = to_mm(array)
+    array = nda_round_to_mm(array)
     return to_gdal_like(array, gdal_file)
+
+
+def to_wavefront(gdal_file: osgeo.gdal.Dataset, file_path) -> str:
+    origin = get_origin(gdal_file)
+    pixel_size = get_pixel_size(gdal_file)
+    print(f'origin: {origin}')
+    print(f'pixel_size: {pixel_size}')
+    return nda_to_wavefront(to_ndarray(gdal_file), file_path, origin, pixel_size)
 
