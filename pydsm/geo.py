@@ -5,7 +5,8 @@ from skimage import draw
 
 from .nda import to_gdal as nda_to_gdal
 from .nda import round_to_mm as nda_round_to_mm
-from .nda import to_wavefront as nda_to_wavefront
+from .nda import save_to_wavefront as nda_to_wavefront
+from .nda import rescale as nda_rescale
 from .shp import get_coords as shp_get_coords
 
 
@@ -45,18 +46,47 @@ def get_epsg(gdal_file: osgeo.gdal.Dataset) -> int:
 
 def get_origin(gdal_file: osgeo.gdal.Dataset) -> tuple:
     """
+    see https://gdal.org/en/stable/tutorials/geotransforms_tut.html
+
     :param gdal_file: gdal dataset
     :return: origin of the dataset (x, y) in the coordinate system
     """
     return gdal_file.GetGeoTransform()[0], gdal_file.GetGeoTransform()[3]
 
 
-def get_pixel_size(gdal_file: osgeo.gdal.Dataset) -> tuple:
+def get_scales(gdal_file: osgeo.gdal.Dataset) -> tuple:
     """
+    Spacial resolution of the dataset in the coordinate system
+    West-East pixel resolution, North-South pixel resolution
+    North-South pixel resolution is negative
+    see https://gdal.org/en/stable/tutorials/geotransforms_tut.html
+
     :param gdal_file: gdal dataset
-    :return: dimension of the pixel in the coordinate system
+    :return: dimension of the pixel in the coordinate system (m/px, m/px)
     """
     return gdal_file.GetGeoTransform()[1], gdal_file.GetGeoTransform()[5]
+
+
+def get_shape(gdal_file: osgeo.gdal.Dataset) -> tuple:
+    """
+    Pixel sizes of the dataset
+
+    :param gdal_file: gdal dataset
+    :return: shape of the dataset (width, height)
+    """
+    return gdal_file.RasterXSize, gdal_file.RasterYSize
+
+
+def get_size(gdal_file: osgeo.gdal.Dataset) -> tuple:
+    """
+    Spacial size of the dataset in meters
+
+    :param gdal_file: gdal dataset
+    :return: size of the dataset in meters (width, height)
+    """
+    x, y = get_shape(gdal_file)
+    pixel_size = get_scales(gdal_file)
+    return abs(x * pixel_size[0]), abs(y * pixel_size[1])
 
 
 # COORDINATES
@@ -69,7 +99,7 @@ def get_coordinate_at_pixel(gdal_file: osgeo.gdal.Dataset, x: int, y: int) -> tu
     :return: coordinate of the pixel (x, y) in the coordinate system
     """
     origin = get_origin(gdal_file)
-    pixel_size = get_pixel_size(gdal_file)
+    pixel_size = get_scales(gdal_file)
     w, h = gdal_file.RasterXSize, gdal_file.RasterYSize
     x = w - x if x < 0 else x
     y = h - y if y < 0 else y
@@ -82,7 +112,7 @@ def get_coordinates_at_pixels(gdal_file: osgeo.gdal.Dataset) -> np.ndarray:
     :return: array of the coordinates of the pixels in the coordinate system (x, y)
     """
     origin = get_origin(gdal_file)
-    pixel_size = get_pixel_size(gdal_file)
+    pixel_size = get_scales(gdal_file)
     x = np.arange(gdal_file.RasterXSize)
     y = np.arange(gdal_file.RasterYSize)
     xx, yy = np.meshgrid(x, y)
@@ -99,7 +129,7 @@ def get_pixel_at_coordinate(gdal_file: osgeo.gdal.Dataset, x: float, y: float) -
     :return: pixel of the coordinate (x, y) in the dataset
     """
     origin = get_origin(gdal_file)
-    pixel_size = get_pixel_size(gdal_file)
+    pixel_size = get_scales(gdal_file)
     return int((x - origin[0]) / pixel_size[0]), int((y - origin[1]) / pixel_size[1])
 
 
@@ -112,7 +142,7 @@ def get_pixels_at_coordinates(gdal_file: osgeo.gdal.Dataset, coords: np.ndarray 
     if isinstance(coords, list):
         coords = np.array(coords)
     origin = get_origin(gdal_file)
-    pixel_size = get_pixel_size(gdal_file)
+    pixel_size = get_scales(gdal_file)
     pixels = np.stack((
         (coords[:, 0] - origin[0]) / pixel_size[0], 
         (coords[:, 1] - origin[1]) / pixel_size[1]
@@ -136,11 +166,13 @@ def reproject(gdal_file: osgeo.gdal.Dataset, epsg: int) -> osgeo.gdal.Dataset:
     return gdal.AutoCreateWarpedVRT(gdal_file, None, target.ExportToWkt(), gdal.GRA_NearestNeighbour)
 
 
-def to_ndarray(gdal_file: osgeo.gdal.Dataset) -> np.ndarray:
+def to_ndarray(gdal_file: osgeo.gdal.Dataset, band_count=1) -> np.ndarray:
     """
     :param gdal_file: gdal dataset
     :return: array of the dataset
     """
+    if band_count > 1:
+        return np.dstack([gdal_file.GetRasterBand(i).ReadAsArray() for i in range(1, band_count + 1)])
     return gdal_file.GetRasterBand(1).ReadAsArray()
 
 
@@ -162,10 +194,24 @@ def to_gdal_like(nda: np.ndarray, gdal_like: gdal.Dataset) -> gdal.Dataset:
     :param gdal_like: GDAL dataset to copy metadata from
     :return: GDAL dataset
     """
-    pixel_size = get_pixel_size(gdal_like)[0]
+    pixel_size = get_scales(gdal_like)[0]
     origin = get_origin(gdal_like)
     epsg = get_epsg(gdal_like)
     return nda_to_gdal(nda, epsg, origin, pixel_size)
+
+
+def rescale(gdal_file: osgeo.gdal.Dataset, scale: float) -> osgeo.gdal.Dataset:
+    """
+    Rescales the dataset to the given scale in meters per pixel
+
+    :param gdal_file: gdal dataset
+    :param scale: new scale in meters per pixel
+    :return: gdal dataset with the new scale
+    """
+    current_scales = get_scales(gdal_file)
+    array = to_ndarray(gdal_file)
+    array = nda_rescale(array, current_scales, scale)
+    return nda_to_gdal(array, get_epsg(gdal_file), get_origin(gdal_file), abs(scale))
 
 
 def to_ndsm(dsm_gdal: osgeo.gdal.Dataset, dtm_gdal: osgeo.gdal.Dataset, round_to_millimeters=True) -> np.ndarray:
@@ -240,7 +286,7 @@ def crop_from_shapefile(gdal_file: osgeo.gdal.Dataset, shapefile_path: str, mask
         array, 
         get_epsg(gdal_file), 
         np.min(coords, axis=0), 
-        get_pixel_size(gdal_file)[0]
+        get_scales(gdal_file)[0]
     )
     return gdal_croped
 
@@ -259,7 +305,7 @@ def round_to_mm(gdal_file: osgeo.gdal.Dataset) -> osgeo.gdal.Dataset:
 
 def to_wavefront(gdal_file: osgeo.gdal.Dataset, file_path) -> str:
     origin = get_origin(gdal_file)
-    pixel_size = get_pixel_size(gdal_file)
+    pixel_size = get_scales(gdal_file)
     print(f'origin: {origin}')
     print(f'pixel_size: {pixel_size}')
     return nda_to_wavefront(to_ndarray(gdal_file), file_path, origin, pixel_size)
