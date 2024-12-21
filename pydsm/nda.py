@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from scipy.ndimage import zoom
 from osgeo import gdal, ogr, osr
 
 
@@ -70,8 +71,6 @@ def rescale(array: np.ndarray, current_spacial_resolution: float | tuple[float, 
     :param current_spacial_resolution: float, resolution of the array. (width, height) in (m/px)
     :param new_spacial_resolution: float, new resolution of the array. (width, height) in (m/px)
     """
-    from scipy.ndimage import zoom
-    
     if not isinstance(new_spacial_resolution, tuple):
         new_spacial_resolution = (new_spacial_resolution, new_spacial_resolution)
 
