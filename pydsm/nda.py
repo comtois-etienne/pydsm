@@ -60,6 +60,30 @@ def round(array: np.ndarray, decimals: int=2) -> np.ndarray:
         return x.astype(int) if decimals == 0 else x
 
 
+def rescale(array: np.ndarray, current_spacial_resolution: float | tuple[float, float], new_spacial_resolution: float | tuple[float, float] = 0.02) -> np.ndarray:
+    """
+    Sub-pixel rescaling of the array.
+    Google maps has a max pan-shapened resolution of ~15cm/px (0.15m/px)
+    Bigger value for spacial resolution means a smaller value for the new resolution.
+    
+    :param arr: np.ndarray of shape (n, m).
+    :param current_spacial_resolution: float, resolution of the array. (width, height) in (m/px)
+    :param new_spacial_resolution: float, new resolution of the array. (width, height) in (m/px)
+    """
+    from scipy.ndimage import zoom
+    
+    if not isinstance(new_spacial_resolution, tuple):
+        new_spacial_resolution = (new_spacial_resolution, new_spacial_resolution)
+
+    if not isinstance(current_spacial_resolution, tuple):
+        current_spacial_resolution = (current_spacial_resolution, current_spacial_resolution)
+
+    w_ratio = abs(current_spacial_resolution[0] / new_spacial_resolution[0])
+    h_ratio = abs(current_spacial_resolution[1] / new_spacial_resolution[1])
+
+    return zoom(array, zoom=(w_ratio, h_ratio), order=3)
+
+
 def upscale_nearest_neighbour(array: np.ndarray, factor: int) -> np.ndarray:
     """
     Upscale an array using nearest neighbour interpolation
@@ -183,9 +207,9 @@ def round_to_mm(array: np.ndarray, dtype=np.float32) -> np.ndarray:
     return np.round(array, 3).astype(dtype)
 
 
-def add_values(array: np.ndarray, factor=64, font_size: float = 1.0, round_value=1, cmap: str = 'viridis', font_path='BAHNSCHRIFT.TTF') -> np.ndarray:
+def overlay_values(array: np.ndarray, factor=64, font_size: float = 1.0, round_value=1, cmap: str = 'viridis', font_path='BAHNSCHRIFT.TTF') -> np.ndarray:
     """
-    Add the values of each pixel to the image
+    Add (display) the values of each pixel to the image
 
     :param arr: 2D+ array
     :param factor: nearest neighbour upscale factor
@@ -220,7 +244,7 @@ def add_values(array: np.ndarray, factor=64, font_size: float = 1.0, round_value
     return np.array(pil_image)
 
 
-def random_dtm(size: tuple=(512, 512), start=1) -> np.ndarray:
+def random_dtm(size: tuple=(512, 512), skip=1) -> np.ndarray:
     """
     Create a random DSM with a mask
     
@@ -235,7 +259,7 @@ def random_dtm(size: tuple=(512, 512), start=1) -> np.ndarray:
     render_size = 2 ** log_size
 
     array = np.full((render_size, render_size), 0.0)
-    for e in range(start, log_size + 1):
+    for e in range(skip, log_size + 1):
         # print(2 ** e)
         sub_a = np.random.rand(2 ** e, 2 ** e)
         sub_a = normalize(sub_a)
@@ -248,7 +272,26 @@ def random_dtm(size: tuple=(512, 512), start=1) -> np.ndarray:
     return normalize(array)
 
 
-def to_wavefront(ndarray: np.ndarray, file_path, origin=(0.0, 0.0), pixel_size=(1.0, 1.0)):
+def random_dtm_simple(size: int=512, skip=1) -> np.ndarray:
+    import skimage.filters as filters
+
+    log_size = int(np.log2(size))
+    render_size = 2 ** log_size
+
+    array = np.full((render_size, render_size), 0.0)
+    for e in range(skip, log_size + 1):
+        sub_a = np.random.rand(2 ** e, 2 ** e)
+        sub_a = normalize(sub_a)
+        factor = 2 ** (log_size - e)
+        sub_a = np.repeat(np.repeat(sub_a, factor, axis=0), factor, axis=1)
+        sub_a = filters.gaussian(sub_a, sigma=(1 + log_size - e)**2) # clouds with cmap Blues
+        # sub_a = filters.gaussian(sub_a, sigma=(log_size / e))
+        array = array + sub_a / e
+
+    return normalize(array)
+
+
+def save_to_wavefront(ndarray: np.ndarray, file_path, origin=(0.0, 0.0), pixel_size=(1.0, 1.0)):
     """
     # todo 
     Good at small scale, but not at large scale
