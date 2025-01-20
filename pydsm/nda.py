@@ -3,6 +3,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 from scipy.ndimage import zoom
 from osgeo import gdal, ogr, osr
+import pandas as pd
 
 
 def normalize(array: np.ndarray) -> np.ndarray:
@@ -326,4 +327,48 @@ def save_to_wavefront(ndarray: np.ndarray, file_path, origin=(0.0, 0.0), pixel_s
 
     with open(file_path, "w") as f:
         f.write("\n".join(obj_lines))
+
+
+def __gaussian_blur_from_boxes(ndarray: np.ndarray, boxes: pd.DataFrame, sigma: float = 5.0) -> np.ndarray:
+    """
+    :param ndarray: 3D array of the image
+    :param boxes: DataFrame with the bounding boxes (xmin, ymin, xmax, ymax)
+    :param sigma: sigma of the Gaussian filter
+    :return: 3D array of the image with blurred bounding boxes
+    """
+    from skimage.filters import gaussian
+
+    ndarray = normalize(ndarray)
+    mask = np.zeros_like(ndarray, dtype=np.float64)
+    means = ndarray.copy()
+    for _, obj in boxes.iterrows():
+        xmin, ymin, xmax, ymax = obj[['xmin', 'ymin', 'xmax', 'ymax']]
+        mean = np.mean(ndarray[ymin:ymax, xmin:xmax], axis=(0, 1))
+        mask[ymin:ymax, xmin:xmax] = 1
+        means[ymin:ymax, xmin:xmax] = mean
+
+    blurred = gaussian(ndarray, sigma=sigma)
+    mask = gaussian(mask, sigma=sigma)
+
+    new_array = ndarray * (1 - mask) + blurred * mask
+    new_array = (new_array + means) / 2
+
+    return new_array
+
+
+def anonymise_with_yolov8n(ndarray: np.ndarray) -> np.ndarray:
+    """
+    Blur the bounding boxes humans in the image using a Gaussian filter.
+    :param ndarray: 3D array of the image
+    :return: 3D array of the image with blurred bounding boxes
+    """
+    from ultralytics import YOLO
+    from pydsm.yolo import ObjectDetector
+
+    yolo_v8 = YOLO('yolov8n.pt')
+    detector = ObjectDetector(yolo_v8)
+    size = (max(ndarray.shape) + 32) // 32 * 32
+    detector.detect(ndarray, imgsz=size)
+    boxes = detector.get_objs_by_name('person', 0.2)
+    return __gaussian_blur_from_boxes(ndarray, boxes)
 
