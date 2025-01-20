@@ -304,6 +304,10 @@ def round_to_mm(gdal_file: osgeo.gdal.Dataset) -> osgeo.gdal.Dataset:
 
 
 def to_wavefront(gdal_file: osgeo.gdal.Dataset, file_path) -> str:
+    """
+    #todo
+    #works at small scale
+    """
     origin = get_origin(gdal_file)
     pixel_size = get_scales(gdal_file)
     print(f'origin: {origin}')
