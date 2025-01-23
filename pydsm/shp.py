@@ -130,3 +130,22 @@ def get_coords(shapefile_path: str) -> list:
     datasource = None # Close
     return coords_list[0][0]
 
+
+def get_epsg(shapefile_path: str) -> int:
+    """
+    Gets the EPSG code of a shapefile.
+    
+    :param shapefile_path: Path to the shapefile
+    :return: EPSG code
+    """
+    datasource = ogr.Open(shapefile_path)
+    if datasource is None:
+        raise RuntimeError("Could not open shapefile.")
+    
+    layer = datasource.GetLayer()
+    srs = layer.GetSpatialRef()
+    epsg = srs.GetAuthorityCode(None)
+    
+    datasource = None  # Close
+    return int(epsg)
+
