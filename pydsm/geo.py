@@ -3,10 +3,15 @@ from osgeo import gdal, ogr, osr
 import numpy as np
 from skimage import draw
 
+from scipy.ndimage import median_filter
+from scipy.ndimage import distance_transform_edt
+from cv2 import resize, INTER_CUBIC
+
 from .nda import to_gdal as nda_to_gdal
 from .nda import round_to_mm as nda_round_to_mm
 from .nda import save_to_wavefront as nda_to_wavefront
 from .nda import rescale as nda_rescale
+from .nda import dsm_extract_mask as nda_dsm_extract_mask
 from .shp import get_coords as shp_get_coords
 
 
@@ -166,11 +171,13 @@ def reproject(gdal_file: osgeo.gdal.Dataset, epsg: int) -> osgeo.gdal.Dataset:
     return gdal.AutoCreateWarpedVRT(gdal_file, None, target.ExportToWkt(), gdal.GRA_NearestNeighbour)
 
 
-def to_ndarray(gdal_file: osgeo.gdal.Dataset, band_count=1) -> np.ndarray:
+def to_ndarray(gdal_file: osgeo.gdal.Dataset, band_count=None) -> np.ndarray:
     """
     :param gdal_file: gdal dataset
+    :param band_count: number of bands to read (1 for grayscale, 4 for RGB with alpha)
     :return: array of the dataset
     """
+    band_count = band_count if band_count else gdal_file.RasterCount
     if band_count > 1:
         return np.dstack([gdal_file.GetRasterBand(i).ReadAsArray() for i in range(1, band_count + 1)])
     return gdal_file.GetRasterBand(1).ReadAsArray()
@@ -214,10 +221,38 @@ def rescale(gdal_file: osgeo.gdal.Dataset, scale: float) -> osgeo.gdal.Dataset:
     return nda_to_gdal(array, get_epsg(gdal_file), get_origin(gdal_file), abs(scale))
 
 
-def to_ndsm(dsm_gdal: osgeo.gdal.Dataset, dtm_gdal: osgeo.gdal.Dataset, round_to_millimeters=True) -> np.ndarray:
+def correct_dtm(dtm_gdal: osgeo.gdal.Dataset, subsampling_size=500, median_kernel_size=5) -> osgeo.gdal.Dataset:
+    """
+    Corrects the DTM by filling the gaps and smoothing the surface
+    :param dtm_gdal: gdal dataset of the DTM
+    :param subsampling_size: size of the subsampling (default: 500)
+    :param median_kernel_size: size of the median kernel (default: 5)
+    :return: corrected gdal dataset of the DTM
+    """
+    dtm_array = to_ndarray(dtm_gdal)
+    dtm_array, mask = nda_dsm_extract_mask(dtm_array)
+    mask = mask.astype(bool)
+    shape = dtm_array.shape
+
+    _, nearest_indices = distance_transform_edt(~mask, return_indices=True)
+    filled_dtm = dtm_array[tuple(nearest_indices)]
+
+    dtm_simple = filled_dtm[::subsampling_size, ::subsampling_size]
+    dtm_smoothed = median_filter(dtm_simple, size=median_kernel_size)
+
+    dtm_upsampled = resize(dtm_smoothed, (shape[1], shape[0]), interpolation=INTER_CUBIC)
+    dtm_upsampled[~mask] = -9999.0
+
+    dtm_corrected = to_gdal_like(dtm_upsampled, dtm_gdal)
+    return dtm_corrected
+
+
+def to_ndsm(dsm_gdal: osgeo.gdal.Dataset, dtm_gdal: osgeo.gdal.Dataset, capture_height=120.0, round_to_millimeters=True) -> np.ndarray:
     """
     :param dsm_gdal: gdal dataset of the DSM
     :param dtm_gdal: gdal dataset of the DTM
+    :param capture_height: height of the capture device in meters - used to remove values above the drone (default: 120.0)
+    :param round_to_millimeters: round the values to the nearest millimeter (default: True)
     :return: array of the NDMS
     """
     if dsm_gdal.RasterXSize != dtm_gdal.RasterXSize or dsm_gdal.RasterYSize != dtm_gdal.RasterYSize:
@@ -230,6 +265,7 @@ def to_ndsm(dsm_gdal: osgeo.gdal.Dataset, dtm_gdal: osgeo.gdal.Dataset, round_to
     dtm = to_ndarray(dtm_gdal)
     ndsm = dsm - dtm
     ndsm[ndsm < 0.0] = 0.0
+    ndsm[ndsm > float(capture_height)] = 0.0
     ndsm = nda_round_to_mm(ndsm) if round_to_millimeters else ndsm
     ndsm = to_gdal_like(ndsm, dsm_gdal)
     return ndsm
@@ -282,6 +318,7 @@ def crop_from_shapefile(gdal_file: osgeo.gdal.Dataset, shapefile_path: str, mask
     min_px, min_py = np.min(pixels, axis=0)
     max_px, max_py = np.max(pixels, axis=0)
     array = array[min_py:max_py, min_px:max_px]
+
     gdal_croped = nda_to_gdal(
         array, 
         get_epsg(gdal_file), 
