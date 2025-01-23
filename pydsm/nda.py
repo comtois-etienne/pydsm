@@ -105,14 +105,11 @@ def to_cmap(array: np.ndarray, cmap: str='viridis', nrm=True) -> np.ndarray:
     return array[:, :, :3]
 
 
-def dsm_to_cmap(array: np.ndarray, cmap: str='viridis') -> np.ndarray:
+def dsm_extract_mask(array: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """
-    The 1 layer image is converted to a color image using a colormap.
-    We assume linear values in float. The smallest value is used as a mask.
-    
-    :param dsm: np.ndarray of shape (n, m).
-    :param cmap: str, name of the matplotlib colormap.
-    :return: np.ndarray of shape (n, m, 4) with the last channel as a transparency mask.
+    Extracts the mask from the DSM and replaces the mask values with the minimum value of the DSM.
+    :param array: np.ndarray of shape (n, m).
+    :return: tuple of the array and the mask : np.ndarray of shape (n, m).
     """
     dsm_mask_val = np.min(array)
     mask = array != dsm_mask_val
@@ -122,6 +119,19 @@ def dsm_to_cmap(array: np.ndarray, cmap: str='viridis') -> np.ndarray:
     min_val = np.min(array[array != dsm_mask_val])
     array[array == dsm_mask_val] = min_val
 
+    return array, mask
+
+
+def dsm_to_cmap(array: np.ndarray, cmap: str='viridis') -> np.ndarray:
+    """
+    The 1 layer image is converted to a color image using a colormap.
+    We assume linear values in float. The smallest value is used as a mask.
+    
+    :param dsm: np.ndarray of shape (n, m).
+    :param cmap: str, name of the matplotlib colormap.
+    :return: np.ndarray of shape (n, m, 4) with the last channel as a transparency mask.
+    """
+    array, mask = dsm_extract_mask(array)
     array = to_cmap(array, cmap)
     array = np.dstack((array, mask))
     array = (array * 255).astype(np.uint8)
