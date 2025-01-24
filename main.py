@@ -1,5 +1,6 @@
 #!/opt/anaconda3/envs/geo/bin/python
 import argparse
+import time
 import os
 import sys
 
@@ -121,6 +122,19 @@ def cmap(args):
     print(f'* Saved to {save_path}')
 
 
+# GENERAL COMMANDS
+
+def silent_mode(args):
+    if args.silent:
+        sys.stdout = open(os.devnull, 'w')
+
+
+def time_mode(args, t0):
+    t1 = time.time()
+    if args.time:
+        print(f'* Elapsed time: {t1 - t0:.2f} seconds')
+
+
 # ARGUMENT PARSER SETUP
 
 COMMANDS = {
@@ -135,6 +149,7 @@ COMMANDS = {
 def parser_setup():
     parser = argparse.ArgumentParser(description='PyDSM : DSM, DTM, nDSM & Ortophoto tools')
     parser.add_argument("--silent", action="store_true", help="Silent mode")
+    parser.add_argument("--time", action="store_true", help="Displays time elapsed")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # ndsm command
@@ -170,12 +185,12 @@ def parser_setup():
 
 
 def main():
+    t0 = time.time()
     parser = parser_setup()
     args = parser.parse_args()
-    if args.silent:
-        sys.stdout = open(os.devnull, 'w')
-    print(args)
+    silent_mode(args)
     COMMANDS[args.command](args)
+    time_mode(args, t0)
 
 
 if __name__ == "__main__":
