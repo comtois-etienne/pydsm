@@ -15,7 +15,7 @@ from .nda import dsm_extract_mask as nda_dsm_extract_mask
 from .shp import get_coords as shp_get_coords
 
 
-def open_tiff(path: str) -> osgeo.gdal.Dataset:
+def open_geotiff(path: str) -> osgeo.gdal.Dataset:
     """
     Opens a geotiff file
 
@@ -25,7 +25,7 @@ def open_tiff(path: str) -> osgeo.gdal.Dataset:
     return gdal.Open(path)
 
 
-def save_tiff(gdal_file: osgeo.gdal.Dataset, path: str) -> None:
+def save_geotiff(gdal_file: osgeo.gdal.Dataset, path: str) -> None:
     """
     Saves the gdal dataset to a compressed geotiff file
     
