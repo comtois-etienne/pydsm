@@ -4,12 +4,68 @@ import matplotlib.pyplot as plt
 from scipy.ndimage import zoom
 from osgeo import gdal, ogr, osr
 import pandas as pd
+from typing import Any, Optional, Tuple
 
+
+# IO
+
+def write_numpy(npz_path: str, *, data: Optional[Any]=None, metadata: Optional[Any]=None) -> None:
+    """
+    Writes data and metadata to a compressed numpy (.npz) file.
+    Data and metadata are wrapped in a numpy array before being written to the file.
+    Data and metadata are stored in the 'data' and 'metadata' keys of the .npz file.
+
+    Parameters:
+    :param npz_path: the path to the .npz file to write to.
+    :param data: the data to write to the file. Defaults to None.
+    :param metadata: the metadata to write to the file. Defaults to None.
+    """
+    np.savez_compressed(
+        npz_path, 
+        data=np.array([data]), 
+        metadata=np.array([metadata]),
+        types=np.array([{
+            'data': type(data),
+            'metadata': type(metadata),
+        }])
+    )
+
+
+def read_numpy(npz_path: str) -> Tuple[Any, Any]:
+    """
+    Reads data and metadata from a compressed numpy (.npz) file.
+    :param npz_path: str, path to the .npz file to read from.
+    :return: a tuple containing the data and metadata read from the file.
+    """
+    npz = np.load(npz_path, allow_pickle=True)
+    return npz['data'][0], npz['metadata'][0]
+
+
+def read_numpy_data(npz_path: str) -> Tuple[Any, type]:
+    """
+    Reads only the data from a compressed numpy (.npz) file.
+    :param npz_path: str, path to the .npz file to read from.
+    :return: a tuple containing the data and its type read from the file.
+    """
+    npz = np.load(npz_path, allow_pickle=True)
+    return npz['data'][0], npz['types'][0]['data']
+
+
+def read_numpy_metadata(npz_path: str) -> Tuple[Any, type]:
+    """
+    Reads only the metadata from a compressed numpy (.npz) file.
+    :param npz_path: str, path to the .npz file to read from.
+    :return: tuple of the metadata and its type read from the file.
+    """
+    npz = np.load(npz_path, allow_pickle=True)
+    return npz['metadata'][0], npz['types'][0]['metadata']
+
+
+# Functions
 
 def normalize(array: np.ndarray) -> np.ndarray:
     """
     Normalize the array to [0.0, 1.0]
-    
     :param arr: np.ndarray of shape (n, m, k).
     """
     min_val = np.min(array)
@@ -23,7 +79,6 @@ def normalize(array: np.ndarray) -> np.ndarray:
 def to_uint8(array: np.ndarray) -> np.ndarray:
     """
     Convert the array to an 8bit integer array.
-    
     :param arr: np.ndarray of shape (n, m, k).
     """
     norm = normalize(array)
@@ -71,6 +126,7 @@ def rescale(array: np.ndarray, current_spacial_resolution: float | tuple[float, 
     :param arr: np.ndarray of shape (n, m).
     :param current_spacial_resolution: float, resolution of the array. (width, height) in (m/px)
     :param new_spacial_resolution: float, new resolution of the array. (width, height) in (m/px)
+    :return: np.ndarray with the new resolution
     """
     if not isinstance(new_spacial_resolution, tuple):
         new_spacial_resolution = (new_spacial_resolution, new_spacial_resolution)
@@ -87,6 +143,9 @@ def rescale(array: np.ndarray, current_spacial_resolution: float | tuple[float, 
 def upscale_nearest_neighbour(array: np.ndarray, factor: int) -> np.ndarray:
     """
     Upscale an array using nearest neighbour interpolation
+    :param array: np.ndarray of shape (n, m).
+    :param factor: int, factor to upscale the array.
+    :return: np.ndarray of shape (n * factor, m * factor).
     """
     return np.repeat(np.repeat(array, factor, axis=0), factor, axis=1)
 
