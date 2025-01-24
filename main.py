@@ -118,6 +118,7 @@ def silent_mode(args):
 
 
 def time_mode(args, t0):
+    sys.stdout = sys.__stdout__
     t1 = time.time()
     if args.time:
         print(f'* Elapsed time: {t1 - t0:.2f} seconds')
