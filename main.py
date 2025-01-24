@@ -4,6 +4,7 @@ import time
 import os
 import sys
 
+from skimage.draw import polygon
 import imageio.v3 as iio
 import numpy as np
 
@@ -110,6 +111,49 @@ def cmap(args):
     print(f'* Saved to {save_path}')
 
 
+def values(args):
+    """
+    Overlays the pixel values over each pixel of a cropped portion of an image
+    :param args.path: str, path to the image file (mandatory)
+    :param args.y: int, Y coordinate of the top left corner (mandatory)
+    :param args.x: int, X coordinate of the top left corner (mandatory)
+    :param args.h: int, height of the cropped image (mandatory)
+    :param args.w: int, width of the cropped image (mandatory)
+    :param args.cmap: str, colormap name (optional) (default: viridis)
+    :param args.save_path: str, path of the croped region (optional)
+    :param args.region: bool, overlay the region over the original image (optional)
+    :param args.downscale: int, downscale factor for the image for performance reasons (optional)
+    """
+    cmap = args.cmap if args.cmap else 'viridis'
+    save_path = args.save_path if args.save_path else args.path.split('.')[0] + f'_{cmap}_values.png'
+    x, y, h, w = args.x, args.y, args.h, args.w
+    x2, y2 = x + w, y + h
+    gdal = geo.open_geotiff(args.path)
+    array = geo.to_ndarray(gdal)
+
+    if args.downscale:
+        factor = args.downscale
+        array = array[::factor, ::factor]
+        x, y, x2, y2 = x // factor, y // factor, x2 // factor, y2 // factor
+
+    if args.region:
+        print(f'* Generating {cmap} colormap of {args.path}')
+        region_path = save_path.replace('_values.png', '_region.png')
+        array_cmap = nda.to_cmap(array, cmap=cmap)
+        array_cmap = nda.to_uint8(array_cmap)
+        rr, cc = polygon([y, y, y2, y2], [x, x2, x2, x], shape=array.shape)
+        array_cmap[rr, cc] = array_cmap[rr, cc] // 2
+        iio.imwrite(region_path, array_cmap)
+        print(f'* Saved to {region_path}')
+
+    print(f'* Overlaying values of {args.path}')
+    array = array[y:y2, x:x2]
+    round_value = 0 if array.dtype == int else 3
+    overlayed = nda.overlay_values(array, cmap=cmap, round_value=round_value)
+    iio.imwrite(save_path, overlayed)
+    print(f'* Saved to {save_path}')
+
+
 # GENERAL COMMANDS
 
 def silent_mode(args):
@@ -132,6 +176,7 @@ COMMANDS = {
     'reproject': reproject,
     'xyz': xyz,
     'cmap': cmap,
+    'values': values,
 }
 
 
@@ -169,6 +214,18 @@ def parser_setup():
     parser_cmap.add_argument("path", type=str, help="Path to the geotiff file")
     parser_cmap.add_argument("--cmap", type=str, help="Colormap name (default: viridis)")
     parser_cmap.add_argument("--save-path", type=str, help="Path to save the colormap")
+
+    # values command
+    parser_values = subparsers.add_parser("values", help="Displays the values of a cropped image file (GeoTIFF or PNG)")
+    parser_values.add_argument("path", type=str, help="Path to the image file")
+    parser_values.add_argument("y", type=int, help="Y coordinate of the top left corner")
+    parser_values.add_argument("x", type=int, help="X coordinate of the top left corner")
+    parser_values.add_argument("h", type=int, help="height of the cropped image")
+    parser_values.add_argument("w", type=int, help="width of the cropped image")
+    parser_values.add_argument("--cmap", type=str, help="Colormap name (default: viridis)")
+    parser_values.add_argument("--save-path", type=str, help="Path to save the values")
+    parser_values.add_argument("--region", action="store_true", help="Overlay the region on the original image")
+    parser_values.add_argument("--downscale", type=int, help="Downscale factor for the image")
 
     return parser
 
