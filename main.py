@@ -3,6 +3,9 @@ import argparse
 import os
 import sys
 
+import imageio.v3 as iio
+import numpy as np
+
 from pydsm.geo import open_tiff as geo_open
 from pydsm.geo import save_tiff as geo_save
 from pydsm.geo import get_epsg as geo_get_epsg
@@ -10,10 +13,20 @@ from pydsm.geo import correct_dtm as geo_correct_dtm
 from pydsm.geo import to_ndsm as geo_to_ndsm
 from pydsm.geo import reproject as geo_reproject
 from pydsm.geo import to_xyz as geo_to_xyz
+from pydsm.geo import to_ndarray as geo_to_ndarray
 
 from pydsm.nda import write_numpy as nda_write
+from pydsm.nda import to_uint8 as nda_to_uint8
+from pydsm.nda import to_cmap as nda_to_cmap
+from pydsm.nda import dsm_to_cmap as nda_dsm_to_cmap
 
 from pydsm.shp import get_epsg as shp_get_epsg
+
+
+"""
+- todo : path resolver : './data/dtm.tif'.split('.')[0] -> '' (to be fixed to './data/dtm')
+
+"""
 
 
 # COMMANDS
@@ -93,6 +106,21 @@ def xyz(args):
     print(f'* Saved to {save_path}')
 
 
+def cmap(args):
+    cmap = args.cmap if args.cmap else 'viridis'
+    save_path = args.save_path if args.save_path else args.path.split('.')[0] + f'_{cmap}.png'
+    gdal = geo_open(args.path)
+    print(f'* Generating {cmap} colormap from {args.path}')
+    array = geo_to_ndarray(gdal)
+    if np.min(array) == 0.0:
+        array_cmap = nda_to_cmap(array, cmap=cmap)
+        array_cmap = nda_to_uint8(array_cmap)
+    else:
+        array_cmap = nda_dsm_to_cmap(array, cmap=cmap)
+    iio.imwrite(save_path, array_cmap)
+    print(f'* Saved to {save_path}')
+
+
 # ARGUMENT PARSER SETUP
 
 COMMANDS = {
@@ -100,6 +128,7 @@ COMMANDS = {
     'epsg': epsg,
     'reproject': reproject,
     'xyz': xyz,
+    'cmap': cmap,
 }
 
 
@@ -117,7 +146,7 @@ def parser_setup():
     parser_ndsm.add_argument("--capture-height", type=float, help="Height of the drone during the capture")
 
     # epsg command
-    parser_epsg = subparsers.add_parser("epsg", help="Get the EPSG code of a file")
+    parser_epsg = subparsers.add_parser("epsg", help="Get the EPSG code of a file (GeoTIFF or Shapefile)")
     parser_epsg.add_argument("path", type=str, help="Path to the file")
 
     # reproject command
@@ -127,10 +156,16 @@ def parser_setup():
     parser_reproject.add_argument("--epsg", type=int, help="New EPSG code")
 
     # xyz command
-    parser_xyz = subparsers.add_parser("xyz", help="Generate a XYZ file from a geotiff. Saved as a compressed numpy (.npz)")
+    parser_xyz = subparsers.add_parser("xyz", help="Generate a XYZ file from a geotiff as a compressed numpy (.npz)")
     parser_xyz.add_argument("path", type=str, help="Path to the geotiff file")
     parser_xyz.add_argument("--save-path", type=str, help="Path to save the XYZ file")
-    
+
+    # cmap command
+    parser_cmap = subparsers.add_parser("cmap", help="Generate a colormap png from a geotiff")
+    parser_cmap.add_argument("path", type=str, help="Path to the geotiff file")
+    parser_cmap.add_argument("--cmap", type=str, help="Colormap name (default: viridis)")
+    parser_cmap.add_argument("--save-path", type=str, help="Path to save the colormap")
+
     return parser
 
 
