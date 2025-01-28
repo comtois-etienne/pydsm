@@ -341,7 +341,7 @@ def random_dtm(size: int=512, skip=1) -> np.ndarray:
     return normalize(array)
 
 
-def save_to_wavefront(ndarray: np.ndarray, file_path, origin=(0.0, 0.0), pixel_size=(1.0, 1.0)):
+def save_to_wavefront(array: np.ndarray, file_path, origin=(0.0, 0.0), pixel_size=(1.0, 1.0)):
     """
     Warning : works at small scale, but not at large scale
     Converts a 2D array containing height values to a Wavefront .obj file.
@@ -352,18 +352,18 @@ def save_to_wavefront(ndarray: np.ndarray, file_path, origin=(0.0, 0.0), pixel_s
     """
     # mirror the image if the pixel size is negative
     if pixel_size[0] < 0:
-        ndarray = np.flip(ndarray, axis=1)
+        array = np.flip(array, axis=1)
     if pixel_size[1] < 0:
-        ndarray = np.flip(ndarray, axis=0)
+        array = np.flip(array, axis=0)
 
-    rows, cols = ndarray.shape
+    rows, cols = array.shape
     obj_lines = []
 
     x = np.arange(cols) * abs(pixel_size[0]) + origin[0]
     y = np.arange(rows) * abs(pixel_size[1]) + origin[1] # todo try without abs
     xx, yy = np.meshgrid(x, y)
 
-    zz = ndarray.flatten()
+    zz = array.flatten()
     vertices = np.column_stack((xx.flatten(), yy.flatten(), zz))
     obj_lines.extend(f"v {x:.3f} {y:.3f} {z:.3f}" for x, y, z in vertices)
 
@@ -383,7 +383,7 @@ def save_to_wavefront(ndarray: np.ndarray, file_path, origin=(0.0, 0.0), pixel_s
         f.write("\n".join(obj_lines))
 
 
-def __gaussian_blur_from_boxes(ndarray: np.ndarray, boxes: pd.DataFrame, sigma: float = 5.0) -> np.ndarray:
+def __gaussian_blur_from_boxes(array: np.ndarray, boxes: pd.DataFrame, sigma: float = 5.0) -> np.ndarray:
     """
     :param ndarray: 3D array of the image
     :param boxes: DataFrame with the bounding boxes (xmin, ymin, xmax, ymax)
@@ -392,25 +392,25 @@ def __gaussian_blur_from_boxes(ndarray: np.ndarray, boxes: pd.DataFrame, sigma: 
     """
     from skimage.filters import gaussian
 
-    ndarray = normalize(ndarray)
-    mask = np.zeros_like(ndarray, dtype=np.float64)
-    means = ndarray.copy()
+    array = normalize(array)
+    mask = np.zeros_like(array, dtype=np.float64)
+    means = array.copy()
     for _, obj in boxes.iterrows():
         xmin, ymin, xmax, ymax = obj[['xmin', 'ymin', 'xmax', 'ymax']]
-        mean = np.mean(ndarray[ymin:ymax, xmin:xmax], axis=(0, 1))
+        mean = np.mean(array[ymin:ymax, xmin:xmax], axis=(0, 1))
         mask[ymin:ymax, xmin:xmax] = 1
         means[ymin:ymax, xmin:xmax] = mean
 
-    blurred = gaussian(ndarray, sigma=sigma)
+    blurred = gaussian(array, sigma=sigma)
     mask = gaussian(mask, sigma=sigma)
 
-    new_array = ndarray * (1 - mask) + blurred * mask
+    new_array = array * (1 - mask) + blurred * mask
     new_array = (new_array + means) / 2
 
     return new_array
 
 
-def anonymise_with_yolov8n(ndarray: np.ndarray) -> np.ndarray:
+def anonymise_with_yolov8n(array: np.ndarray) -> np.ndarray:
     """
     Blur the bounding boxes humans in the image using a Gaussian filter.
     :param ndarray: 3D array of the image
@@ -421,8 +421,8 @@ def anonymise_with_yolov8n(ndarray: np.ndarray) -> np.ndarray:
 
     yolo_v8 = YOLO('yolov8n.pt')
     detector = ObjectDetector(yolo_v8)
-    size = (max(ndarray.shape) + 32) // 32 * 32
-    detector.detect(ndarray, imgsz=size)
+    size = (max(array.shape) + 32) // 32 * 32
+    detector.detect(array, imgsz=size)
     boxes = detector.get_objs_by_name('person', 0.2)
-    return __gaussian_blur_from_boxes(ndarray, boxes)
+    return __gaussian_blur_from_boxes(array, boxes)
 
