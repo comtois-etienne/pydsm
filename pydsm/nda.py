@@ -362,8 +362,12 @@ def random_dtm_simple(size: int=512, skip=1) -> np.ndarray:
 
 def save_to_wavefront(ndarray: np.ndarray, file_path, origin=(0.0, 0.0), pixel_size=(1.0, 1.0)):
     """
-    # todo 
-    Good at small scale, but not at large scale
+    Warning : works at small scale, but not at large scale
+    Converts a 2D array containing height values to a Wavefront .obj file.
+    :param ndarray: 2D array of the dsm
+    :param file_path: path to save the obj file
+    :param origin: origin of the coordinate system
+    :param pixel_size: size of each pixel (distance between each pixel)
     """
     # mirror the image if the pixel size is negative
     if pixel_size[0] < 0:
