@@ -457,7 +457,7 @@ def save_subimages(array: np.ndarray, output_folder: str, size: int = 2800, min_
             y = i * offset_height
             name = f'{y}_{x}.png'
             subimage = array[y:y+size, x:x+size]
-            layer_subimage = subimage if len(subimage.shape) == 2 else subimage[:, :, 0]
+            layer_subimage = subimage if len(subimage.shape) == 2 else subimage[:, :, -1]
             layer_count = 1 if len(subimage.shape) == 2 else subimage.shape[2]
             perc_not_zero = np.count_nonzero(layer_subimage) / (subimage.size // layer_count)
             if perc_not_zero > min_overlap:
