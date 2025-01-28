@@ -430,10 +430,6 @@ def anonymise_with_yolov8n(array: np.ndarray) -> np.ndarray:
     return __gaussian_blur_from_boxes(array, boxes)
 
 
-def __get_img_count(length: int, img_size: int, min_overlap: float) -> int:
-    return 1 + math.ceil( (length - img_size) / (img_size - img_size * min_overlap) )
-
-
 def save_subimages(array: np.ndarray, output_folder: str, size: int = 2800, min_overlap: float = 0.5) -> None:
     """
     Cuts the array into overlapping subimages and saves them in the output folder.
@@ -445,6 +441,9 @@ def save_subimages(array: np.ndarray, output_folder: str, size: int = 2800, min_
         overlap might be bigger to keep a costant spacing between the subimages until the last one
     :return: None, saves the subimages in the output folder
     """
+    def __get_img_count(length: int, size: int, min_overlap: float) -> int:
+        return 1 + math.ceil( (length - size) / (size - size * min_overlap) )
+
     height, width = array.shape[:2]
     count_width = __get_img_count(width, size, min_overlap)
     count_height = __get_img_count(height, size, min_overlap)
@@ -457,6 +456,7 @@ def save_subimages(array: np.ndarray, output_folder: str, size: int = 2800, min_
             y = i * offset_height
             name = f'{y}_{x}.png'
             subimage = array[y:y+size, x:x+size]
+            # will use the alpha layer if it exists
             layer_subimage = subimage if len(subimage.shape) == 2 else subimage[:, :, -1]
             layer_count = 1 if len(subimage.shape) == 2 else subimage.shape[2]
             perc_not_zero = np.count_nonzero(layer_subimage) / (subimage.size // layer_count)
