@@ -313,18 +313,18 @@ def overlay_values(array: np.ndarray, factor=64, font_size: float = 1.0, round_v
     return np.array(pil_image)
 
 
-def random_dtm(size: tuple=(512, 512), skip=1) -> np.ndarray:
+def random_dtm(size: int=512, skip=1) -> np.ndarray:
     """
     Create a random DSM with a mask
     
     :param size: size of the DTM
-    :param start: start of the random generation
+    :param skip: skip factor for the scaling of the random DTM
     :return: random DTM
     """
     import skimage.filters as filters
 
     # log base 2 of the size
-    log_size = int(np.log2(max(size)))
+    log_size = int(np.log2(size))
     render_size = 2 ** log_size
 
     array = np.full((render_size, render_size), 0.0)
@@ -333,29 +333,10 @@ def random_dtm(size: tuple=(512, 512), skip=1) -> np.ndarray:
         sub_a = np.random.rand(2 ** e, 2 ** e)
         sub_a = normalize(sub_a)
         sub_a = upscale_nearest_neighbour(sub_a, 2 ** (log_size - e))
-        # sub_a = filters.gaussian(sub_a, sigma=(1 + log_size - e)**2)
+        # sub_a = filters.gaussian(sub_a, sigma=(1 + log_size - e)**2) # clouds with cmap Blues
         # sub_a = filters.gaussian(sub_a, sigma=(log_size / e))
         array = array + sub_a / e
         # array = array + sub_a / (e**2)
-
-    return normalize(array)
-
-
-def random_dtm_simple(size: int=512, skip=1) -> np.ndarray:
-    import skimage.filters as filters
-
-    log_size = int(np.log2(size))
-    render_size = 2 ** log_size
-
-    array = np.full((render_size, render_size), 0.0)
-    for e in range(skip, log_size + 1):
-        sub_a = np.random.rand(2 ** e, 2 ** e)
-        sub_a = normalize(sub_a)
-        factor = 2 ** (log_size - e)
-        sub_a = np.repeat(np.repeat(sub_a, factor, axis=0), factor, axis=1)
-        sub_a = filters.gaussian(sub_a, sigma=(1 + log_size - e)**2) # clouds with cmap Blues
-        # sub_a = filters.gaussian(sub_a, sigma=(log_size / e))
-        array = array + sub_a / e
 
     return normalize(array)
 
