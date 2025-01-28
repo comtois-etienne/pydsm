@@ -1,3 +1,4 @@
+import math
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -5,6 +6,8 @@ from scipy.ndimage import zoom
 from osgeo import gdal, ogr, osr
 import pandas as pd
 from typing import Any, Optional, Tuple
+import skimage
+import os
 
 
 # IO
@@ -425,4 +428,39 @@ def anonymise_with_yolov8n(array: np.ndarray) -> np.ndarray:
     detector.detect(array, imgsz=size)
     boxes = detector.get_objs_by_name('person', 0.2)
     return __gaussian_blur_from_boxes(array, boxes)
+
+
+def __get_img_count(length: int, img_size: int, min_overlap: float) -> int:
+    return 1 + math.ceil( (length - img_size) / (img_size - img_size * min_overlap) )
+
+
+def save_subimages(array: np.ndarray, output_folder: str, size: int = 2800, min_overlap: float = 0.5) -> None:
+    """
+    Cuts the array into overlapping subimages and saves them in the output folder.
+
+    :param ndarray: array to be cut into overlapping subimages
+    :param output_folder: folder to save the subimages
+    :param size: size of the subimages
+    :param min_overlap: minimum overlap between the subimages
+        overlap might be bigger to keep a costant spacing between the subimages until the last one
+    :return: None, saves the subimages in the output folder
+    """
+    height, width = array.shape[:2]
+    count_width = __get_img_count(width, size, min_overlap)
+    count_height = __get_img_count(height, size, min_overlap)
+    offset_width = int((width - size) / (count_width - 1))
+    offset_height = int((height - size) / (count_height - 1))
+
+    for i in range(count_height):
+        for j in range(count_width):
+            x = j * offset_width
+            y = i * offset_height
+            name = f'{y}_{x}.png'
+            subimage = array[y:y+size, x:x+size]
+            layer_subimage = subimage if len(subimage.shape) == 2 else subimage[:, :, 0]
+            layer_count = 1 if len(subimage.shape) == 2 else subimage.shape[2]
+            perc_not_zero = np.count_nonzero(layer_subimage) / (subimage.size // layer_count)
+            if perc_not_zero > min_overlap:
+                subimage = to_uint8(subimage)
+                skimage.io.imsave(os.path.join(output_folder, name), subimage)
 
