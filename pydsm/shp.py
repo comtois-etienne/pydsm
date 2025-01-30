@@ -1,7 +1,8 @@
 from osgeo import gdal, ogr, osr
+import pandas as pd
 
 
-def open(path: str):
+def open_shapefile(path: str):
     """
     Opens a Shapefile
 
@@ -19,7 +20,7 @@ def open(path: str):
     return shapefile
 
 
-def from_gdal(gdal_file: gdal.Dataset, shapefile_path: str) -> None:
+def save_from_gdal(gdal_file: gdal.Dataset, shapefile_path: str) -> None:
     """
     Extracts non-zero areas from a GDAL raster dataset and saves them as polygons in a shapefile.
     
@@ -42,7 +43,7 @@ def from_gdal(gdal_file: gdal.Dataset, shapefile_path: str) -> None:
     shapefile = None  # close the shapefile
 
 
-def from_coords(coords: list, epsg: int, shapefile_path: str) -> None:
+def save_from_coords(coords: list, epsg: int, shapefile_path: str) -> None:
     """
     Creates a shapefile from a list of coordinates.
     
@@ -50,7 +51,7 @@ def from_coords(coords: list, epsg: int, shapefile_path: str) -> None:
     :param epsg: EPSG code for the coordinate system
     :param shapefile_path: Path where the shapefile will be saved
     """
-    shapefile = open(shapefile_path)
+    shapefile = open_shapefile(shapefile_path)
 
     srs = osr.SpatialReference()
     srs.ImportFromEPSG(epsg)
@@ -83,6 +84,27 @@ def from_coords(coords: list, epsg: int, shapefile_path: str) -> None:
     # Close
     feature = None
     shapefile = None
+
+
+def save_from_csv(csv_path: str, shapefile_path: str, epsg: int = None) -> None:
+    """
+    :param csv_path: Path to the CSV file containing coordinates (x, y)
+    :param shapefile_path: Path to the output shapefile
+    :param epsg: EPSG code for the coordinate system. 
+        If None, will use the comment line in the CSV file to find the EPSG code.
+        example comment line: #epsg=2950
+    """
+    bounds = pd.read_csv(csv_path, comment='#')
+    metadata = {}
+    with open(csv_path, 'r') as file:
+        for line in file:
+            if line.startswith('#'):
+                k, v = line.strip()[1:].split('=')
+                metadata[k] = v
+    if 'epsg' not in metadata and epsg is None:
+        raise ValueError("No EPSG code found in the CSV file. Add #epsg=NUMBER to the file.")
+    epsg = epsg if epsg is not None else int(metadata['epsg'])
+    save_from_coords(bounds.values.tolist(), epsg, shapefile_path)
 
 
 def get_coords(shapefile_path: str) -> list:
