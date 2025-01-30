@@ -154,6 +154,24 @@ def values(args):
     print(f'* Saved to {save_path}')
 
 
+def shapefile(args):
+    """
+    Creates a shapefile from a CSV file
+    :param args.csv_path: str, path to the CSV file (mandatory)
+        contains a comment line with the EPSG code (optional)
+        csv example:
+            ```
+            #epsg=4326
+            x,y
+            0,0
+            ```
+    :param args.shapefile_path: str, path to save the shapefile (mandatory)
+    :param args.epsg: int, EPSG code for the coordinate system (optional)
+    """
+    shp.save_from_csv(args.csv_path, args.shapefile_path, epsg=args.epsg)
+    print(f'* Saved to {args.shapefile_path}')
+
+
 # GENERAL COMMANDS
 
 def silent_mode(args):
@@ -226,6 +244,14 @@ def parser_setup():
     parser_values.add_argument("--save-path", type=str, help="Path to save the values")
     parser_values.add_argument("--region", action="store_true", help="Overlay the region on the original image")
     parser_values.add_argument("--downscale", type=int, help="Downscale factor for the image")
+
+    # create shapefile from csv
+    parser_shp_create = subparsers.add_parser("shapefile", help="Create a shapefile from a CSV file")
+    parser_shp_create.add_argument("csv_path", type=str, help="Path to the CSV file")
+    parser_shp_create.add_argument("shapefile_path", type=str, help="Path to save the shapefile")
+    parser_shp_create.add_argument("--epsg", type=int, help="EPSG code for the coordinate system")
+
+    # crop geotiff with shapefile
 
     return parser
 
