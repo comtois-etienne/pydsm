@@ -49,7 +49,7 @@ def get_epsg(gdal_file: osgeo.gdal.Dataset) -> int:
     return int(epsg)
 
 
-def get_origin(gdal_file: osgeo.gdal.Dataset) -> tuple:
+def get_origin(gdal_file: osgeo.gdal.Dataset) -> tuple[float]:
     """
     see https://gdal.org/en/stable/tutorials/geotransforms_tut.html
 
@@ -59,7 +59,7 @@ def get_origin(gdal_file: osgeo.gdal.Dataset) -> tuple:
     return gdal_file.GetGeoTransform()[0], gdal_file.GetGeoTransform()[3]
 
 
-def get_scales(gdal_file: osgeo.gdal.Dataset) -> tuple:
+def get_scales(gdal_file: osgeo.gdal.Dataset) -> tuple[float]:
     """
     Spacial resolution of the dataset in the coordinate system
     West-East pixel resolution, North-South pixel resolution
@@ -67,48 +67,57 @@ def get_scales(gdal_file: osgeo.gdal.Dataset) -> tuple:
     see https://gdal.org/en/stable/tutorials/geotransforms_tut.html
 
     :param gdal_file: gdal dataset
-    :return: dimension of the pixel in the coordinate system (m/px, m/px)
+    :return: dimension of the pixel in the coordinate system (m/px, -m/px)
     """
     return gdal_file.GetGeoTransform()[1], gdal_file.GetGeoTransform()[5]
 
 
-def get_shape(gdal_file: osgeo.gdal.Dataset) -> tuple:
+def get_shape(gdal_file: osgeo.gdal.Dataset) -> tuple[int]:
     """
     Pixel sizes of the dataset
 
     :param gdal_file: gdal dataset
-    :return: shape of the dataset (width, height)
+    :return: shape of the dataset (height, width) or (y, x)
     """
-    return gdal_file.RasterXSize, gdal_file.RasterYSize
+    return gdal_file.RasterYSize, gdal_file.RasterXSize
 
 
-def get_size(gdal_file: osgeo.gdal.Dataset) -> tuple:
+def get_size(gdal_file: osgeo.gdal.Dataset) -> tuple[float]:
     """
     Spacial size of the dataset in meters
 
     :param gdal_file: gdal dataset
-    :return: size of the dataset in meters (width, height)
+    :return: size of the dataset in meters (width, height) or (x, y)
     """
-    x, y = get_shape(gdal_file)
+    y, x = get_shape(gdal_file)
     pixel_size = get_scales(gdal_file)
     return abs(x * pixel_size[0]), abs(y * pixel_size[1])
 
 
-# COORDINATES
-
-def get_coordinate_at_pixel(gdal_file: osgeo.gdal.Dataset, x: int, y: int) -> tuple:
+def get_dtype(gdal_file: osgeo.gdal.Dataset):
     """
     :param gdal_file: gdal dataset
-    :param x: x coordinate in pixel
-    :param y: y coordinate in pixel
+    :return: data type of the dataset
+    """
+    return gdal_file.GetRasterBand(1).DataType
+
+
+# COORDINATES
+
+def get_coordinate_at_pixel(gdal_file: osgeo.gdal.Dataset, px: tuple[int], precision=3) -> tuple[float]:
+    """
+    :param gdal_file: gdal dataset
+    :param px: pixel of the coordinate (i, j) or (y, x) in the dataset
+    :param precision: number of decimals to round the coordinate (default: 3 (mm))
     :return: coordinate of the pixel (x, y) in the coordinate system
     """
+    y, x = px
     origin = get_origin(gdal_file)
     pixel_size = get_scales(gdal_file)
-    w, h = gdal_file.RasterXSize, gdal_file.RasterYSize
+    h, w = get_shape(gdal_file)
     x = w - x if x < 0 else x
     y = h - y if y < 0 else y
-    return origin[0] + x * pixel_size[0], origin[1] + y * pixel_size[1]
+    return round(origin[0] + x * pixel_size[0], precision), round(origin[1] + y * pixel_size[1], precision)
 
 
 def get_coordinates_at_pixels(gdal_file: osgeo.gdal.Dataset) -> np.ndarray:
@@ -126,31 +135,29 @@ def get_coordinates_at_pixels(gdal_file: osgeo.gdal.Dataset) -> np.ndarray:
     return np.stack((all_x, all_y), axis=-1)
 
 
-def get_pixel_at_coordinate(gdal_file: osgeo.gdal.Dataset, x: float, y: float) -> tuple:
+def get_pixel_at_coordinate(gdal_file: osgeo.gdal.Dataset, xy: tuple[float]) -> tuple[int]:
     """
     :param gdal_file: gdal dataset
-    :param x: x coordinate in the coordinate system
-    :param y: y coordinate in the coordinate system
-    :return: pixel of the coordinate (x, y) in the dataset
+    :param xy: coordinate of the pixel (x, y) in the coordinate system
+    :return: pixel of the coordinate (i, j) or (y, x) in the dataset
     """
     origin = get_origin(gdal_file)
     pixel_size = get_scales(gdal_file)
-    return int((x - origin[0]) / pixel_size[0]), int((y - origin[1]) / pixel_size[1])
+    return int((xy[1] - origin[1]) / pixel_size[1]), int((xy[0] - origin[0]) / pixel_size[0])
 
 
 def get_pixels_at_coordinates(gdal_file: osgeo.gdal.Dataset, coords: np.ndarray | list) -> np.ndarray:
     """
     :param gdal_file: gdal dataset
     :param coords: array of the coordinates in the coordinate system (x, y)
-    :return: array of the pixels of the coordinates in the dataset
+    :return: array of the pixels positions in the dataset (i, j) or (y, x)
     """
-    if isinstance(coords, list):
-        coords = np.array(coords)
+    coords = np.array(coords)
     origin = get_origin(gdal_file)
     pixel_size = get_scales(gdal_file)
     pixels = np.stack((
-        (coords[:, 0] - origin[0]) / pixel_size[0], 
-        (coords[:, 1] - origin[1]) / pixel_size[1]
+        (coords[:, 1] - origin[1]) / pixel_size[1],
+        (coords[:, 0] - origin[0]) / pixel_size[0] 
         ), axis=-1).astype(int)
     return pixels
 
@@ -185,11 +192,11 @@ def to_ndarray(gdal_file: osgeo.gdal.Dataset, band_count=None) -> np.ndarray:
 
 def to_xyz(gdal_file: osgeo.gdal.Dataset) -> np.ndarray:
     """
-    :param gdal_file: gdal dataset
+    :param gdal_file: gdal dataset (dsm like)
     :return: array of the coordinates of the pixels in the coordinate system (x, y, z)
     """
-    nda = to_ndarray(gdal_file) # z
     coordinates = get_coordinates_at_pixels(gdal_file) # x, y
+    nda = to_ndarray(gdal_file) # z
     return np.dstack((coordinates, nda))
 
 
@@ -271,24 +278,18 @@ def to_ndsm(dsm_gdal: osgeo.gdal.Dataset, dtm_gdal: osgeo.gdal.Dataset, capture_
     return ndsm
 
 
-def mask_from_coords(gdal_file: osgeo.gdal.Dataset, coords: np.ndarray | list) -> np.ndarray:
+def mask_from_coords(gdal_file: osgeo.gdal.Dataset, points: np.ndarray | list) -> np.ndarray:
     """
     :param gdal_file: gdal dataset
-    :param coords: array of the coordinates in the coordinate system (x, y)
+    :param points: array of the positions of the pixels (y, x) or (i, j)
     :return: mask of the coordinates in the dataset
     """
-    if isinstance(coords, list):
-        coords = np.array(coords)
-
-    points = get_pixels_at_coordinates(gdal_file, coords)
-    array = to_ndarray(gdal_file)
-    mask = np.zeros(array.shape, dtype=bool)
-
-    r = [point[1] for point in points]
-    c = [point[0] for point in points]
+    points = np.array(points)
+    mask = np.zeros(get_shape(gdal_file), dtype=bool)
+    r = [point[0] for point in points]
+    c = [point[1] for point in points]
     rr, cc = draw.polygon(r, c)
     mask[rr, cc] = True
-
     return mask
 
 
@@ -298,8 +299,9 @@ def mask_from_shapefile(gdal_file: osgeo.gdal.Dataset, shapefile_path: str) -> n
     :param shapefile_path: path to the shapefile
     :return: mask of the shapefile in the dataset
     """
-    coords = shp_get_coords(shapefile_path)
-    return mask_from_coords(gdal_file, coords)
+    coords = np.array(shp_get_coords(shapefile_path))
+    points = get_pixels_at_coordinates(gdal_file, coords)
+    return mask_from_coords(gdal_file, points)
 
 
 def crop_from_shapefile(gdal_file: osgeo.gdal.Dataset, shapefile_path: str, mask_value=0.0) -> osgeo.gdal.Dataset:
@@ -310,19 +312,21 @@ def crop_from_shapefile(gdal_file: osgeo.gdal.Dataset, shapefile_path: str, mask
     :return: cropped gdal dataset from the shapefile
     """
     coords = np.array(shp_get_coords(shapefile_path))
-    pixels = get_pixels_at_coordinates(gdal_file, coords)
-    mask = mask_from_coords(gdal_file, coords)
+    points = get_pixels_at_coordinates(gdal_file, coords)
+    mask = mask_from_coords(gdal_file, points)
     array = to_ndarray(gdal_file)
+    mask = mask if len(array.shape) == 2 else np.stack([mask for _ in range(array.shape[2])], axis=2)
     array = array * mask
     array[~mask] = mask_value
-    min_px, min_py = np.min(pixels, axis=0)
-    max_px, max_py = np.max(pixels, axis=0)
+    min_py, min_px = np.min(points, axis=0)
+    max_py, max_px = np.max(points, axis=0)
     array = array[min_py:max_py, min_px:max_px]
 
+    xy = get_coordinate_at_pixel(gdal_file, (min_py, min_px))
     gdal_croped = nda_to_gdal(
         array, 
         get_epsg(gdal_file), 
-        np.min(coords, axis=0), 
+        xy, 
         get_scales(gdal_file)[0]
     )
     return gdal_croped
