@@ -172,6 +172,20 @@ def shapefile(args):
     print(f'* Saved to {args.shapefile_path}')
 
 
+def crop(args):
+    """
+    Crop a geotiff file with a shapefile
+    :param args.geotiff_path: str, path to the geotiff file (mandatory)
+    :param args.shapefile_path: str, path to the shapefile (mandatory)
+    :param args.save_path: str, path to save the cropped geotiff (optional)
+    """
+    save_path = args.save_path if args.save_path else args.geotiff_path.split('.')[0] + '_crop.tif' #todo better
+    gdal = geo.open_geotiff(args.geotiff_path)
+    cropped = geo.crop_from_shapefile(gdal, args.shapefile_path)
+    geo.save_geotiff(cropped, save_path)
+    print(f'* Saved to {save_path}')
+
+
 # GENERAL COMMANDS
 
 def silent_mode(args):
@@ -195,6 +209,8 @@ COMMANDS = {
     'xyz': xyz,
     'cmap': cmap,
     'values': values,
+    'shapefile': shapefile,
+    'crop': crop,
 }
 
 
@@ -252,6 +268,10 @@ def parser_setup():
     parser_shp_create.add_argument("--epsg", type=int, help="EPSG code for the coordinate system")
 
     # crop geotiff with shapefile
+    crop_parser = subparsers.add_parser("crop", help="Crop a geotiff file with a shapefile")
+    crop_parser.add_argument("geotiff_path", type=str, help="Path to the geotiff file")
+    crop_parser.add_argument("shapefile_path", type=str, help="Path to the shapefile")
+    crop_parser.add_argument("--save-path", type=str, help="Path to save the cropped geotiff")
 
     return parser
 
