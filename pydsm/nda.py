@@ -10,6 +10,16 @@ import skimage
 import os
 
 
+DTYPE_TO_GDAL = {
+    int: gdal.GDT_Byte, # 1
+    float: gdal.GDT_Float64, # 7
+    np.int64: gdal.GDT_Int64, # 13
+    np.uint8: gdal.GDT_Byte, # 1
+    np.float32: gdal.GDT_Float32, # 6
+    np.float64: gdal.GDT_Float64, # 7
+}
+
+
 # IO
 
 def write_numpy(npz_path: str, *, data: Optional[Any]=None, metadata: Optional[Any]=None) -> None:
@@ -206,17 +216,18 @@ def to_gdal(array: np.ndarray, epsg: int, origin: tuple, pixel_size: float = 1.0
     
     :param nda: NumPy array (2D or 3D)
     :param epsg: EPSG code of the coordinate system
-    :param base_coordinate: Origin of the coordinate system (x, y) (bottom left corner of the array)
+    :param origin: Origin of the coordinate system (x, y) (top left corner of the array)
     :param pixel_size: Size of each pixel (assumes square pixels)
     :return: GDAL dataset
     """
     # Get dimensions
     height, width = array.shape[:2]
+    gdal_dtype = DTYPE_TO_GDAL[array.dtype.type]
     bands = array.shape[2] if array.ndim == 3 else 1
 
     # Create an in-memory GDAL dataset
     driver = gdal.GetDriverByName("MEM")
-    dataset = driver.Create('', width, height, bands, gdal.GDT_Float32)
+    dataset = driver.Create('', width, height, bands, gdal_dtype)
     
     # Set the geotransform
     origin_x, origin_y = origin[:2]
