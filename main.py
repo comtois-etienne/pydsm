@@ -97,6 +97,13 @@ def xyz(args):
 
 
 def cmap(args):
+    """
+    Converts a geotiff (dsm, dtm, ndsm) file to a colormap png
+    :param args.path: str, path to the geotiff file (mandatory)
+    :param args.cmap: str, colormap name (optional) (default: viridis)
+    :param args.save_path: str, path to save the colormap (optional)
+    :return: None (saves the colormap to disk)
+    """
     cmap = args.cmap if args.cmap else 'viridis'
     save_path = args.save_path if args.save_path else args.path.split('.')[0] + f'_{cmap}.png'
     gdal = geo.open_geotiff(args.path)
