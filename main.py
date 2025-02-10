@@ -166,6 +166,7 @@ def shapefile(args):
     Creates a shapefile from a CSV file
     :param args.csv_path: str, path to the CSV file (mandatory)
         contains a comment line with the EPSG code (optional)
+        For epsg=4326, the longitude is 'x' and the latitude is 'y'
         csv example:
             ```
             #epsg=4326
