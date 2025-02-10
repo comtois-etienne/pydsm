@@ -3,6 +3,7 @@ images
 data
 data/*
 strath
+cache
 .bak
 *.png
 *.jpg
