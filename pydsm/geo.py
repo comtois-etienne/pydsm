@@ -51,12 +51,24 @@ def get_epsg(gdal_file: osgeo.gdal.Dataset) -> int:
 
 def get_origin(gdal_file: osgeo.gdal.Dataset) -> tuple[float]:
     """
+    Top left corner of the dataset in the coordinate system
     see https://gdal.org/en/stable/tutorials/geotransforms_tut.html
 
     :param gdal_file: gdal dataset
     :return: origin of the dataset (x, y) in the coordinate system
     """
     return gdal_file.GetGeoTransform()[0], gdal_file.GetGeoTransform()[3]
+
+
+def get_center(gdal_file: osgeo.gdal.Dataset) -> tuple[float]:
+    """
+    Center of the dataset in the coordinate system
+
+    :param gdal_file: gdal dataset
+    :return: center of the dataset (x, y) in the coordinate system
+    """
+    shape = get_shape(gdal_file)
+    return get_coordinate_at_pixel(gdal_file, (shape[0] // 2, shape[1] // 2))
 
 
 def get_scales(gdal_file: osgeo.gdal.Dataset) -> tuple[float]:
@@ -108,7 +120,7 @@ def get_coordinate_at_pixel(gdal_file: osgeo.gdal.Dataset, px: tuple[int], preci
     """
     :param gdal_file: gdal dataset
     :param px: pixel of the coordinate (i, j) or (y, x) in the dataset
-    :param precision: number of decimals to round the coordinate (default: 3 (mm))
+    :param precision: number of decimals to round the coordinate (default: 3 (millimetric precision))
     :return: coordinate of the pixel (x, y) in the coordinate system
     """
     y, x = px
