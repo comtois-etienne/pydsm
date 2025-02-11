@@ -13,6 +13,8 @@ from .nda import save_to_wavefront as nda_to_wavefront
 from .nda import rescale as nda_rescale
 from .nda import dsm_extract_mask as nda_dsm_extract_mask
 from .shp import get_coords as shp_get_coords
+from .shp import reproject as shp_reproject
+from .shp import get_epsg as shp_get_epsg
 
 
 def open_geotiff(path: str) -> osgeo.gdal.Dataset:
@@ -323,7 +325,9 @@ def crop_from_shapefile(gdal_file: osgeo.gdal.Dataset, shapefile_path: str, mask
     :param mask_value: value to fill the mask
     :return: cropped gdal dataset from the shapefile
     """
+    gdal_epsg = get_epsg(gdal_file)
     coords = np.array(shp_get_coords(shapefile_path))
+    coords = np.array(shp_reproject(coords, shp_get_epsg(shapefile_path), gdal_epsg))
     points = get_pixels_at_coordinates(gdal_file, coords)
     mask = mask_from_coords(gdal_file, points)
     array = to_ndarray(gdal_file)
@@ -337,7 +341,7 @@ def crop_from_shapefile(gdal_file: osgeo.gdal.Dataset, shapefile_path: str, mask
     xy = get_coordinate_at_pixel(gdal_file, (min_py, min_px))
     gdal_croped = nda_to_gdal(
         array, 
-        get_epsg(gdal_file), 
+        gdal_epsg, 
         xy, 
         get_scales(gdal_file)[0]
     )
