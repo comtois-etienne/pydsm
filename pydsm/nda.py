@@ -110,6 +110,7 @@ def convert_2D_to_3D(array: np.array, rev=False) -> np.array:
     return array
 
 
+# todo: rename to nda_round
 def round(array: np.ndarray, decimals: int=2) -> np.ndarray:
     """
     Round the array to the specified number of decimals if the array is a float.
