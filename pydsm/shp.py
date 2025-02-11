@@ -120,6 +120,22 @@ def save_from_csv(csv_path: str, shapefile_path: str, epsg: int = None) -> None:
     save_from_coords(bounds.values.tolist(), epsg, shapefile_path)
 
 
+def save_to_csv(csv_path: str, coordinates: list[tuple], epsg=4326):
+    """
+    Saves a list of coordinates to a csv file
+
+    :param csv_path: path to the csv file
+    :param coordinates: list of coordinates (x, y) or (lon, lat)
+    :param epsg: crs of the coordinates
+    """
+    columns = ['x', 'y']
+    df = pd.DataFrame(coordinates, columns=columns)
+    df.to_csv(csv_path, index=False)
+    # append string to firt line of file
+    with open(csv_path, 'r') as original: data = original.read()
+    with open(csv_path, 'w') as modified: modified.write(f'#epsg={epsg}\n' + data)
+
+
 def get_coords(shapefile_path: str) -> list:
     """
     Converts a shapefile to a list of coordinates.
@@ -183,6 +199,32 @@ def get_epsg(shapefile_path: str) -> int:
     
     datasource = None  # Close
     return int(epsg)
+
+
+def reproject(array: np.ndarray | list[tuple], src_epsg: int, dst_epsg: int, round_to_millimeters=True) -> list[tuple]:
+    """
+    Converts a list of coordinates from one projection system to another
+
+    :param array: List of coordinates to convert (x, y) or (lon, lat). Altitude (z) is ignored.
+    :param src_epsg: EPSG code of the source projection system
+    :param dst_epsg: EPSG code of the destination projection system
+    :param round_to_millimeters: Round the coordinates to 3 decimal places (disabled for EPSG:4326 as destination)
+    """
+    array = np.array(array)[:,:2]
+
+    if src_epsg == 4326: 
+        array = array[:, [1, 0]]
+        round_to_millimeters = False
+
+    src = osr.SpatialReference()
+    src.ImportFromEPSG(src_epsg)
+    dst = osr.SpatialReference()
+    dst.ImportFromEPSG(dst_epsg)
+    transform = osr.CoordinateTransformation(src, dst)
+    reprojected = np.array(transform.TransformPoints(array))
+
+    if round_to_millimeters: reprojected = np.round(reprojected, 3)
+    return reprojected[:, :2].tolist()
 
 
 # PATH FUNCTIONS
@@ -709,4 +751,22 @@ def get_surrounding_streets(coordinate: tuple, street_name_exclusions: list, sea
     uuid_str = __uuid(indexes)
 
     return uuid_str, path_coords
+
+
+def save_surrounding_streets(coordinate, folder: str = None, street_name_exclusions: list=None, search_distance=500):
+    """
+    Saves to csv the coordinates of the surrounding streets of a given coordinate
+
+    :param coordinate: the coordinate (lon, lat) epsg:4326
+    :param folder: the folder where to save the csv file (will be named automatically)
+    :param street_name_exclusions: list of words to exclude from the street names
+    :param search_distance: the distance in meters to search for streets around the coordinate
+    :return: the path to the saved csv file
+    """
+    uuid_str, coords = get_surrounding_streets(coordinate, street_name_exclusions, search_distance)
+    folder = folder[:-1] if folder[-1] == '/' else folder
+    path = f'{folder}/{uuid_str}' if folder else f'{uuid_str}'
+    save_to_csv(f'{path}.csv', coords, epsg=4326)
+    save_from_csv(f'{path}.csv', f'{path}.shp')
+    return f'{path}.csv', f'{path}.shp'
 
