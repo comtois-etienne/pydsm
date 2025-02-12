@@ -17,9 +17,10 @@ Coordinate = tuple[float, float] | tuple[int, int] # (lon, lat) or (x, y)
 Coordinates = list[Coordinate] # list of coordinates [(lon, lat), ...]
 Index = int # node index (street intersection id)
 Indexes = list[Index] # list of node indexes
+UUIDv4 = str # unique identifier for a path (hash of the path)
 
 
-# SHAPEFILE FUNCTIONS
+### SHAPEFILE FUNCTIONS
 
 def open_shapefile(path: str):
     """
@@ -215,6 +216,9 @@ def get_epsg(shapefile_path: str) -> int:
     return int(epsg)
 
 
+### COORDINATE FUNCTIONS
+
+
 def reproject(coordinates: Coordinates, src_epsg: int, dst_epsg: int, round_to_millimeters=True) -> Coordinates:
     """
     Converts a list of coordinates from one projection system to another
@@ -260,7 +264,81 @@ def dilate(coordinates: Coordinates, distance: float=10.0, epsg: int = 2950) -> 
     return list(buffer_polygon.exterior.coords)
 
 
-# PATH FUNCTIONS
+def is_inside(coordinates: pd.DataFrame | Coordinates, coordinate: Coordinate) -> bool:
+    """
+    Returns True if the coordinate is inside the polygon made by the coordinates
+
+    :param coordinates: coordinates
+    :param coordinate: (x, y) or (lon, lat)
+    :return: True if the coordinate is inside the polygon created by the coordinates
+    """
+    polygon = Polygon(coordinates)
+    coordinate = Point(coordinate)
+    return polygon.contains(coordinate)
+
+
+def plot_path(coordinates: Coordinates, seed_coord: Coordinate) -> None:
+    """
+    Plot a path on the map
+
+    :param coordinates: list of coordinates [(lon, lat), ...]
+    """
+    coords = pd.DataFrame(coordinates, columns=['lon', 'lat'])
+    coords['index'] = range(len(coords))
+    fig = px.line_mapbox(coords, lat='lat', lon='lon', zoom=16, height=900, width=900, hover_data=['index'])
+    fig.add_scattermapbox(lat=[seed_coord[1]], lon=[seed_coord[0]], mode='markers', marker=dict(size=10, color='red'))
+    fig.update_layout(mapbox_style="open-street-map")
+    fig.show()
+
+
+def get_surrounding_streets(coordinate: Coordinate, street_name_exclusions: list[str], search_distance=500) -> tuple[UUIDv4, Coordinates, list[int]]:
+    """
+    Finds a closed path around a coordinate folowing the streets
+    The path is the one with the shortest number of nodes (shortest path not garantied)
+
+    :param coordinate: initial coordinate (lon, lat) that is inside the block
+    :param street_name_exclusions: list of words included in the street names to exclude from the path ("Ruelle" is excluded by default)
+    :param search_distance: distance around the coordinate to search for the streets
+    :return: UUID string, list of coordinates, list of node indexes
+        the UUID is based on the hash of the path and is unique for each path (no matter the start and end point)
+    """
+    street_name_exclusions = street_name_exclusions or []
+    street_name_exclusions.append("Ruelle")
+
+    G = __graph_from_coord(coordinate, search_distance)
+    last_edge = __search_path_algorithm(G, coordinate, street_name_exclusions, verbose=0, max_depth=10)
+    path_edges = last_edge.get_path()
+    path_coords, indexes = _path_to_coords_from_unordered(path_edges, simplified=False)
+    uuid_str = __uuid(indexes)
+
+    return uuid_str, path_coords, indexes
+
+
+def save_surrounding_streets(coordinate: Coordinate, folder: str = None, street_name_exclusions: list[str]=None, search_distance=500) -> UUIDv4:
+    """
+    Saves to csv and shp the coordinates of the surrounding streets of a given coordinate. 
+    Will create these files :
+    - `folder/uuid.csv` : list of coordinates (lon, lat) of the streets with metadata (uuid, epsg, indexes)
+    - `folder/uuid.shp` : shapefile of the streets
+    - `folder/uuid.dbf` : dbf file of the streets (for the shapefile)
+    - `folder/uuid.prj` : prj file of the streets (for the shapefile)
+    - `folder/uuid.shx` : shx file of the streets (for the shapefile)
+
+    :param coordinate: the coordinate (lon, lat) epsg:4326
+    :param folder: the folder where to save the csv file (will be named automatically)
+    :param street_name_exclusions: list of words to exclude from the street names
+    :param search_distance: the distance in meters to search for streets around the coordinate
+    :return: the UUID of the path (file name)
+    """
+    uuid_str, coords, indexes = get_surrounding_streets(coordinate, street_name_exclusions, search_distance)
+    folder = folder[:-1] if folder[-1] == '/' else folder
+    path = f'{folder}/{uuid_str}' if folder else f'{uuid_str}'
+    save_csv(f'{path}.csv', coords, epsg=4326, metadata={'uuid': uuid_str, 'indexes': str(indexes).replace(',', '')})
+    save_from_csv(f'{path}.csv', f'{path}.shp')
+    return uuid_str
+
+
+# EDGE FUNCTIONS (PATH FINDING)
 
 
 @dataclass
@@ -341,11 +419,11 @@ class Edge:
         :return: True if the path is closed (the first and last coordinates are the same)
         """
         path = self.get_path()
-        coords, _ = path_to_coords_from_indexes(path)
+        coords, _ = _path_to_coords_from_ordered(path)
         return coords[0] == coords[-1]
 
 
-def edge_factory(u: Index, v: Index, edge_dict: dict) -> Edge:
+def __edge_factory(u: Index, v: Index, edge_dict: dict) -> Edge:
     """
     Convert edge dict to Edge object for the path finding algorithm
 
@@ -421,7 +499,7 @@ def __get_connected_edges(G: nx.MultiDiGraph, parent_edge: Edge, name_exclusions
     
     for i, edge_tuple in enumerate(edges):
         u, v, edge_dict = edge_tuple
-        edge = edge_factory(u, v, edge_dict)
+        edge = __edge_factory(u, v, edge_dict)
         if ( 'geometry' not in edge_dict ) or ('name' in edge_dict and __str_contains(edge_dict['name'], name_exclusions) ):
             edges[i] = None
             continue
@@ -430,7 +508,7 @@ def __get_connected_edges(G: nx.MultiDiGraph, parent_edge: Edge, name_exclusions
     return [edge for edge in edges if edge is not None]
 
 
-def get_closest_edge(G: nx.MultiDiGraph, coord: Coordinate, name_exclusions: list[str] = None, distance_crs=4326) -> Edge:
+def __get_closest_edge(G: nx.MultiDiGraph, coord: Coordinate, name_exclusions: list[str] = None, distance_crs=4326) -> Edge:
     """
     Finds the closest edge to a point
 
@@ -460,20 +538,7 @@ def get_closest_edge(G: nx.MultiDiGraph, coord: Coordinate, name_exclusions: lis
         u, v, _ = filtered_edges.loc[filtered_edges["distance"].idxmin()].name
 
     edge_dict = G.get_edge_data(u, v)[0]
-    return edge_factory(u, v, edge_dict)
-
-
-def is_inside(coords: pd.DataFrame | Coordinates, coord: Coordinate) -> bool:
-    """
-    Returns True if the point is inside the polygon
-
-    :param coords: coordinates pd.DataFrame(coords, columns=['lon', 'lat']) or list [(lon, lat), ...]
-    :param coord: coordinate (lon, lat) EPSG:4326
-    :return: True if the coordinate is inside the polygon created by the coordinates
-    """
-    polygon = Polygon(coords)
-    coord = Point(coord)
-    return polygon.contains(coord)
+    return __edge_factory(u, v, edge_dict)
 
 
 def __stop_condition(seed_edge: Edge, edge: Edge, origin: Coordinate) -> bool:
@@ -485,17 +550,16 @@ def __stop_condition(seed_edge: Edge, edge: Edge, origin: Coordinate) -> bool:
     :param origin: origin coordinate for the zone (lon, lat) EPSG:4326
     :return: True if the path is closed around the origin coordinate
     """
-    path_to_coords = path_to_coords_from_indexes
     seed_u = seed_edge.edge_dict['u']
     u = edge.edge_dict['u']
     v = edge.edge_dict['v']
     if v == seed_u or u == seed_u:
-        path, _ = path_to_coords(edge.get_path())
+        path, _ = _path_to_coords_from_ordered(edge.get_path())
         return is_inside(path, origin)
     return False
 
 
-def path_to_coords_from_indexes(edges: list[Edge], simplified=False) -> tuple[Coordinates, Indexes]:
+def _path_to_coords_from_ordered(edges: list[Edge], simplified=False) -> tuple[Coordinates, Indexes]:
     """
     Converts a list of edges to an ordered list of coordinates
     Some edges may be in reverse direction because on one-way streets
@@ -558,7 +622,7 @@ def __pop_edge(edges: list[Edge], index_search) -> tuple[list[Edge], Edge]:
     return edges, None
 
 
-def path_to_coords_from_unordered_indexes(edges: list[Edge], simplified=False) -> tuple[Coordinates, Indexes]:
+def _path_to_coords_from_unordered(edges: list[Edge], simplified=False) -> tuple[Coordinates, Indexes]:
     """
     Converts a list of edges to an ordered list of coordinates
     Some edges may be in reverse direction because on one-way streets
@@ -662,7 +726,7 @@ def __get_ordered_path_indexes_from_unordered(edges: list[Edge]) -> Indexes:
     return indexes
 
 
-def __uuid(indexes: Indexes) -> str:
+def __uuid(indexes: Indexes) -> UUIDv4:
     """
     Generate a UUID based on the hash of the path
     Two paths with the same edges will always have the same UUID (no matter the start and end point)
@@ -695,7 +759,7 @@ def __search_path_algorithm(G: nx.MultiDiGraph, seed_coord: Coordinate, name_exc
     """
     queue: list[Edge] = []
 
-    seed_edge = get_closest_edge(G, seed_coord, name_exclusions)
+    seed_edge = __get_closest_edge(G, seed_coord, name_exclusions)
     queue += __get_connected_edges(G, seed_edge, name_exclusions, mode='v')
 
     while len(queue) > 0 and len(queue[0]) < max_depth:
@@ -710,20 +774,6 @@ def __search_path_algorithm(G: nx.MultiDiGraph, seed_coord: Coordinate, name_exc
     return seed_edge
 
 
-def plot_path(coordinates: Coordinates, seed_coord: Coordinate) -> None:
-    """
-    Plot a path on the map
-
-    :param coordinates: list of coordinates [(lon, lat), ...]
-    """
-    coords = pd.DataFrame(coordinates, columns=['lon', 'lat'])
-    coords['index'] = range(len(coords))
-    fig = px.line_mapbox(coords, lat='lat', lon='lon', zoom=16, height=900, width=900, hover_data=['index'])
-    fig.add_scattermapbox(lat=[seed_coord[1]], lon=[seed_coord[0]], mode='markers', marker=dict(size=10, color='red'))
-    fig.update_layout(mapbox_style="open-street-map")
-    fig.show()
-
-
 def __plot_edge(edge: Edge, seed_coord: Coordinate, plot_time=0.5, simplified=False) -> None:
     """
     Plot an edge on the map
@@ -732,7 +782,7 @@ def __plot_edge(edge: Edge, seed_coord: Coordinate, plot_time=0.5, simplified=Fa
     :param color: edge color
     """
     from IPython.display import clear_output
-    path_to_coords = path_to_coords_from_unordered_indexes
+    path_to_coords = _path_to_coords_from_unordered
 
     if plot_time > 0:
         time.sleep(plot_time)
@@ -759,45 +809,4 @@ def __graph_from_coord(coord: Coordinate, distance: int=500, network_type='drive
     :return: graph, nodes, edges
     """
     return ox.graph_from_point((coord[1], coord[0]), dist=distance, network_type=network_type)
-
-
-def get_surrounding_streets(coordinate: Coordinate, street_name_exclusions: list[str], search_distance=500) -> tuple[str, Coordinates, list[int]]:
-    """
-    Finds a closed path around a coordinate folowing the streets
-    The path is the one with the shortest number of nodes (shortest path not garantied)
-
-    :param coordinate: initial coordinate (lon, lat) that is inside the block
-    :param street_name_exclusions: list of words included in the street names to exclude from the path ("Ruelle" is excluded by default)
-    :param search_distance: distance around the coordinate to search for the streets
-    :return: UUID string, list of coordinates, list of node indexes
-        the UUID is based on the hash of the path and is unique for each path (no matter the start and end point)
-    """
-    street_name_exclusions = street_name_exclusions or []
-    street_name_exclusions.append("Ruelle")
-
-    G = __graph_from_coord(coordinate, search_distance)
-    last_edge = __search_path_algorithm(G, coordinate, street_name_exclusions, verbose=0, max_depth=10)
-    path_edges = last_edge.get_path()
-    path_coords, indexes = path_to_coords_from_unordered_indexes(path_edges, simplified=False)
-    uuid_str = __uuid(indexes)
-
-    return uuid_str, path_coords, indexes
-
-
-def save_surrounding_streets(coordinate: Coordinate, folder: str = None, street_name_exclusions: list[str]=None, search_distance=500) -> tuple[str, str]:
-    """
-    Saves to csv the coordinates of the surrounding streets of a given coordinate
-
-    :param coordinate: the coordinate (lon, lat) epsg:4326
-    :param folder: the folder where to save the csv file (will be named automatically)
-    :param street_name_exclusions: list of words to exclude from the street names
-    :param search_distance: the distance in meters to search for streets around the coordinate
-    :return: the path to the saved csv file
-    """
-    uuid_str, coords, indexes = get_surrounding_streets(coordinate, street_name_exclusions, search_distance)
-    folder = folder[:-1] if folder[-1] == '/' else folder
-    path = f'{folder}/{uuid_str}' if folder else f'{uuid_str}'
-    save_csv(f'{path}.csv', coords, epsg=4326, metadata={'uuid': uuid_str, 'indexes': str(indexes).replace(',', '')})
-    save_from_csv(f'{path}.csv', f'{path}.shp')
-    return f'{path}.csv', f'{path}.shp'
 
