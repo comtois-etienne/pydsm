@@ -19,6 +19,7 @@ Index = int # node index (street intersection id)
 Indexes = list[Index] # list of node indexes
 UUIDv4 = str # unique identifier for a path (hash of the path)
 
+CRS_GPS = 4326
 
 ### SHAPEFILE FUNCTIONS
 
@@ -128,7 +129,7 @@ def save_from_csv(csv_path: str, shapefile_path: str, epsg: int = None) -> None:
     save_from_coords(bounds.values.tolist(), epsg, shapefile_path)
 
 
-def save_csv(csv_path: str, coordinates: Coordinates, epsg=4326, metadata: dict = None) -> None:
+def save_csv(csv_path: str, coordinates: Coordinates, epsg=CRS_GPS, metadata: dict = None) -> None:
     """
     Saves a list of coordinates to a csv file
 
@@ -230,8 +231,9 @@ def reproject(coordinates: Coordinates, src_epsg: int, dst_epsg: int, round_to_m
     """
     coordinates = np.array(coordinates)[:,:2]
 
-    if src_epsg == 4326: 
+    if src_epsg == CRS_GPS: 
         coordinates = coordinates[:, [1, 0]]
+    if dst_epsg == CRS_GPS:
         round_to_millimeters = False
 
     src = osr.SpatialReference()
@@ -242,7 +244,12 @@ def reproject(coordinates: Coordinates, src_epsg: int, dst_epsg: int, round_to_m
     reprojected = np.array(transform.TransformPoints(coordinates))
 
     if round_to_millimeters: reprojected = np.round(reprojected, 3)
-    return reprojected[:, :2].tolist()
+    reprojected = reprojected[:, :2]
+
+    if dst_epsg == CRS_GPS: 
+        reprojected = reprojected[:, [1, 0]]
+    
+    return reprojected.tolist()
 
 
 def dilate(coordinates: Coordinates, distance: float=10.0) -> Coordinates:
@@ -329,7 +336,7 @@ def save_surrounding_streets(coordinate: Coordinate, folder: str = None, street_
     uuid_str, coords, indexes = get_surrounding_streets(coordinate, street_name_exclusions, search_distance)
     folder = folder[:-1] if folder[-1] == '/' else folder
     path = f'{folder}/{uuid_str}' if folder else f'{uuid_str}'
-    save_csv(f'{path}.csv', coords, epsg=4326, metadata={'uuid': uuid_str, 'indexes': str(indexes).replace(',', '')})
+    save_csv(f'{path}.csv', coords, epsg=CRS_GPS, metadata={'uuid': uuid_str, 'indexes': str(indexes).replace(',', '')})
     save_from_csv(f'{path}.csv', f'{path}.shp')
     return uuid_str
 
@@ -522,7 +529,7 @@ def __get_closest_edge(G: nx.MultiDiGraph, coord: Coordinate, name_exclusions: l
         edges = ox.convert.graph_to_gdfs(G, nodes=False, edges=True)
         filtered_edges = edges[~edges["name"].astype(str).str.contains("|".join(name_exclusions), na=False, case=False)].copy()
 
-        point_geom = gpd.GeoDataFrame(geometry=[Point(coord)], crs=4326)
+        point_geom = gpd.GeoDataFrame(geometry=[Point(coord)], crs=CRS_GPS)
         filtered_edges = filtered_edges.to_crs(distance_crs)
         point_geom = point_geom.to_crs(distance_crs)
 
