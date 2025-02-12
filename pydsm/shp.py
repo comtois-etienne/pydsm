@@ -15,7 +15,7 @@ import networkx as nx
 
 Coordinate = tuple[float, float] | tuple[int, int] # (lon, lat) or (x, y)
 Coordinates = list[Coordinate] # list of coordinates [(lon, lat), ...]
-Index = int
+Index = int # node index (street intersection id)
 Indexes = list[Index] # list of node indexes
 
 
@@ -239,6 +239,25 @@ def reproject(coordinates: Coordinates, src_epsg: int, dst_epsg: int, round_to_m
 
     if round_to_millimeters: reprojected = np.round(reprojected, 3)
     return reprojected[:, :2].tolist()
+
+
+def dilate(coordinates: Coordinates, distance: float=10.0, epsg: int = 2950) -> Coordinates:
+    """
+    Dillates a list of coordinates forming a polygon by a given distance
+    `warning` : EPSG:4326 is not supported for dilation. Please use a projected coordinate system.
+
+    :param coordinates: List of coordinates to dilate (x, y) or (lon, lat)
+    :param distance: Distance to dilate the coordinates in meters (default: 10.0m)
+    :param epsg: EPSG code of the coordinates
+    """
+    # assert that it is not in epsg:4326
+    if epsg == 4326:
+        raise ValueError("EPSG:4326 is not supported for dilation. Please use a projected coordinate system.")
+
+    coords = np.array(coordinates)
+    polygon = Polygon(coords)
+    buffer_polygon = polygon.buffer(distance)
+    return list(buffer_polygon.exterior.coords)
 
 
 # PATH FUNCTIONS
