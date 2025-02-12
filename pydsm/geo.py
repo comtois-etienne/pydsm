@@ -12,7 +12,7 @@ from .nda import round_to_mm as nda_round_to_mm
 from .nda import save_to_wavefront as nda_to_wavefront
 from .nda import rescale as nda_rescale
 from .nda import dsm_extract_mask as nda_dsm_extract_mask
-from .shp import get_coords as shp_get_coords
+from .shp import read_coords as shp_read_coords
 from .shp import reproject as shp_reproject
 from .shp import get_epsg as shp_get_epsg
 
@@ -163,7 +163,7 @@ def get_pixel_at_coordinate(gdal_file: osgeo.gdal.Dataset, xy: tuple[float]) -> 
 def get_pixels_at_coordinates(gdal_file: osgeo.gdal.Dataset, coords: np.ndarray | list) -> np.ndarray:
     """
     :param gdal_file: gdal dataset
-    :param coords: array of the coordinates in the coordinate system (x, y)
+    :param coords: array of the coordinates in the coordinate system (x, y) or (lon, lat)
     :return: array of the pixels positions in the dataset (i, j) or (y, x)
     """
     coords = np.array(coords)
@@ -313,7 +313,7 @@ def mask_from_shapefile(gdal_file: osgeo.gdal.Dataset, shapefile_path: str) -> n
     :param shapefile_path: path to the shapefile
     :return: mask of the shapefile in the dataset
     """
-    coords = np.array(shp_get_coords(shapefile_path))
+    coords = np.array(shp_read_coords(shapefile_path))
     points = get_pixels_at_coordinates(gdal_file, coords)
     return mask_from_coords(gdal_file, points)
 
@@ -326,7 +326,7 @@ def crop_from_shapefile(gdal_file: osgeo.gdal.Dataset, shapefile_path: str, mask
     :return: cropped gdal dataset from the shapefile
     """
     gdal_epsg = get_epsg(gdal_file)
-    coords = np.array(shp_get_coords(shapefile_path))
+    coords = np.array(shp_read_coords(shapefile_path))
     coords = np.array(shp_reproject(coords, shp_get_epsg(shapefile_path), gdal_epsg))
     points = get_pixels_at_coordinates(gdal_file, coords)
     mask = mask_from_coords(gdal_file, points)

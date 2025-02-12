@@ -13,6 +13,12 @@ import osmnx as ox
 import networkx as nx
 
 
+Coordinate = tuple[float, float] | tuple[int, int] # (lon, lat) or (x, y)
+Coordinates = list[Coordinate] # list of coordinates [(lon, lat), ...]
+Index = int
+Indexes = list[Index] # list of node indexes
+
+
 # SHAPEFILE FUNCTIONS
 
 def open_shapefile(path: str):
@@ -64,6 +70,7 @@ def save_from_coords(coords: list, epsg: int, shapefile_path: str) -> None:
     :param epsg: EPSG code for the coordinate system
     :param shapefile_path: Path where the shapefile will be saved
     """
+    coords = np.array(coords)[:,:2].tolist()
     shapefile = open_shapefile(shapefile_path)
 
     srs = osr.SpatialReference()
@@ -112,7 +119,7 @@ def save_from_csv(csv_path: str, shapefile_path: str, epsg: int = None) -> None:
     with open(csv_path, 'r') as file:
         for line in file:
             if line.startswith('#'):
-                k, v = line.strip()[1:].split('=')
+                k, v = line.strip()[1:].split(',')
                 metadata[k] = v
     if 'epsg' not in metadata and epsg is None:
         raise ValueError("No EPSG code found in the CSV file. Add #epsg=NUMBER to the file.")
@@ -120,23 +127,30 @@ def save_from_csv(csv_path: str, shapefile_path: str, epsg: int = None) -> None:
     save_from_coords(bounds.values.tolist(), epsg, shapefile_path)
 
 
-def save_to_csv(csv_path: str, coordinates: list[tuple], epsg=4326):
+def save_csv(csv_path: str, coordinates: Coordinates, epsg=4326, metadata: dict = None) -> None:
     """
     Saves a list of coordinates to a csv file
 
     :param csv_path: path to the csv file
     :param coordinates: list of coordinates (x, y) or (lon, lat)
+    :param metadata: metadata to add to the csv file
     :param epsg: crs of the coordinates
     """
+    metadata = metadata or {}
+    metadata['epsg'] = epsg
+
     columns = ['x', 'y']
     df = pd.DataFrame(coordinates, columns=columns)
     df.to_csv(csv_path, index=False)
-    # append string to firt line of file
+
     with open(csv_path, 'r') as original: data = original.read()
-    with open(csv_path, 'w') as modified: modified.write(f'#epsg={epsg}\n' + data)
+    with open(csv_path, 'w') as modified: 
+        for key, value in metadata.items():
+            modified.write(f'#{key},{value}\n')
+        modified.write(data)
 
 
-def get_coords(shapefile_path: str) -> list:
+def read_coords(shapefile_path: str) -> Coordinates:
     """
     Converts a shapefile to a list of coordinates.
     
@@ -201,7 +215,7 @@ def get_epsg(shapefile_path: str) -> int:
     return int(epsg)
 
 
-def reproject(array: np.ndarray | list[tuple], src_epsg: int, dst_epsg: int, round_to_millimeters=True) -> list[tuple]:
+def reproject(coordinates: Coordinates, src_epsg: int, dst_epsg: int, round_to_millimeters=True) -> Coordinates:
     """
     Converts a list of coordinates from one projection system to another
 
@@ -210,10 +224,10 @@ def reproject(array: np.ndarray | list[tuple], src_epsg: int, dst_epsg: int, rou
     :param dst_epsg: EPSG code of the destination projection system
     :param round_to_millimeters: Round the coordinates to 3 decimal places (disabled for EPSG:4326 as destination)
     """
-    array = np.array(array)[:,:2]
+    coordinates = np.array(coordinates)[:,:2]
 
     if src_epsg == 4326: 
-        array = array[:, [1, 0]]
+        coordinates = coordinates[:, [1, 0]]
         round_to_millimeters = False
 
     src = osr.SpatialReference()
@@ -221,7 +235,7 @@ def reproject(array: np.ndarray | list[tuple], src_epsg: int, dst_epsg: int, rou
     dst = osr.SpatialReference()
     dst.ImportFromEPSG(dst_epsg)
     transform = osr.CoordinateTransformation(src, dst)
-    reprojected = np.array(transform.TransformPoints(array))
+    reprojected = np.array(transform.TransformPoints(coordinates))
 
     if round_to_millimeters: reprojected = np.round(reprojected, 3)
     return reprojected[:, :2].tolist()
@@ -291,7 +305,7 @@ class Edge:
 
     def get_indexes(self) -> list[tuple]:
         """
-        :return: list of node indexes pairs in the path [(u, v), ...] such as the v_0 does not necessarily equal u_1
+        :return: list of node indexes pairs in the path [(u_0, v_0), (u_1, v_1), ...] such as the v_0 does not necessarily equal u_1
         """
         return [edge.index() for edge in self.get_path()]
     
@@ -308,13 +322,13 @@ class Edge:
         :return: True if the path is closed (the first and last coordinates are the same)
         """
         path = self.get_path()
-        coords = path_to_coords_from_indexes(path)
+        coords, _ = path_to_coords_from_indexes(path)
         return coords[0] == coords[-1]
 
 
-def edge_factory(u, v, edge_dict: dict) -> Edge:
+def edge_factory(u: Index, v: Index, edge_dict: dict) -> Edge:
     """
-    Convert edge to Edge object
+    Convert edge dict to Edge object for the path finding algorithm
 
     :param u: start node index
     :param v: end node index
@@ -328,7 +342,7 @@ def edge_factory(u, v, edge_dict: dict) -> Edge:
     return Edge(edge_dict, None, [])
 
 
-def __get_edges_at_coordinate(G: nx.MultiDiGraph, coord: tuple, tolerance = 0.0) -> gpd.GeoDataFrame:
+def __get_edges_at_coordinate(G: nx.MultiDiGraph, coord: Coordinate, tolerance = 0.0) -> gpd.GeoDataFrame:
     """
     Get edges that start or end at a given coordinate
     Bruteforce method to find the edges at a given coordinate
@@ -397,7 +411,7 @@ def __get_connected_edges(G: nx.MultiDiGraph, parent_edge: Edge, name_exclusions
     return [edge for edge in edges if edge is not None]
 
 
-def get_closest_edge(G: nx.MultiDiGraph, coord: tuple, name_exclusions: list[str] = None, distance_crs=4326) -> Edge:
+def get_closest_edge(G: nx.MultiDiGraph, coord: Coordinate, name_exclusions: list[str] = None, distance_crs=4326) -> Edge:
     """
     Finds the closest edge to a point
 
@@ -430,11 +444,11 @@ def get_closest_edge(G: nx.MultiDiGraph, coord: tuple, name_exclusions: list[str
     return edge_factory(u, v, edge_dict)
 
 
-def is_inside(coords: pd.DataFrame | list[tuple], coord: tuple) -> bool:
+def is_inside(coords: pd.DataFrame | Coordinates, coord: Coordinate) -> bool:
     """
     Returns True if the point is inside the polygon
 
-    :param coords: coordinates pd.DataFrame(coords, columns=['lon', 'lat']) or [(lon, lat), ...]
+    :param coords: coordinates pd.DataFrame(coords, columns=['lon', 'lat']) or list [(lon, lat), ...]
     :param coord: coordinate (lon, lat) EPSG:4326
     :return: True if the coordinate is inside the polygon created by the coordinates
     """
@@ -443,7 +457,7 @@ def is_inside(coords: pd.DataFrame | list[tuple], coord: tuple) -> bool:
     return polygon.contains(coord)
 
 
-def __stop_condition(seed_edge: Edge, edge: Edge, origin: tuple) -> bool:
+def __stop_condition(seed_edge: Edge, edge: Edge, origin: Coordinate) -> bool:
     """
     Stop condition for the path finding
 
@@ -457,12 +471,12 @@ def __stop_condition(seed_edge: Edge, edge: Edge, origin: tuple) -> bool:
     u = edge.edge_dict['u']
     v = edge.edge_dict['v']
     if v == seed_u or u == seed_u:
-        path = path_to_coords(edge.get_path())
+        path, _ = path_to_coords(edge.get_path())
         return is_inside(path, origin)
     return False
 
 
-def path_to_coords_from_indexes(edges: list[Edge], simplified=False, return_indexes=False) -> list[int]:
+def path_to_coords_from_indexes(edges: list[Edge], simplified=False) -> tuple[Coordinates, Indexes]:
     """
     Converts a list of edges to an ordered list of coordinates
     Some edges may be in reverse direction because on one-way streets
@@ -474,7 +488,7 @@ def path_to_coords_from_indexes(edges: list[Edge], simplified=False, return_inde
     :param edges: list of edges
     :param simplified: simplified path (only start and end coordinates of each edge)
     :param return_indexes: if True, return the index of the intersections of the edges in the path
-    :return: list of coordinates [(lon, lat), ...] or [(lon, lat), ...], [u, v, ...]
+    :return: list of coordinates [(lon, lat), ...] and list of indexes [u, v, ...]
     """
     lons, lats = [], []
     x, y = [], []
@@ -506,8 +520,7 @@ def path_to_coords_from_indexes(edges: list[Edge], simplified=False, return_inde
 
         u, v = u_next, v_next
 
-    if return_indexes: return list(zip(lons, lats)), indexes
-    else: return list(zip(lons, lats))
+    return list(zip(lons, lats)), indexes
 
 
 def __pop_edge(edges: list[Edge], index_search) -> tuple[list[Edge], Edge]:
@@ -526,7 +539,7 @@ def __pop_edge(edges: list[Edge], index_search) -> tuple[list[Edge], Edge]:
     return edges, None
 
 
-def path_to_coords_from_unordered_indexes(edges: list[Edge], simplified=False, return_indexes=False) -> list[int]:
+def path_to_coords_from_unordered_indexes(edges: list[Edge], simplified=False) -> tuple[Coordinates, Indexes]:
     """
     Converts a list of edges to an ordered list of coordinates
     Some edges may be in reverse direction because on one-way streets
@@ -540,7 +553,7 @@ def path_to_coords_from_unordered_indexes(edges: list[Edge], simplified=False, r
     :param edges: list of edges
     :param simplified: simplified path (only start and end coordinates of each edge)
     :param return_indexes: if True, return the index of the intersections of the edges in the path
-    :return: list of coordinates [(lon, lat), ...] or [(lon, lat), ...], [u, v, ...]
+    :return: list of coordinates [(lon, lat), ...] and list of indexes [u, v, ...]
     """
     edges = edges.copy()
     lons, lats = [], []
@@ -582,11 +595,10 @@ def path_to_coords_from_unordered_indexes(edges: list[Edge], simplified=False, r
         lons = np.append(lons, lons[0])
         lats = np.append(lats, lats[0])
 
-    if return_indexes: return list(zip(lons, lats)), indexes
-    else: return list(zip(lons, lats))
+    return list(zip(lons, lats)), indexes
 
 
-def __get_ordered_path_indexes(edges: list[Edge]) -> list[int]:
+def __get_ordered_path_indexes(edges: list[Edge]) -> Indexes:
     """
     works only if the edges are ordered and the path is closed
 
@@ -606,7 +618,7 @@ def __get_ordered_path_indexes(edges: list[Edge]) -> list[int]:
     return indexes
 
 
-def __get_ordered_path_indexes_from_unordered(edges: list[Edge]) -> list[int]:
+def __get_ordered_path_indexes_from_unordered(edges: list[Edge]) -> Indexes:
     """
     works if the edges are not ordered and if the path is closed
     more robust than __get_ordered_path_indexes
@@ -631,7 +643,7 @@ def __get_ordered_path_indexes_from_unordered(edges: list[Edge]) -> list[int]:
     return indexes
 
 
-def __uuid(indexes: list[int]) -> str:
+def __uuid(indexes: Indexes) -> str:
     """
     Generate a UUID based on the hash of the path
     Two paths with the same edges will always have the same UUID (no matter the start and end point)
@@ -651,7 +663,7 @@ def __uuid(indexes: list[int]) -> str:
     return str(generated_uuid)
 
 
-def __search_path_algorithm(G: nx.MultiDiGraph, seed_coord: tuple, name_exclusions: list[str] = None, max_depth: int=10, verbose: float=0) -> Edge:
+def __search_path_algorithm(G: nx.MultiDiGraph, seed_coord: Coordinate, name_exclusions: list[str] = None, max_depth: int=10, verbose: float=0) -> Edge:
     """
     Path finding algorithm to find the loop around a block using street edges
 
@@ -679,7 +691,7 @@ def __search_path_algorithm(G: nx.MultiDiGraph, seed_coord: tuple, name_exclusio
     return seed_edge
 
 
-def plot_path(coordinates: list[tuple[float, float]], seed_coord: tuple[float, float]) -> None:
+def plot_path(coordinates: Coordinates, seed_coord: Coordinate) -> None:
     """
     Plot a path on the map
 
@@ -693,7 +705,7 @@ def plot_path(coordinates: list[tuple[float, float]], seed_coord: tuple[float, f
     fig.show()
 
 
-def __plot_edge(edge: Edge, seed_coord, plot_time=0.5, simplified=False) -> None:
+def __plot_edge(edge: Edge, seed_coord: Coordinate, plot_time=0.5, simplified=False) -> None:
     """
     Plot an edge on the map
 
@@ -708,7 +720,7 @@ def __plot_edge(edge: Edge, seed_coord, plot_time=0.5, simplified=False) -> None
         clear_output()
 
     path = edge.get_path()
-    path_coords, indexes = path_to_coords(path, simplified, return_indexes=True)
+    path_coords, indexes = path_to_coords(path, simplified)
 
     print(edge.get_indexes())
     print(path_coords)
@@ -718,7 +730,7 @@ def __plot_edge(edge: Edge, seed_coord, plot_time=0.5, simplified=False) -> None
     plot_path(path_coords, seed_coord)
 
 
-def __graph_from_coord(coord: tuple, distance: int=500, network_type='drive') -> nx.MultiDiGraph:
+def __graph_from_coord(coord: Coordinate, distance: int=500, network_type='drive') -> nx.MultiDiGraph:
     """
     Create a graph from a coordinate
 
@@ -730,7 +742,7 @@ def __graph_from_coord(coord: tuple, distance: int=500, network_type='drive') ->
     return ox.graph_from_point((coord[1], coord[0]), dist=distance, network_type=network_type)
 
 
-def get_surrounding_streets(coordinate: tuple, street_name_exclusions: list, search_distance=500) -> tuple[str, list[tuple[float, float]]]:
+def get_surrounding_streets(coordinate: Coordinate, street_name_exclusions: list[str], search_distance=500) -> tuple[str, Coordinates, list[int]]:
     """
     Finds a closed path around a coordinate folowing the streets
     The path is the one with the shortest number of nodes (shortest path not garantied)
@@ -738,7 +750,7 @@ def get_surrounding_streets(coordinate: tuple, street_name_exclusions: list, sea
     :param coordinate: initial coordinate (lon, lat) that is inside the block
     :param street_name_exclusions: list of words included in the street names to exclude from the path ("Ruelle" is excluded by default)
     :param search_distance: distance around the coordinate to search for the streets
-    :return: UUID string, list of coordinates
+    :return: UUID string, list of coordinates, list of node indexes
         the UUID is based on the hash of the path and is unique for each path (no matter the start and end point)
     """
     street_name_exclusions = street_name_exclusions or []
@@ -747,13 +759,13 @@ def get_surrounding_streets(coordinate: tuple, street_name_exclusions: list, sea
     G = __graph_from_coord(coordinate, search_distance)
     last_edge = __search_path_algorithm(G, coordinate, street_name_exclusions, verbose=0, max_depth=10)
     path_edges = last_edge.get_path()
-    path_coords, indexes = path_to_coords_from_unordered_indexes(path_edges, return_indexes=True, simplified=False)
+    path_coords, indexes = path_to_coords_from_unordered_indexes(path_edges, simplified=False)
     uuid_str = __uuid(indexes)
 
-    return uuid_str, path_coords
+    return uuid_str, path_coords, indexes
 
 
-def save_surrounding_streets(coordinate, folder: str = None, street_name_exclusions: list=None, search_distance=500):
+def save_surrounding_streets(coordinate: Coordinate, folder: str = None, street_name_exclusions: list[str]=None, search_distance=500) -> tuple[str, str]:
     """
     Saves to csv the coordinates of the surrounding streets of a given coordinate
 
@@ -763,10 +775,10 @@ def save_surrounding_streets(coordinate, folder: str = None, street_name_exclusi
     :param search_distance: the distance in meters to search for streets around the coordinate
     :return: the path to the saved csv file
     """
-    uuid_str, coords = get_surrounding_streets(coordinate, street_name_exclusions, search_distance)
+    uuid_str, coords, indexes = get_surrounding_streets(coordinate, street_name_exclusions, search_distance)
     folder = folder[:-1] if folder[-1] == '/' else folder
     path = f'{folder}/{uuid_str}' if folder else f'{uuid_str}'
-    save_to_csv(f'{path}.csv', coords, epsg=4326)
+    save_csv(f'{path}.csv', coords, epsg=4326, metadata={'uuid': uuid_str, 'indexes': str(indexes).replace(',', '')})
     save_from_csv(f'{path}.csv', f'{path}.shp')
     return f'{path}.csv', f'{path}.shp'
 
