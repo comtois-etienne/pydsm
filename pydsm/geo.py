@@ -15,6 +15,14 @@ from .nda import dsm_extract_mask as nda_dsm_extract_mask
 from .shp import read_coords as shp_read_coords
 from .shp import reproject as shp_reproject
 from .shp import get_epsg as shp_get_epsg
+from .shp import dilate as shp_dilate
+
+from .shp import Coordinate
+from .shp import Coordinates
+
+
+Point = tuple[int, int] # (i, j) or (y, x) cartesian coordinates of a pixel
+Points = list[Point] # list of POINT
 
 
 def open_geotiff(path: str) -> osgeo.gdal.Dataset:
@@ -51,7 +59,7 @@ def get_epsg(gdal_file: osgeo.gdal.Dataset) -> int:
     return int(epsg)
 
 
-def get_origin(gdal_file: osgeo.gdal.Dataset) -> tuple[float]:
+def get_origin(gdal_file: osgeo.gdal.Dataset) -> Coordinate:
     """
     Top left corner of the dataset in the coordinate system
     see https://gdal.org/en/stable/tutorials/geotransforms_tut.html
@@ -62,7 +70,7 @@ def get_origin(gdal_file: osgeo.gdal.Dataset) -> tuple[float]:
     return gdal_file.GetGeoTransform()[0], gdal_file.GetGeoTransform()[3]
 
 
-def get_center(gdal_file: osgeo.gdal.Dataset) -> tuple[float]:
+def get_center(gdal_file: osgeo.gdal.Dataset) -> Coordinate:
     """
     Center of the dataset in the coordinate system
 
@@ -118,14 +126,14 @@ def get_dtype(gdal_file: osgeo.gdal.Dataset):
 
 # COORDINATES
 
-def get_coordinate_at_pixel(gdal_file: osgeo.gdal.Dataset, px: tuple[int], precision=3) -> tuple[float]:
+def get_coordinate_at_pixel(gdal_file: osgeo.gdal.Dataset, point: Point, precision=3) -> Coordinate:
     """
     :param gdal_file: gdal dataset
-    :param px: pixel of the coordinate (i, j) or (y, x) in the dataset
+    :param point: pixel of the desired coordinate (i, j) or (y, x) in the dataset
     :param precision: number of decimals to round the coordinate (default: 3 (millimetric precision))
     :return: coordinate of the pixel (x, y) in the coordinate system
     """
-    y, x = px
+    y, x = point
     origin = get_origin(gdal_file)
     pixel_size = get_scales(gdal_file)
     h, w = get_shape(gdal_file)
@@ -134,7 +142,7 @@ def get_coordinate_at_pixel(gdal_file: osgeo.gdal.Dataset, px: tuple[int], preci
     return round(origin[0] + x * pixel_size[0], precision), round(origin[1] + y * pixel_size[1], precision)
 
 
-def get_coordinates_at_pixels(gdal_file: osgeo.gdal.Dataset) -> np.ndarray:
+def get_coordinates_at_pixels(gdal_file: osgeo.gdal.Dataset) -> Coordinates | np.ndarray:
     """
     :param gdal_file: gdal dataset
     :return: array of the coordinates of the pixels in the coordinate system (x, y)
@@ -149,7 +157,7 @@ def get_coordinates_at_pixels(gdal_file: osgeo.gdal.Dataset) -> np.ndarray:
     return np.stack((all_x, all_y), axis=-1)
 
 
-def get_pixel_at_coordinate(gdal_file: osgeo.gdal.Dataset, xy: tuple[float]) -> tuple[int]:
+def get_pixel_at_coordinate(gdal_file: osgeo.gdal.Dataset, xy: Coordinate) -> Point:
     """
     :param gdal_file: gdal dataset
     :param xy: coordinate of the pixel (x, y) in the coordinate system
@@ -160,7 +168,7 @@ def get_pixel_at_coordinate(gdal_file: osgeo.gdal.Dataset, xy: tuple[float]) -> 
     return int((xy[1] - origin[1]) / pixel_size[1]), int((xy[0] - origin[0]) / pixel_size[0])
 
 
-def get_pixels_at_coordinates(gdal_file: osgeo.gdal.Dataset, coords: np.ndarray | list) -> np.ndarray:
+def get_pixels_at_coordinates(gdal_file: osgeo.gdal.Dataset, coords: Coordinates) -> Points:
     """
     :param gdal_file: gdal dataset
     :param coords: array of the coordinates in the coordinate system (x, y) or (lon, lat)
@@ -292,7 +300,7 @@ def to_ndsm(dsm_gdal: osgeo.gdal.Dataset, dtm_gdal: osgeo.gdal.Dataset, capture_
     return ndsm
 
 
-def mask_from_coords(gdal_file: osgeo.gdal.Dataset, points: np.ndarray | list) -> np.ndarray:
+def mask_from_points(gdal_file: osgeo.gdal.Dataset, points: Points) -> np.ndarray:
     """
     :param gdal_file: gdal dataset
     :param points: array of the positions of the pixels (y, x) or (i, j)
@@ -315,21 +323,23 @@ def mask_from_shapefile(gdal_file: osgeo.gdal.Dataset, shapefile_path: str) -> n
     """
     coords = np.array(shp_read_coords(shapefile_path))
     points = get_pixels_at_coordinates(gdal_file, coords)
-    return mask_from_coords(gdal_file, points)
+    return mask_from_points(gdal_file, points)
 
 
-def crop_from_shapefile(gdal_file: osgeo.gdal.Dataset, shapefile_path: str, mask_value=0.0) -> osgeo.gdal.Dataset:
+def crop_from_shapefile(gdal_file: osgeo.gdal.Dataset, shapefile_path: str, mask_value=0.0, dilate_size=0.0) -> osgeo.gdal.Dataset:
     """
     :param gdal_file: gdal dataset
-    :param shapefile_path: path to the shapefile
+    :param shapefile_path: path to the shapefile (.shp)
     :param mask_value: value to fill the mask
     :return: cropped gdal dataset from the shapefile
     """
     gdal_epsg = get_epsg(gdal_file)
     coords = np.array(shp_read_coords(shapefile_path))
     coords = np.array(shp_reproject(coords, shp_get_epsg(shapefile_path), gdal_epsg))
+    if dilate_size > 0.0: coords = np.array(shp_dilate(coords, dilate_size))
     points = get_pixels_at_coordinates(gdal_file, coords)
-    mask = mask_from_coords(gdal_file, points)
+
+    mask = mask_from_points(gdal_file, points)
     array = to_ndarray(gdal_file)
     mask = mask if len(array.shape) == 2 else np.stack([mask for _ in range(array.shape[2])], axis=2)
     array = array * mask
@@ -360,7 +370,7 @@ def round_to_mm(gdal_file: osgeo.gdal.Dataset) -> osgeo.gdal.Dataset:
     return to_gdal_like(array, gdal_file)
 
 
-def to_wavefront(gdal_file: osgeo.gdal.Dataset, file_path) -> str:
+def to_wavefront(gdal_file: osgeo.gdal.Dataset, file_path: str):
     """
     #todo
     #works at small scale
@@ -369,5 +379,5 @@ def to_wavefront(gdal_file: osgeo.gdal.Dataset, file_path) -> str:
     pixel_size = get_scales(gdal_file)
     print(f'origin: {origin}')
     print(f'pixel_size: {pixel_size}')
-    return nda_to_wavefront(to_ndarray(gdal_file), file_path, origin, pixel_size)
+    nda_to_wavefront(to_ndarray(gdal_file), file_path, origin, pixel_size)
 
