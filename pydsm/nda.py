@@ -371,11 +371,11 @@ def save_to_wavefront(array: np.ndarray, file_path, origin=(0.0, 0.0), pixel_siz
     if pixel_size[1] < 0:
         array = np.flip(array, axis=0)
 
-    rows, cols = array.shape
+    h, w = array.shape
     obj_lines = []
 
-    x = np.arange(cols) * abs(pixel_size[0]) + origin[0]
-    y = np.arange(rows) * abs(pixel_size[1]) + origin[1] # todo try without abs
+    x = np.arange(w) * abs(pixel_size[0]) + origin[0]
+    y = np.arange(h) * abs(pixel_size[1]) + origin[1] # todo try without abs
     xx, yy = np.meshgrid(x, y)
 
     zz = array.flatten()
@@ -383,12 +383,12 @@ def save_to_wavefront(array: np.ndarray, file_path, origin=(0.0, 0.0), pixel_siz
     obj_lines.extend(f"v {x:.3f} {y:.3f} {z:.3f}" for x, y, z in vertices)
 
     # Create faces using indices
-    for i in range(rows - 1):
-        for j in range(cols - 1):
+    for i in range(h - 1):
+        for j in range(w - 1):
             # Calculate the 1D indices of the vertices
-            v1 = i * cols + j + 1
+            v1 = i * w + j + 1
             v2 = v1 + 1
-            v3 = v1 + cols
+            v3 = v1 + w
             v4 = v3 + 1
             # Add two triangular faces for the quad
             obj_lines.append(f"f {v1} {v2} {v4}")
