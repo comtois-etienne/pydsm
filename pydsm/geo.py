@@ -124,7 +124,32 @@ def get_dtype(gdal_file: osgeo.gdal.Dataset):
     return gdal_file.GetRasterBand(1).DataType
 
 
+def get_bbox(gdal_file: osgeo.gdal.Dataset, format_coordinates='bbox') -> Coordinates:
+    """
+    :param gdal_file: gdal dataset
+    :param format: format of the bounding box ('bbox' or 'polygon')
+        - `bbox`: bounding box of the dataset ( (min_x, min_y), (max_x, max_y) )
+        - `polygon`: bounding box of the dataset as a polygon ( 4 coordinates )
+        - `ring`: bounding box of the dataset as a closed ring ( 5 coordinates )
+    :return: bounding box of the dataset ( (min_x, min_y), (max_x, max_y) )
+    """
+    origin = get_origin(gdal_file)
+    size = get_size(gdal_file)
+    bbox = [ origin, (origin[0] + size[0], origin[1] - size[1]) ]
+    polygon = [ bbox[0], (bbox[1][0], bbox[0][1]), bbox[1], (bbox[0][0], bbox[1][1])]
+    ring = polygon + [polygon[0]]
+
+    if format_coordinates == 'bbox':
+        return bbox
+    if format_coordinates == 'polygon':
+        return polygon
+    if format_coordinates == 'ring':
+        return ring
+    raise ValueError("format_coordinates must be 'bbox', 'polygon' or 'ring'")
+
+
 # COORDINATES
+
 
 def get_coordinate_at_pixel(gdal_file: osgeo.gdal.Dataset, point: Point, precision=3) -> Coordinate:
     """
