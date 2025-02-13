@@ -371,6 +371,7 @@ def crop_from_shapefile(gdal_file: osgeo.gdal.Dataset, shapefile_path: str, mask
     :param gdal_file: gdal dataset
     :param shapefile_path: path to the shapefile (.shp)
     :param mask_value: value to fill the mask
+    :param dilate_size: size of the dilation in meters
     :return: cropped gdal dataset from the shapefile
     """
     gdal_epsg = get_epsg(gdal_file)
@@ -398,13 +399,14 @@ def crop_from_shapefile(gdal_file: osgeo.gdal.Dataset, shapefile_path: str, mask
     return gdal_croped
 
 
-def extract_zones(geotif_path: str, save_directory: str = './', street_name_exclusions: list[str] = None, search_radius: int=500, sample_size: int=5) -> list[UUIDv4]:
+def extract_zones(geotif_path: str, save_directory: str = './', street_name_exclusions: list[str] = None, search_radius: int=500, sample_size: int=3, safe_zone: float=10) -> list[UUIDv4]:
     """
     :param path: path to the geotiff file
     :param save_directory: directory to save the shapefiles (default './')
     :param street_name_exclusions: list of words to exclude from the street names
     :param search_radius: radius around the point to search for streets (default 500 meters)
     :param sample_size: number of points on the longest side to use as seed for the path search
+    :param safe_zone: disntance around the extracted path that needs to be inside the bounding box of the geotiff
     :return: list of uuid strings of the saved shapefiles
     """
     gdal_file = open_geotiff(geotif_path)
@@ -414,8 +416,8 @@ def extract_zones(geotif_path: str, save_directory: str = './', street_name_excl
     origin = shp_reproject([origin], epsg, CRS_GPS)[0]
     G = shp_graph_from_coord(origin, search_radius)
 
-    bbox = get_bbox(gdal_file, format_coordinates='ring')
-    bbox = shp_reproject(bbox, epsg, CRS_GPS)
+    bbox_src = get_bbox(gdal_file, format_coordinates='ring')
+    bbox_dst = shp_reproject(bbox_src, epsg, CRS_GPS)
 
     points = shp_get_sample_points(get_shape(gdal_file), sample_size, True)
     coordinates = [get_coordinate_at_pixel(gdal_file, point) for point in points]
@@ -427,7 +429,10 @@ def extract_zones(geotif_path: str, save_directory: str = './', street_name_excl
         if res is None: continue
 
         uuid_str, path_coords, indexes = res
-        if shp_is_inside(bbox, path_coords):
+        path_coords_dst = shp_reproject(path_coords, CRS_GPS, epsg)
+        dilate_path = shp_dilate(path_coords_dst, safe_zone)
+
+        if shp_is_inside(bbox_src, dilate_path):
             zones[uuid_str] = (path_coords, indexes)
             # shp_plot_path(path_coords, coord)
 
