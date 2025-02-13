@@ -306,7 +306,7 @@ def graph_from_coord(coord: Coordinate, distance: int=500, network_type='drive')
     return ox.graph_from_point((coord[1], coord[0]), dist=distance, network_type=network_type)
 
 
-def get_surrounding_streets(G: nx.MultiDiGraph, coordinate: Coordinate, street_name_exclusions: list[str]) -> tuple[UUIDv4, Coordinates, list[int]]:
+def get_surrounding_streets(G: nx.MultiDiGraph, coordinate: Coordinate, street_name_exclusions: list[str]) -> tuple[UUIDv4, Coordinates, list[int]] | None:
     """
     Finds a closed path around a coordinate folowing the streets
     The path is the one with the shortest number of nodes (shortest path not garantied)
@@ -321,8 +321,10 @@ def get_surrounding_streets(G: nx.MultiDiGraph, coordinate: Coordinate, street_n
     street_name_exclusions.append("Ruelle")
 
     last_edge = __search_path_algorithm(G, coordinate, street_name_exclusions, verbose=0, max_depth=10)
+    if last_edge is None: return None
+
     path_edges = last_edge.get_path()
-    path_coords, indexes = _path_to_coords_from_unordered(path_edges, simplified=False)
+    path_coords, indexes = __path_to_coords_from_unordered(path_edges, simplified=False)
     uuid_str = __uuid(indexes)
 
     return uuid_str, path_coords, indexes
@@ -349,29 +351,16 @@ def save_surrounding_streets(uuid_str: UUIDv4, coords: Coordinates, indexes: Ind
     save_from_csv(f'{path}.csv', f'{path}.shp')
 
 
-def get_sample_points(shape: tuple[int], sample_max=5, remove_corners=True) -> Points:
+def get_sample_points(shape: tuple[int], sample_max=3, remove_half=True, force_add_center=True) -> Points:
     """
     Get a grid of sample points inside an array
 
     :param array: numpy array
     :param sample_max: number of points on the longest side
-    :param remove_corners: remove points at the corners if more than 2 points on the shortest side
-    :return: list of points
+    :param remove_half: remove every other point (even with 0 indexing)
+    :param force_add_center: add the center point if not already in the list
+    :return: list of points [(y, x), ...]
     """
-
-    def corner_exclusion(x, y, w, h, remove=True):
-        """
-        Check if a point should is on the corner
-
-        :param x: x coordinate
-        :param y: y coordinate
-        :param w: number of points on the x axis
-        :param h: number of points on the y axis
-        :param remove: always return False if False
-        """
-        if remove: return (x, y) in {(0, 0), (0, h - 1), (w - 1, 0), (w - 1, h - 1)}
-        return False
-
     sample_max = max(1, sample_max)
     height, width = shape[:2]
     long_side = max(height, width)
@@ -381,19 +370,23 @@ def get_sample_points(shape: tuple[int], sample_max=5, remove_corners=True) -> P
 
     h_sample = sample_max if height > width else sample_small
     w_sample = sample_max if width > height else sample_small
-    remove_corners = remove_corners and (h_sample > 2 and w_sample > 2)
+    remove_half = remove_half and (h_sample > 2 and w_sample > 2)
 
     h = height / (h_sample + 1)
     w = width / (w_sample + 1)
 
     points = []
-    for i in range(w_sample):
-        for j in range(h_sample):
-            if corner_exclusion(i, j, w_sample, h_sample, remove_corners):
-                continue
-            x = int(w * i + w)
-            y = int(h * j + h)
-            points.append((x, y))
+    for i, j in [(i, j) for i in range(h_sample) for j in range(w_sample)]:
+        points.append( (int(h * i + h), int(w * j + w)) )
+
+    if remove_half: 
+        points = [(0,0)] + points
+        points = points[::2][1:]
+
+    if force_add_center:
+        center = (int(height / 2), int(width / 2))
+        points.append(center) if center not in points else None
+
     return points
 
 
@@ -471,14 +464,15 @@ class Edge:
         x = self.edge_dict['geometry'].coords.xy[0].tolist()
         y = self.edge_dict['geometry'].coords.xy[1].tolist()
         return x, y
-    
-    def is_path_closed(self) -> bool:
-        """
-        :return: True if the path is closed (the first and last coordinates are the same)
-        """
-        path = self.get_path()
-        coords, _ = _path_to_coords_from_ordered(path)
-        return coords[0] == coords[-1]
+
+
+def __is_path_closed(edges: list[Edge]) -> bool:
+    """
+    :param edges: list of edges
+    :return: True if the path is closed (the first and last coordinates are the same)
+    """
+    path_coords, _ = __path_to_coords_from_ordered(edges)
+    return path_coords[0] == path_coords[-1]
 
 
 def __edge_factory(u: Index, v: Index, edge_dict: dict) -> Edge:
@@ -612,12 +606,12 @@ def __stop_condition(seed_edge: Edge, edge: Edge, origin: Coordinate) -> bool:
     u = edge.edge_dict['u']
     v = edge.edge_dict['v']
     if v == seed_u or u == seed_u:
-        path, _ = _path_to_coords_from_ordered(edge.get_path())
-        return is_inside(path, [origin])
+        path, _ = __path_to_coords_from_ordered(edge.get_path())
+        return __is_path_closed(edge.get_path()) and is_inside(path, [origin])
     return False
 
 
-def _path_to_coords_from_ordered(edges: list[Edge], simplified=False) -> tuple[Coordinates, Indexes]:
+def __path_to_coords_from_ordered(edges: list[Edge], simplified=False) -> tuple[Coordinates, Indexes]:
     """
     Converts a list of edges to an ordered list of coordinates
     Some edges may be in reverse direction because on one-way streets
@@ -680,7 +674,7 @@ def __pop_edge(edges: list[Edge], index_search) -> tuple[list[Edge], Edge]:
     return edges, None
 
 
-def _path_to_coords_from_unordered(edges: list[Edge], simplified=False) -> tuple[Coordinates, Indexes]:
+def __path_to_coords_from_unordered(edges: list[Edge], simplified=False) -> tuple[Coordinates, Indexes]:
     """
     Converts a list of edges to an ordered list of coordinates
     Some edges may be in reverse direction because on one-way streets
@@ -804,7 +798,7 @@ def __uuid(indexes: Indexes) -> UUIDv4:
     return str(generated_uuid)
 
 
-def __search_path_algorithm(G: nx.MultiDiGraph, seed_coord: Coordinate, name_exclusions: list[str] = None, max_depth: int=10, verbose: float=0) -> Edge:
+def __search_path_algorithm(G: nx.MultiDiGraph, seed_coord: Coordinate, name_exclusions: list[str] = None, max_depth: int=10, verbose: float=0) -> Edge | None:
     """
     Path finding algorithm to find the loop around a block using street edges
 
@@ -825,11 +819,10 @@ def __search_path_algorithm(G: nx.MultiDiGraph, seed_coord: Coordinate, name_exc
         if verbose: __plot_edge(pop_edge, seed_coord, plot_time=verbose)
         if __stop_condition(seed_edge, pop_edge, seed_coord):
             return pop_edge
-        if not pop_edge.is_path_closed():
+        if not __is_path_closed(pop_edge.get_path()):
             queue += __get_connected_edges(G, pop_edge, name_exclusions, mode='uv')
 
-    seed_edge.children = []
-    return seed_edge
+    return None
 
 
 def __plot_edge(edge: Edge, seed_coord: Coordinate, plot_time=0.5, simplified=False) -> None:
@@ -840,7 +833,7 @@ def __plot_edge(edge: Edge, seed_coord: Coordinate, plot_time=0.5, simplified=Fa
     :param color: edge color
     """
     from IPython.display import clear_output
-    path_to_coords = _path_to_coords_from_unordered
+    path_to_coords = __path_to_coords_from_unordered
 
     if plot_time > 0:
         time.sleep(plot_time)
