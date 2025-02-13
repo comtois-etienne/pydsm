@@ -2,6 +2,9 @@ from dataclasses import dataclass
 import hashlib
 import uuid
 import time
+import math
+
+from .crs import *
 
 from osgeo import gdal, ogr, osr
 from shapely.geometry import Point, Polygon
@@ -13,17 +16,9 @@ import osmnx as ox
 import networkx as nx
 
 
-Coordinate = tuple[float, float] | tuple[int, int] # (lon, lat) or (x, y)
-Coordinates = list[Coordinate] # list of coordinates [(lon, lat), ...]
-Index = int # node index (street intersection id)
-Indexes = list[Index] # list of node indexes
-UUIDv4 = str # unique identifier for a path (hash of the path)
+########## SHAPEFILE IO ##########
 
-CRS_GPS = 4326
-
-### SHAPEFILE FUNCTIONS
-
-def open_shapefile(path: str):
+def __open_shapefile(path: str):
     """
     Opens a Shapefile
 
@@ -73,7 +68,7 @@ def save_from_coords(coords: list, epsg: int, shapefile_path: str) -> None:
     :param shapefile_path: Path where the shapefile will be saved
     """
     coords = np.array(coords)[:,:2].tolist()
-    shapefile = open_shapefile(shapefile_path)
+    shapefile = __open_shapefile(shapefile_path)
 
     srs = osr.SpatialReference()
     srs.ImportFromEPSG(epsg)
@@ -152,7 +147,7 @@ def save_csv(csv_path: str, coordinates: Coordinates, epsg=CRS_GPS, metadata: di
         modified.write(data)
 
 
-def read_coords(shapefile_path: str) -> Coordinates:
+def open_shapefile(shapefile_path: str) -> Coordinates:
     """
     Converts a shapefile to a list of coordinates.
     
@@ -198,6 +193,8 @@ def read_coords(shapefile_path: str) -> Coordinates:
     return coords_list[0][0]
 
 
+########## SHAPEFILE FUNCTIONS ##########
+
 def get_epsg(shapefile_path: str) -> int:
     """
     Gets the EPSG code of a shapefile.
@@ -217,8 +214,7 @@ def get_epsg(shapefile_path: str) -> int:
     return int(epsg)
 
 
-### COORDINATE FUNCTIONS
-
+########## COORDINATE FUNCTIONS ##########
 
 def reproject(coordinates: Coordinates, src_epsg: int, dst_epsg: int, round_to_millimeters=True) -> Coordinates:
     """
@@ -267,17 +263,21 @@ def dilate(coordinates: Coordinates, distance: float=10.0) -> Coordinates:
     return list(buffer_polygon.exterior.coords)
 
 
-def is_inside(coordinates: pd.DataFrame | Coordinates, coordinate: Coordinate) -> bool:
+def is_inside(boundary: pd.DataFrame | Coordinates, coordinates: Coordinates) -> bool:
     """
     Returns True if the coordinate is inside the polygon made by the coordinates
 
-    :param coordinates: coordinates
-    :param coordinate: (x, y) or (lon, lat)
-    :return: True if the coordinate is inside the polygon created by the coordinates
+    :param boundary: coordinates of the closed polygon [(x_0, y_0), (x_1, y_1), ..., (x_n, y_n), (x_0, y_0)]
+    :param coordinates: list of coordinates (x, y) or (lon, lat) that need to be inside the polygon
+    :return: True if all the coordinates are inside the polygon boundary
     """
-    polygon = Polygon(coordinates)
-    coordinate = Point(coordinate)
-    return polygon.contains(coordinate)
+    if len(coordinates) == 0: return False
+
+    polygon = Polygon(boundary)
+    for coordinate in coordinates:
+        if not polygon.contains(Point(coordinate)):
+            return False
+    return True
 
 
 def plot_path(coordinates: Coordinates, seed_coord: Coordinate) -> None:
@@ -294,21 +294,32 @@ def plot_path(coordinates: Coordinates, seed_coord: Coordinate) -> None:
     fig.show()
 
 
-def get_surrounding_streets(coordinate: Coordinate, street_name_exclusions: list[str], search_distance=500) -> tuple[UUIDv4, Coordinates, list[int]]:
+def graph_from_coord(coord: Coordinate, distance: int=500, network_type='drive') -> nx.MultiDiGraph:
+    """
+    Create a graph from a coordinate
+
+    :param coord: coordinate (lon, lat)
+    :param distance: distance around the coordinate
+    :param network_type: network type
+    :return: graph, nodes, edges
+    """
+    return ox.graph_from_point((coord[1], coord[0]), dist=distance, network_type=network_type)
+
+
+def get_surrounding_streets(G: nx.MultiDiGraph, coordinate: Coordinate, street_name_exclusions: list[str]) -> tuple[UUIDv4, Coordinates, list[int]]:
     """
     Finds a closed path around a coordinate folowing the streets
     The path is the one with the shortest number of nodes (shortest path not garantied)
 
+    :param G: graph of the streets
     :param coordinate: initial coordinate (lon, lat) that is inside the block
     :param street_name_exclusions: list of words included in the street names to exclude from the path ("Ruelle" is excluded by default)
-    :param search_distance: distance around the coordinate to search for the streets
     :return: UUID string, list of coordinates, list of node indexes
         the UUID is based on the hash of the path and is unique for each path (no matter the start and end point)
     """
     street_name_exclusions = street_name_exclusions or []
     street_name_exclusions.append("Ruelle")
 
-    G = __graph_from_coord(coordinate, search_distance)
     last_edge = __search_path_algorithm(G, coordinate, street_name_exclusions, verbose=0, max_depth=10)
     path_edges = last_edge.get_path()
     path_coords, indexes = _path_to_coords_from_unordered(path_edges, simplified=False)
@@ -317,7 +328,7 @@ def get_surrounding_streets(coordinate: Coordinate, street_name_exclusions: list
     return uuid_str, path_coords, indexes
 
 
-def save_surrounding_streets(coordinate: Coordinate, folder: str = None, street_name_exclusions: list[str]=None, search_distance=500) -> UUIDv4:
+def save_surrounding_streets(uuid_str: UUIDv4, coords: Coordinates, indexes: Indexes, folder: str = None) -> None:
     """
     Saves to csv and shp the coordinates of the surrounding streets of a given coordinate. 
     Will create these files :
@@ -327,22 +338,66 @@ def save_surrounding_streets(coordinate: Coordinate, folder: str = None, street_
     - `folder/uuid.prj` : prj file of the streets (for the shapefile)
     - `folder/uuid.shx` : shx file of the streets (for the shapefile)
 
-    :param coordinate: the coordinate (lon, lat) epsg:4326
-    :param folder: the folder where to save the csv file (will be named automatically)
-    :param street_name_exclusions: list of words to exclude from the street names
-    :param search_distance: the distance in meters to search for streets around the coordinate
-    :return: the UUID of the path (file name)
+    :param uuid_str: UUID string
+    :param coords: list of coordinates [(lon, lat), ...]
+    :param indexes: list of node indexes in the path [u, v, w, ...]
+    :param folder: folder to save the files
     """
-    uuid_str, coords, indexes = get_surrounding_streets(coordinate, street_name_exclusions, search_distance)
     folder = folder[:-1] if folder[-1] == '/' else folder
     path = f'{folder}/{uuid_str}' if folder else f'{uuid_str}'
     save_csv(f'{path}.csv', coords, epsg=CRS_GPS, metadata={'uuid': uuid_str, 'indexes': str(indexes).replace(',', '')})
     save_from_csv(f'{path}.csv', f'{path}.shp')
-    return uuid_str
 
 
-# EDGE FUNCTIONS (PATH FINDING)
+def get_sample_points(shape: tuple[int], sample_max=5, remove_corners=True) -> Points:
+    """
+    Get a grid of sample points inside an array
 
+    :param array: numpy array
+    :param sample_max: number of points on the longest side
+    :param remove_corners: remove points at the corners if more than 2 points on the shortest side
+    :return: list of points
+    """
+
+    def corner_exclusion(x, y, w, h, remove=True):
+        """
+        Check if a point should is on the corner
+
+        :param x: x coordinate
+        :param y: y coordinate
+        :param w: number of points on the x axis
+        :param h: number of points on the y axis
+        :param remove: always return False if False
+        """
+        if remove: return (x, y) in {(0, 0), (0, h - 1), (w - 1, 0), (w - 1, h - 1)}
+        return False
+
+    sample_max = max(1, sample_max)
+    height, width = shape[:2]
+    long_side = max(height, width)
+    short_side = min(height, width)
+    ratio = long_side / short_side
+    sample_small = max(1, int(math.ceil(sample_max / ratio)))
+
+    h_sample = sample_max if height > width else sample_small
+    w_sample = sample_max if width > height else sample_small
+    remove_corners = remove_corners and (h_sample > 2 and w_sample > 2)
+
+    h = height / (h_sample + 1)
+    w = width / (w_sample + 1)
+
+    points = []
+    for i in range(w_sample):
+        for j in range(h_sample):
+            if corner_exclusion(i, j, w_sample, h_sample, remove_corners):
+                continue
+            x = int(w * i + w)
+            y = int(h * j + h)
+            points.append((x, y))
+    return points
+
+
+########## EDGE FUNCTIONS (PATH FINDING) ##########
 
 @dataclass
 class Edge:
@@ -558,7 +613,7 @@ def __stop_condition(seed_edge: Edge, edge: Edge, origin: Coordinate) -> bool:
     v = edge.edge_dict['v']
     if v == seed_u or u == seed_u:
         path, _ = _path_to_coords_from_ordered(edge.get_path())
-        return is_inside(path, origin)
+        return is_inside(path, [origin])
     return False
 
 
@@ -800,16 +855,4 @@ def __plot_edge(edge: Edge, seed_coord: Coordinate, plot_time=0.5, simplified=Fa
     print(__uuid(indexes))
 
     plot_path(path_coords, seed_coord)
-
-
-def __graph_from_coord(coord: Coordinate, distance: int=500, network_type='drive') -> nx.MultiDiGraph:
-    """
-    Create a graph from a coordinate
-
-    :param coord: coordinate (lon, lat)
-    :param distance: distance around the coordinate
-    :param network_type: network type
-    :return: graph, nodes, edges
-    """
-    return ox.graph_from_point((coord[1], coord[0]), dist=distance, network_type=network_type)
 
