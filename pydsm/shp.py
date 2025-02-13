@@ -44,7 +44,7 @@ def save_from_gdal(gdal_file: gdal.Dataset, shapefile_path: str) -> None:
     :param shapefile_path: Path to the output shapefile
     """
     band = gdal_file.GetRasterBand(1)
-    shapefile = open(shapefile_path)
+    shapefile = __open_shapefile(shapefile_path)
     
     srs = osr.SpatialReference()
     srs.ImportFromWkt(gdal_file.GetProjection())
