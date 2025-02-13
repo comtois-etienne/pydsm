@@ -12,18 +12,22 @@ from .nda import round_to_mm as nda_round_to_mm
 from .nda import save_to_wavefront as nda_to_wavefront
 from .nda import rescale as nda_rescale
 from .nda import dsm_extract_mask as nda_dsm_extract_mask
-from .shp import read_coords as shp_read_coords
+
+from .shp import open_shapefile as shp_read_coords
 from .shp import reproject as shp_reproject
 from .shp import get_epsg as shp_get_epsg
 from .shp import dilate as shp_dilate
+from .shp import graph_from_coord as shp_graph_from_coord
+from .shp import get_sample_points as shp_get_sample_points
+from .shp import get_surrounding_streets as shp_get_surrounding_streets
+from .shp import is_inside as shp_is_inside
+from .shp import save_surrounding_streets as shp_save_surrounding_streets
+from .shp import plot_path as shp_plot_path
 
-from .shp import Coordinate
-from .shp import Coordinates
+from .crs import *
 
 
-Point = tuple[int, int] # (i, j) or (y, x) cartesian coordinates of a pixel
-Points = list[Point] # list of POINT
-
+########## GEOTIF IO ##########
 
 def open_geotiff(path: str) -> osgeo.gdal.Dataset:
     """
@@ -47,7 +51,7 @@ def save_geotiff(gdal_file: osgeo.gdal.Dataset, path: str) -> None:
     driver.CreateCopy(path, gdal_file, options=options)
 
 
-# PROPRIETIES
+########## PROPRIETIES ##########
 
 def get_epsg(gdal_file: osgeo.gdal.Dataset) -> int:
     """
@@ -148,8 +152,7 @@ def get_bbox(gdal_file: osgeo.gdal.Dataset, format_coordinates='bbox') -> Coordi
     raise ValueError("format_coordinates must be 'bbox', 'polygon' or 'ring'")
 
 
-# COORDINATES
-
+########## COORDINATES ##########
 
 def get_coordinate_at_pixel(gdal_file: osgeo.gdal.Dataset, point: Point, precision=3) -> Coordinate:
     """
@@ -209,7 +212,7 @@ def get_pixels_at_coordinates(gdal_file: osgeo.gdal.Dataset, coords: Coordinates
     return pixels
 
 
-# CONVERSIONS
+########## CONVERSIONS ##########
 
 def reproject(gdal_file: osgeo.gdal.Dataset, epsg: int) -> osgeo.gdal.Dataset:
     """
@@ -259,6 +262,18 @@ def to_gdal_like(nda: np.ndarray, gdal_like: gdal.Dataset) -> gdal.Dataset:
     origin = get_origin(gdal_like)
     epsg = get_epsg(gdal_like)
     return nda_to_gdal(nda, epsg, origin, pixel_size)
+
+
+def round_to_mm(gdal_file: osgeo.gdal.Dataset) -> osgeo.gdal.Dataset:
+    """
+    Rounds the values of the dataset to the nearest millimeter
+    
+    :param gdal_file: gdal dataset (dsm or dtm)
+    :return: gdal dataset with rounded height values
+    """
+    array = to_ndarray(gdal_file)
+    array = nda_round_to_mm(array)
+    return to_gdal_like(array, gdal_file)
 
 
 def rescale(gdal_file: osgeo.gdal.Dataset, scale: float) -> osgeo.gdal.Dataset:
@@ -383,16 +398,43 @@ def crop_from_shapefile(gdal_file: osgeo.gdal.Dataset, shapefile_path: str, mask
     return gdal_croped
 
 
-def round_to_mm(gdal_file: osgeo.gdal.Dataset) -> osgeo.gdal.Dataset:
+def extract_zones(geotif_path: str, save_directory: str = './', street_name_exclusions: list[str] = None, search_radius: int=500, sample_size: int=5) -> list[UUIDv4]:
     """
-    Rounds the values of the dataset to the nearest millimeter
-    
-    :param gdal_file: gdal dataset (dsm or dtm)
-    :return: gdal dataset with rounded height values
+    :param path: path to the geotiff file
+    :param save_directory: directory to save the shapefiles (default './')
+    :param street_name_exclusions: list of words to exclude from the street names
+    :param search_radius: radius around the point to search for streets (default 500 meters)
+    :param sample_size: number of points on the longest side to use as seed for the path search
+    :return: list of uuid strings of the saved shapefiles
     """
-    array = to_ndarray(gdal_file)
-    array = nda_round_to_mm(array)
-    return to_gdal_like(array, gdal_file)
+    gdal_file = open_geotiff(geotif_path)
+
+    epsg = get_epsg(gdal_file)
+    origin = get_origin(gdal_file)
+    origin = shp_reproject([origin], epsg, CRS_GPS)[0]
+    G = shp_graph_from_coord(origin, search_radius)
+
+    bbox = get_bbox(gdal_file, format_coordinates='ring')
+    bbox = shp_reproject(bbox, epsg, CRS_GPS)
+
+    points = shp_get_sample_points(get_shape(gdal_file), sample_size, True)
+    coordinates = [get_coordinate_at_pixel(gdal_file, point) for point in points]
+    coordinates = shp_reproject(coordinates, epsg, CRS_GPS)
+
+    zones = {} # used to eliminate duplicates
+    for coord in coordinates:
+        res = shp_get_surrounding_streets(G, coord, street_name_exclusions)
+        if res is None: continue
+
+        uuid_str, path_coords, indexes = res
+        if shp_is_inside(bbox, path_coords):
+            zones[uuid_str] = (path_coords, indexes)
+            # shp_plot_path(path_coords, coord)
+
+    for uuid_str, (path_coords, indexes) in zones.items():
+        shp_save_surrounding_streets(uuid_str, path_coords, indexes, save_directory)
+
+    return list(zones.keys())
 
 
 def to_wavefront(gdal_file: osgeo.gdal.Dataset, file_path: str):
