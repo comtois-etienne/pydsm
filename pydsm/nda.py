@@ -111,7 +111,7 @@ def convert_2D_to_3D(array: np.array, rev=False) -> np.array:
 
 
 # todo: rename to nda_round
-def round(array: np.ndarray, decimals: int=2) -> np.ndarray:
+def nda_round(array: np.ndarray, decimals: int=2) -> np.ndarray:
     """
     Round the array to the specified number of decimals if the array is a float.
     Round to the lower integer if the array is an integer.
@@ -316,7 +316,7 @@ def overlay_values(array: np.ndarray, factor=64, font_size: float = 1.0, round_v
     font = ImageFont.truetype(font_path, size=font_size)
     draw = ImageDraw.Draw(pil_image)
 
-    array = round(array, round_value)
+    array = nda_round(array, round_value)
     for i in range(array.shape[0]):
         for j in range(array.shape[1]):
             background = upscaled[i * factor, j * factor]
