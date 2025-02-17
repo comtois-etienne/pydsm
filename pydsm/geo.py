@@ -24,7 +24,7 @@ from .shp import is_inside as shp_is_inside
 from .shp import save_surrounding_streets as shp_save_surrounding_streets
 from .shp import plot_path as shp_plot_path
 
-from .crs import *
+from .utils import *
 
 
 ########## GEOTIF IO ##########
