@@ -203,8 +203,6 @@ def zones(args):
     :param args.safe_zone: float, the zone is only kept if there is at lest X meters around (optional) (default: 10.0m)
     :param args.sample_size: int, sample size (number of seeds) to find the zones (optional) (default: 3 (3x3))
     """
-    print(args)
-
     save_folder = args.save_directory or utils.get_folder_path(args.geotiff_paths[0])
     sample_size = args.sample_size or 3
     safe_zone = args.safe_zone or 10.0
