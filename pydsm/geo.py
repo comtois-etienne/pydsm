@@ -401,6 +401,9 @@ def crop_from_shapefile(gdal_file: osgeo.gdal.Dataset, shapefile_path: str, mask
 
 def extract_zones(geotif_path: str, save_directory: str = './', street_name_exclusions: list[str] = None, search_radius: int=500, sample_size: int=3, safe_zone: float=10) -> list[UUIDv4]:
     """
+    Extracts the zones around the points of the geotiff file that are inside the bounding box of the geotiff
+    Saves the shapefiles of the extracted zones in the save_directory
+
     :param path: path to the geotiff file
     :param save_directory: directory to save the shapefiles (default './')
     :param street_name_exclusions: list of words to exclude from the street names
