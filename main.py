@@ -66,7 +66,7 @@ def reproject(args):
 
     gdal = geo.open_geotiff(args.path)
     source_epsg = geo.get_epsg(gdal)
-    print(f'* Reprojecting to EPSG {epsg} from EPSG {source_epsg}')
+    print(f'* Reprojecting from EPSG:{source_epsg} to EPSG:{epsg}')
     reprojected = geo.reproject(gdal, epsg)
     geo.save_geotiff(reprojected, save_path)
     print(f'* Saved to {save_path}')
