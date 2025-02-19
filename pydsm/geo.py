@@ -328,7 +328,7 @@ def translation(gdal_file: osgeo.gdal.Dataset, translate: Coordinate) -> osgeo.g
     2D translation of the dataset
 
     :param gdal_file: gdal dataset
-    :param translate: translation vector (y, x) from the origin (top-left corner)
+    :param translate: translation vector (x, y) from the origin (top-left corner)
     :return: gdal dataset translated
     """
     array = to_ndarray(gdal_file)
