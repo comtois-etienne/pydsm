@@ -45,9 +45,9 @@ A list of points (pixels) on a matrix [ (i, j), ... ] or [ (y, x), ... ]
 
 Coordinate = tuple[float, float] | tuple[int, int]
 """
-A coordinate on the Earth's surface or a Cartesian coordinate
-The first element of the tuple is the longitude (lon) or x-coordinate
-The second element of the tuple is the latitude (lat) or y-coordinate
+A coordinate on the Earth's surface or a Cartesian coordinate  
+The first element of the tuple is the longitude (lon) or x-coordinate in meters  
+The second element of the tuple is the latitude (lat) or y-coordinate in meters  
 """
 
 
