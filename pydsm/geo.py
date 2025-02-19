@@ -5,7 +5,8 @@ from skimage import draw
 
 from scipy.ndimage import median_filter
 from scipy.ndimage import distance_transform_edt
-from cv2 import resize, INTER_CUBIC
+from cv2 import resize as cv2_resize
+from cv2 import INTER_CUBIC
 
 from .nda import to_gdal as nda_to_gdal
 from .nda import round_to_mm as nda_round_to_mm
@@ -290,6 +291,53 @@ def rescale(gdal_file: osgeo.gdal.Dataset, scale: float) -> osgeo.gdal.Dataset:
     return nda_to_gdal(array, get_epsg(gdal_file), get_origin(gdal_file), abs(scale))
 
 
+def resize(gdal_file: osgeo.gdal.Dataset, shape: tuple[int], scale: float = None) -> osgeo.gdal.Dataset:
+    """
+    Resizes the dataset to the given shape  
+    `Warning`: the scale of the dataset is not preserved.  
+    This should be used for small changes in the shape.  
+
+    :param gdal_file: gdal dataset
+    :param shape: new shape (height, width) or (y, x)
+    :return: gdal dataset with the new shape
+    """
+    scale = scale or abs(get_scales(gdal_file)[0])
+    shape = (shape[1], shape[0])
+    array = to_ndarray(gdal_file)
+    array = cv2_resize(array, shape, interpolation=INTER_CUBIC)
+    return nda_to_gdal(array, get_epsg(gdal_file), get_origin(gdal_file), scale)
+
+
+def resize_like(gdal_file: osgeo.gdal.Dataset, gdal_like: osgeo.gdal.Dataset) -> osgeo.gdal.Dataset:
+    """
+    Resizes the dataset to the shape of the given dataset  
+    `Warning`: the scale and shape of the gdal_like dataset is used.  
+    This should be used for small changes in the shape or if you are certain that the scales are the same.  
+
+    :param gdal_file: gdal dataset
+    :param gdal_like: gdal dataset to copy the shape and scale from
+    :return: gdal dataset with the new shape
+    """
+    shape = get_shape(gdal_like)
+    scale = abs(get_scales(gdal_like)[0])
+    return resize(gdal_file, shape, scale)
+
+
+def translation(gdal_file: osgeo.gdal.Dataset, translate: Coordinate) -> osgeo.gdal.Dataset:
+    """
+    2D translation of the dataset
+
+    :param gdal_file: gdal dataset
+    :param translate: translation vector (y, x) from the origin (top-left corner)
+    :return: gdal dataset translated
+    """
+    array = to_ndarray(gdal_file)
+    origin = get_origin(gdal_file)
+    pixel_size = get_scales(gdal_file)
+    new_origin = (origin[0] + translate[0], origin[1] + translate[1])
+    return nda_to_gdal(array, get_epsg(gdal_file), new_origin, abs(pixel_size[0]))
+
+
 def correct_dtm(dtm_gdal: osgeo.gdal.Dataset, subsampling_size=500, median_kernel_size=5) -> osgeo.gdal.Dataset:
     """
     Corrects the DTM by filling the gaps and smoothing the surface
@@ -309,7 +357,7 @@ def correct_dtm(dtm_gdal: osgeo.gdal.Dataset, subsampling_size=500, median_kerne
     dtm_simple = filled_dtm[::subsampling_size, ::subsampling_size]
     dtm_smoothed = median_filter(dtm_simple, size=median_kernel_size)
 
-    dtm_upsampled = resize(dtm_smoothed, (shape[1], shape[0]), interpolation=INTER_CUBIC)
+    dtm_upsampled = cv2_resize(dtm_smoothed, (shape[1], shape[0]), interpolation=INTER_CUBIC)
     dtm_upsampled[~mask] = -9999.0
 
     dtm_corrected = to_gdal_like(dtm_upsampled, dtm_gdal)
