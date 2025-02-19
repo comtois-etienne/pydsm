@@ -28,9 +28,21 @@ def ndsm(args):
     """
     dsm = geo.open_geotiff(args.dsm_path)
     dtm = geo.open_geotiff(args.dtm_path)
-    dtm = geo.correct_dtm(dtm) if args.correct_dtm else dtm
+    dsm_shape = geo.get_shape(dsm)
+    dtm_shape = geo.get_shape(dtm)
+    if dsm_shape != dtm_shape:
+        print(f'* Error: DSM and DTM have different shapes')
+        print(f'  Consider resizing them to the orthophoto shape')
+        return
+
+    if args.correct_dtm:
+        print(f'* Correcting DTM values')
+        dtm = geo.correct_dtm(dtm)
+
+    print(f'* Generating nDSM from {args.dsm_path} and {args.dtm_path}')
     capture_height = args.capture_height or 60.0
     ndsm = geo.to_ndsm(dsm, dtm, capture_height=capture_height)
+
     geo.save_geotiff(ndsm, args.ndsm_path)
     print(f'* Saved to {args.ndsm_path}')
 
@@ -232,6 +244,27 @@ def zones(args):
             print(f'  Saved to {file_path}')
 
 
+def info(args):
+    """
+    Displays information about a geotiff file
+
+    :param args.path: str, path to the geotiff file (mandatory)
+    """
+    gdal = geo.open_geotiff(args.path)
+    print(f'* Information about {args.path}')
+
+    print(f'* Raster info:')
+    print(f'  Shape: {geo.get_shape(gdal)}')
+    print(f'  Dtype: {geo.get_dtype(gdal)}')
+
+    print(f'* Geo info:')
+    print(f'  EPSG:{geo.get_epsg(gdal)}')
+    print(f'  Origin: {geo.get_origin(gdal)}')
+    print(f'  Center: {geo.get_center(gdal)}')
+    print(f'  Size: {geo.get_size(gdal)} m')
+    print(f'  Scale: {geo.get_scales(gdal)[0]} m/px')
+
+
 # GENERAL COMMANDS
 
 def silent_mode(args):
@@ -258,6 +291,7 @@ COMMANDS = {
     'shapefile': shapefile,
     'crop': crop,
     'zones': zones,
+    'info': info,
 }
 
 
@@ -329,6 +363,10 @@ def parser_setup():
     zones_parser.add_argument("--dilate", type=float, help="Dilation factor around the zones (default: 5.0m)")
     zones_parser.add_argument("--safe-zone", type=float, help="The zone is only kept if there is at least X meters around it (default: 10.0m)")
     zones_parser.add_argument("--sample-size", type=int, help="Sample size (number of seeds) to find the zones (default: 3 (3x3))")
+
+    # file info command
+    file_info_parser = subparsers.add_parser("info", help="Display information about a geotiff")
+    file_info_parser.add_argument("path", type=str, help="Path to the geotiff")
 
     return parser
 
