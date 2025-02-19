@@ -21,16 +21,23 @@ def ndsm(args):
     Computes the nDSM from a DSM and DTM
     :param args.dsm_path: str, path to the DSM (mandatory)
     :param args.dtm_path: str, path to the DTM (mandatory)
-    :param args.ndsm_path: str, path to save the nDSM (mandatory)
-    :param args.correct_dtm: bool, correct extreme DTM values (optional)
+    :param args.ndsm_path: str, path to save the nDSM (optional)
+    :param args.correct_dtm: bool, removes extreme DTM values (optional)
     :param args.capture_height: float, height of the drone during the capture (optional) (default: 60.0)
+    :param args.resize: str, path to the orthophoto to resize the DSM and DTM (optional)
     :return: None (saves the nDSM to disk)
     """
     dsm = geo.open_geotiff(args.dsm_path)
     dtm = geo.open_geotiff(args.dtm_path)
-    dsm_shape = geo.get_shape(dsm)
-    dtm_shape = geo.get_shape(dtm)
-    if dsm_shape != dtm_shape:
+
+    if args.resize:
+        print(f'* Resizing DSM and DTM to the orthophoto shape')
+        orthophoto = geo.open_geotiff(args.resize)
+        shape_ortho = geo.get_shape(orthophoto)
+        dsm = geo.resize_like(dsm, orthophoto) if geo.get_shape(dsm) != shape_ortho else dsm
+        dtm = geo.resize_like(dtm, orthophoto) if geo.get_shape(dtm) != shape_ortho else dtm
+
+    if geo.get_shape(dsm) != geo.get_shape(dtm):
         print(f'* Error: DSM and DTM have different shapes')
         print(f'  Consider resizing them to the orthophoto shape')
         return
@@ -43,8 +50,9 @@ def ndsm(args):
     capture_height = args.capture_height or 60.0
     ndsm = geo.to_ndsm(dsm, dtm, capture_height=capture_height)
 
-    geo.save_geotiff(ndsm, args.ndsm_path)
-    print(f'* Saved to {args.ndsm_path}')
+    ndsm_path = args.ndsm_path or utils.append_file_to_path(utils.get_folder_path(args.dsm_path), 'ndsm.tif')
+    geo.save_geotiff(ndsm, ndsm_path)
+    print(f'* Saved to {ndsm_path}')
 
 
 def epsg(args):
@@ -73,13 +81,12 @@ def reproject(args):
     :param args.epsg: int, new EPSG code (optional) (default: 4326)
     :return: None (saves the reprojected file to disk)
     """
-    epsg = args.epsg or 4326
-    save_path = args.save_path or f'{utils.remove_extension(args.path)}_{epsg}.tif'
-
     gdal = geo.open_geotiff(args.path)
     source_epsg = geo.get_epsg(gdal)
-    print(f'* Reprojecting from EPSG:{source_epsg} to EPSG:{epsg}')
-    reprojected = geo.reproject(gdal, epsg)
+    print(f'* Reprojecting from EPSG:{source_epsg} to EPSG:{args.epsg}')
+    reprojected = geo.reproject(gdal, args.epsg)
+
+    save_path = args.save_path or f'{utils.remove_extension(args.path)}_{args.epsg}.tif'
     geo.save_geotiff(reprojected, save_path)
     print(f'* Saved to {save_path}')
 
@@ -214,11 +221,15 @@ def zones(args):
     :param args.dilate: float, dilation factor around the zones (optional) (default: 5.0m)
     :param args.safe_zone: float, the zone is only kept if there is at lest X meters around (optional) (default: 10.0m)
     :param args.sample_size: int, sample size (number of seeds) to find the zones (optional) (default: 3 (3x3))
+    :param args.translate_x: float, X translation (East to West) (optional)
+    :param args.translate_y: float, Y translation (South to North) (optional)
     """
     save_folder = args.save_directory or utils.get_folder_path(args.geotiff_paths[0])
     sample_size = args.sample_size or 3
     safe_zone = args.safe_zone or 10.0
     dilate = args.dilate or 5.0
+    x = args.translate_x or 0.0
+    y = args.translate_y or 0.0
 
     print(f'* Extracting zones from {args.geotiff_paths[0]}')
     uuids = geo.extract_zones(
@@ -233,6 +244,11 @@ def zones(args):
     for geotiff_path in geotiff_paths:
         print(f'* Cropping {geotiff_path}')
         geotiff_file = geo.open_geotiff(geotiff_path)
+
+        if x or y:
+            print(f'  Translating by {x}m X and {y}m Y')
+            geotiff_file = geo.translation(geotiff_file, (x, y))
+
         name = utils.get_filename(geotiff_path)
         name = utils.remove_extension(name)
 
@@ -255,7 +271,7 @@ def info(args):
 
     print(f'* Raster info:')
     print(f'  Shape: {geo.get_shape(gdal)}')
-    
+
     dtype = geo.get_dtype(gdal)
     if dtype in utils.DTYPE_TO_NP.keys():
         print(f'  Dtype unit: {utils.DTYPE_TO_NP[dtype].__name__}')
@@ -267,6 +283,47 @@ def info(args):
     print(f'  Center: {geo.get_center(gdal)}')
     print(f'  Size: {geo.get_size(gdal)} m')
     print(f'  Scale: {geo.get_scales(gdal)[0]} m/px')
+
+
+def resize(args):
+    """
+    Resize a geotiff file  
+    `Warning` the resized geotiff will break the georeferencing
+
+    :param args.geotiff_path: str, path to the geotiff file (mandatory)
+    :param args.geotiff_like_path: str, path to the geotiff file to get the shape from (mandatory)
+    :param args.save_path: str, path to save the resized (optional)
+    """
+    save_path = args.save_path or f'{utils.remove_extension(args.geotiff_path)}_resize.tif' 
+    gdal = geo.open_geotiff(args.geotiff_path)
+    gdal_like = geo.open_geotiff(args.geotiff_like_path)
+    print(f'* Resizing from {geo.get_shape(gdal)} to {geo.get_shape(gdal_like)}')
+    resized = geo.resize_like(gdal, gdal_like)
+    geo.save_geotiff(resized, save_path)
+    print(f'* Saved to {save_path}')
+
+
+def translation(args):
+    """
+    2D translation of a geotiff file
+
+    :param args.geotiff_path: str, path to the geotiff file (mandatory)
+    :param args.x: float, X translation (mandatory)
+    :param args.y: float, Y translation (mandatory)
+    :param args.save_path: str, path to save the translated geotiff (optional)
+    """
+    save_path = args.save_path or f'{utils.remove_extension(args.geotiff_path)}_translate.tif'
+    gdal = geo.open_geotiff(args.geotiff_path)
+
+    if geo.get_epsg(gdal) == utils.CRS_GPS:
+        print(f'* Warning: The translation in meters does not work with GPS coordinates')
+        print(f'  Consider reprojecting the geotiff to a Cartesian coordinate system')
+        return
+
+    print(f'* Translating {args.geotiff_path} by {args.x}m X and {args.y}m Y')
+    translated = geo.translation(gdal, (args.x, args.y))
+    geo.save_geotiff(translated, save_path)
+    print(f'* Saved to {save_path}')
 
 
 # GENERAL COMMANDS
@@ -296,6 +353,8 @@ COMMANDS = {
     'crop': crop,
     'zones': zones,
     'info': info,
+    'resize': resize,
+    'translation': translation,
 }
 
 
@@ -307,11 +366,12 @@ def parser_setup():
 
     # ndsm command
     parser_ndsm = subparsers.add_parser("ndsm", help="Generate a nDSM from a DSM and DTM")
-    parser_ndsm.add_argument("dsm_path", type=str, help="Path to the DSM")
-    parser_ndsm.add_argument("dtm_path", type=str, help="Path to the DTM")
-    parser_ndsm.add_argument("ndsm_path", type=str, help="Path to the output nDSM")
+    parser_ndsm.add_argument("dsm_path", type=str, help="Path to the DSM (mandatory)")
+    parser_ndsm.add_argument("dtm_path", type=str, help="Path to the DTM (mandatory)")
+    parser_ndsm.add_argument("--ndsm_path", type=str, help="Path to the output nDSM")
     parser_ndsm.add_argument("--correct-dtm", action="store_true", help="Correct extreme DTM values")
-    parser_ndsm.add_argument("--capture-height", type=float, help="Height of the drone during the capture")
+    parser_ndsm.add_argument("--capture-height", type=float, help="Height of the drone during the capture (default: 60.0)")
+    parser_ndsm.add_argument("--resize", type=str, help="Resize the DSM and DTM to the orthophoto shape")
 
     # epsg command
     parser_epsg = subparsers.add_parser("epsg", help="Get the EPSG code of a file (GeoTIFF or Shapefile)")
@@ -319,9 +379,9 @@ def parser_setup():
 
     # reproject command
     parser_reproject = subparsers.add_parser("reproject", help="Reproject a file to a new EPSG code")
+    parser_reproject.add_argument("epsg", type=int, help="New EPSG code")
     parser_reproject.add_argument("path", type=str, help="Path to the geotiff file")
     parser_reproject.add_argument("--save-path", type=str, help="Path to save the reprojected file")
-    parser_reproject.add_argument("--epsg", type=int, help="New EPSG code")
 
     # xyz command
     parser_xyz = subparsers.add_parser("xyz", help="Generate a XYZ file from a geotiff as a compressed numpy (.npz)")
@@ -367,10 +427,25 @@ def parser_setup():
     zones_parser.add_argument("--dilate", type=float, help="Dilation factor around the zones (default: 5.0m)")
     zones_parser.add_argument("--safe-zone", type=float, help="The zone is only kept if there is at least X meters around it (default: 10.0m)")
     zones_parser.add_argument("--sample-size", type=int, help="Sample size (number of seeds) to find the zones (default: 3 (3x3))")
+    zones_parser.add_argument("--translate-x", type=float, help="X translation (East to West)")
+    zones_parser.add_argument("--translate-y", type=float, help="Y translation (South to North)")
 
     # file info command
     file_info_parser = subparsers.add_parser("info", help="Display information about a geotiff")
     file_info_parser.add_argument("path", type=str, help="Path to the geotiff")
+
+    # resize command
+    resize_parser = subparsers.add_parser("resize", help="Resize a geotiff file")
+    resize_parser.add_argument("geotiff_path", type=str, help="Path to the geotiff file to resize")
+    resize_parser.add_argument("geotiff_like_path", type=str, help="Path to the geotiff file to get the shape from")
+    resize_parser.add_argument("--save-path", type=str, help="Path to save the resized geotiff")
+
+    # translation command
+    translation_parser = subparsers.add_parser("translation", help="Translate a geotiff file")
+    translation_parser.add_argument("geotiff_path", type=str, help="Path to the geotiff file to translate")
+    translation_parser.add_argument("x", type=float, help="X translation (East to West)")
+    translation_parser.add_argument("y", type=float, help="Y translation (South to North)")
+    translation_parser.add_argument("--save-path", type=str, help="Path to save the translated geotiff")
 
     return parser
 
