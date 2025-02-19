@@ -263,6 +263,18 @@ def dilate(coordinates: Coordinates, distance: float=10.0) -> Coordinates:
     return list(buffer_polygon.exterior.coords)
 
 
+# todo : test and remove too small areas
+def area(coordinates: Coordinates) -> float:
+    """
+    Calculates the area of a polygon formed by a list of coordinates
+
+    :param coordinates: List of coordinates forming a polygon (x, y)
+    :return: Area of the polygon in square meters
+    """
+    polygon = Polygon(coordinates)
+    return polygon.area
+
+
 def is_inside(boundary: pd.DataFrame | Coordinates, coordinates: Coordinates) -> bool:
     """
     Returns True if the coordinate is inside the polygon made by the coordinates
