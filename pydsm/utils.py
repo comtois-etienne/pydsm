@@ -1,6 +1,32 @@
+import numpy as np
+from osgeo import gdal
 
 
 ########## TYPES ##########
+
+DTYPE_TO_GDAL = {
+    int: gdal.GDT_Byte, # 1
+    float: gdal.GDT_Float64, # 7
+    np.int64: gdal.GDT_Int64, # 13
+    np.uint8: gdal.GDT_Byte, # 1
+    np.float32: gdal.GDT_Float32, # 6
+    np.float64: gdal.GDT_Float64, # 7
+}
+"""
+Mapping of Python data types to GDAL data types
+"""
+
+
+DTYPE_TO_NP = {
+    gdal.GDT_Byte: np.uint8,
+    gdal.GDT_Float32: np.float32,
+    gdal.GDT_Float64: np.float64,
+    gdal.GDT_Int64: np.int64,
+}
+"""
+Mapping of GDAL data types to NumPy data types
+"""
+
 
 Point = tuple[int, int]
 """

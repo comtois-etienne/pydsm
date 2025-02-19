@@ -9,15 +9,7 @@ from typing import Any, Optional, Tuple
 import skimage
 import os
 
-
-DTYPE_TO_GDAL = {
-    int: gdal.GDT_Byte, # 1
-    float: gdal.GDT_Float64, # 7
-    np.int64: gdal.GDT_Int64, # 13
-    np.uint8: gdal.GDT_Byte, # 1
-    np.float32: gdal.GDT_Float32, # 6
-    np.float64: gdal.GDT_Float64, # 7
-}
+from .utils import *
 
 
 # IO

@@ -255,7 +255,11 @@ def info(args):
 
     print(f'* Raster info:')
     print(f'  Shape: {geo.get_shape(gdal)}')
-    print(f'  Dtype: {geo.get_dtype(gdal)}')
+    
+    dtype = geo.get_dtype(gdal)
+    if dtype in utils.DTYPE_TO_NP.keys():
+        print(f'  Dtype unit: {utils.DTYPE_TO_NP[dtype].__name__}')
+    print(f'  Dtype number: {dtype}')
 
     print(f'* Geo info:')
     print(f'  EPSG:{geo.get_epsg(gdal)}')
