@@ -76,6 +76,12 @@ UUIDv4 string - a unique identifier for a path (hash of the path)
 """
 
 
+EPSG = int
+"""
+EPSG code of a coordinate system
+"""
+
+
 ########## CONSTANTS ##########
 
 CRS_GPS = 4326
@@ -151,4 +157,35 @@ def remove_extension(filepath: str) -> str:
     if ext == '':
         return filepath
     return filepath[:-len(ext)-1]
+
+
+########## EPSG FUNCTIONS ##########
+
+def epsgio_link_from_coord(coord: Coordinate, epsg: EPSG, zoom: int = 18, layer="osm") -> str:
+    """
+    Generate a link to epsg.io map with the given coordinate  
+
+    :param coord: tuple of (x, y) coordinate
+    :param epsg: int, EPSG code of the coordinate system
+    :param zoom: int, zoom level of the map
+    :param layer: str, layer of the map (osm, streets, satellite)
+    :return: str, link to the map
+    """
+    # format the coordinate to have 6 decimal places with trailing zeros
+    x = "{:.6f}".format(coord[0])
+    y = "{:.6f}".format(coord[1])
+    return f"https://epsg.io/map#srs={epsg}&x={x}&y={y}&z={zoom}&layer={layer}"
+
+
+def epsgio_link_to_coord(url: str) -> Coordinate:
+    """
+    Extract the coordinate from the epsg.io link
+
+    :param link: str, link to the map
+    :return: tuple of (x, y) coordinate
+    """
+    url = url.split("#")[1]
+    url = url.split("&")
+    coord = [float(url[1].split("=")[1]), float(url[2].split("=")[1])]
+    return tuple(coord)
 
