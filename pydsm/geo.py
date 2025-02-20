@@ -7,12 +7,14 @@ from scipy.ndimage import median_filter
 from scipy.ndimage import distance_transform_edt
 from cv2 import resize as cv2_resize
 from cv2 import INTER_CUBIC
+import cv2
 
 from .nda import to_gdal as nda_to_gdal
 from .nda import round_to_mm as nda_round_to_mm
 from .nda import save_to_wavefront as nda_to_wavefront
 from .nda import rescale as nda_rescale
 from .nda import dsm_extract_mask as nda_dsm_extract_mask
+from .nda import downsample as nda_downsample
 
 from .shp import open_shapefile as shp_read_coords
 from .shp import reproject as shp_reproject
@@ -491,6 +493,44 @@ def extract_zones(geotif_path: str, save_directory: str = './', street_name_excl
         shp_save_surrounding_streets(uuid_str, path_coords, indexes, save_directory)
 
     return list(zones.keys())
+
+
+def get_coordinate_on_click(gdal_file: osgeo.gdal.Dataset, downsample: int = 20) -> Coordinate:
+    """
+    Selects a point on the geotiff by clicking on it to get its coordinate
+    `Warning`: use exit() to prevent cv2 to continue running on macos
+
+    :param gdal_file: gdal dataset
+    :param downsample: downsample factor for the display (default 20)
+    :return: coordinate at the selected point
+    """
+    title = 'geotiff (close window when point is selected)'
+    array = to_ndarray(gdal_file)
+    array = nda_downsample(array, downsample)
+    array = cv2.cvtColor(array, cv2.COLOR_RGB2BGR)    
+    canvas = array.copy()
+    point = None
+
+    def click_event(event, x, y, flags, param):
+        nonlocal point
+        if event == cv2.EVENT_LBUTTONDOWN:
+            point = (x, y)
+            canvas = array.copy()
+            cv2.circle(canvas, point, 5, (0, 0, 255), -1)
+            cv2.imshow(title, canvas)
+
+    cv2.imshow(title, canvas)
+    cv2.setMouseCallback(title, click_event)
+
+    while cv2.getWindowProperty(title, cv2.WND_PROP_VISIBLE) >= 1:
+        cv2.waitKey(1000)
+    cv2.destroyAllWindows()
+    cv2.waitKey(1)
+
+    point = (point[1] * downsample, point[0] * downsample)
+    coord = get_coordinate_at_pixel(gdal_file, point)
+
+    return coord
 
 
 def to_wavefront(gdal_file: osgeo.gdal.Dataset, file_path: str):
