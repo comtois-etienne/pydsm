@@ -1,4 +1,6 @@
 #!/opt/anaconda3/envs/geo/bin/python
+
+import webbrowser
 import argparse
 import time
 import os
@@ -7,6 +9,7 @@ import sys
 from skimage.draw import polygon
 import imageio.v3 as iio
 import numpy as np
+import pandas as pd
 
 import pydsm.geo as geo
 import pydsm.nda as nda
@@ -154,7 +157,7 @@ def values(args):
 
     if args.downscale:
         factor = args.downscale
-        array = array[::factor, ::factor]
+        array = nda.downsample(array, factor)
         x, y, x2, y2 = x // factor, y // factor, x2 // factor, y2 // factor
 
     if args.region:
@@ -218,18 +221,24 @@ def zones(args):
     :param args.geotiff_paths: str, path to the geotiff file (mandatory)
     :param args.save_directory: str, path to save the zones (shapefile, geotiff) (optional)
     :param args.no_crop: bool, do not crop the geotiff to the zones (optional)
-    :param args.dilate: float, dilation factor around the zones (optional) (default: 5.0m)
-    :param args.safe_zone: float, the zone is only kept if there is at lest X meters around (optional) (default: 10.0m)
+    :param args.dilate: float, dilation factor around the zones (optional) (default: 15.0m)
+    :param args.safe_zone: float, the zone is only kept if there is at lest X meters around (optional) (default: 20.0m)
     :param args.sample_size: int, sample size (number of seeds) to find the zones (optional) (default: 3 (3x3))
     :param args.translate_x: float, X translation (East to West) (optional)
     :param args.translate_y: float, Y translation (South to North) (optional)
+    :param args.translate_file: str, path that contains the translation values (optional)
     """
     save_folder = args.save_directory or utils.get_folder_path(args.geotiff_paths[0])
     sample_size = args.sample_size or 3
-    safe_zone = args.safe_zone or 10.0
-    dilate = args.dilate or 5.0
+    safe_zone = args.safe_zone or 20.0
+    dilate = args.dilate or 15.0
     x = args.translate_x or 0.0
     y = args.translate_y or 0.0
+
+    if args.translate_file:
+        df = pd.read_csv(args.translate_file)
+        x = df['x'][0]
+        y = df['y'][0]
 
     print(f'* Extracting zones from {args.geotiff_paths[0]}')
     uuids = geo.extract_zones(
@@ -326,15 +335,68 @@ def translation(args):
     print(f'* Saved to {save_path}')
 
 
+def registration(args):
+    """
+    Register a geotiff file onto the osm map using a translation  
+    The geotiff file is translated to the selected point on the map  
+
+    :param args.geotiff_path: str, path to the geotiff file (mandatory)
+    :param args.save_path: str, path to save the registered geotiff (optional)
+    :param args.translate: bool, translate the geotiff to the selected point (optional)
+    :param args.registration_path: str, path to save the translation values (optional)
+    :param args.layer: str, layer of the map (osm, streets, satellite) (optional) (default: osm)
+    """
+    _unsilence()
+    layer = args.layer or 'satellite'
+    csv_path = args.registration_path or utils.append_file_to_path(utils.get_folder_path(args.geotiff_path), 'translate.csv')
+    save_path = args.save_path or f'{utils.remove_extension(args.geotiff_path)}_register.tif'
+    geotiff = geo.open_geotiff(args.geotiff_path)
+    url = utils.epsgio_link_from_coord(geo.get_center(geotiff), geo.get_epsg(geotiff), layer=layer)
+
+    print(f'* Registering {args.geotiff_path} onto the OSM map')
+    print(f'  Please select a point on the map to register the geotiff')
+    print(f'  Opening {url}')
+    time.sleep(1)
+    webbrowser.open(url)
+
+    link = input('* Paste the link of the map here and press enter: ')
+    osm_coord = utils.epsgio_link_to_coord(link)
+    print(f'  The selected coordinate is {osm_coord}')
+
+    print(f'* Please select the same point on the geotiff')
+    geo_coord = geo.get_coordinate_on_click(geotiff)
+    x = round(osm_coord[0] - geo_coord[0], 1)
+    y = round(osm_coord[1] - geo_coord[1], 1)
+    print(f'* Translation values: {x} {y} (x, y)')
+
+    df = pd.DataFrame({'x': [x], 'y': [y]})
+    df.to_csv(csv_path, index=False)
+    print(f'* Saved to {csv_path}')
+
+    if args.translate:
+        print(f'* Translating {args.geotiff_path} by {x}m X and {y}m Y')
+        translated = geo.translation(geotiff, (x, y))
+        geo.save_geotiff(translated, save_path)
+        print(f'* Saved to {save_path}')
+
+
 # GENERAL COMMANDS
+
+def _silence():
+    sys.stdout = open(os.devnull, 'w')
+
+
+def _unsilence():
+    sys.stdout = sys.__stdout__
+
 
 def silent_mode(args):
     if args.silent:
-        sys.stdout = open(os.devnull, 'w')
+        _silence()
 
 
 def time_mode(args, t0):
-    sys.stdout = sys.__stdout__
+    _unsilence()
     t1 = time.time()
     if args.time:
         print(f'* Elapsed time: {t1 - t0:.2f} seconds')
@@ -355,6 +417,7 @@ COMMANDS = {
     'info': info,
     'resize': resize,
     'translation': translation,
+    'registration': registration
 }
 
 
@@ -424,11 +487,12 @@ def parser_setup():
     zones_parser.add_argument("geotiff_paths", nargs='+', help="Path to the geotiff files. The first one is used to find the zones.")
     zones_parser.add_argument("--save-directory", type=str, help="Path to save the zones (shapefile, geotiff)")
     zones_parser.add_argument("--no-crop", action="store_true", help="Do not crop the geotiff to the zones")
-    zones_parser.add_argument("--dilate", type=float, help="Dilation factor around the zones (default: 5.0m)")
-    zones_parser.add_argument("--safe-zone", type=float, help="The zone is only kept if there is at least X meters around it (default: 10.0m)")
+    zones_parser.add_argument("--dilate", type=float, help="Dilation factor around the zones (default: 15.0m)")
+    zones_parser.add_argument("--safe-zone", type=float, help="The zone is only kept if there is at least X meters around it (default: 20.0m)")
     zones_parser.add_argument("--sample-size", type=int, help="Sample size (number of seeds) to find the zones (default: 3 (3x3))")
     zones_parser.add_argument("--translate-x", type=float, help="X translation (East to West)")
     zones_parser.add_argument("--translate-y", type=float, help="Y translation (South to North)")
+    zones_parser.add_argument("--translate-file", type=str, help="Path that contains the translation values (Overrides translate-x and translate-y) (default: translate.csv in geotiff[0] dir)")
 
     # file info command
     file_info_parser = subparsers.add_parser("info", help="Display information about a geotiff")
@@ -446,6 +510,14 @@ def parser_setup():
     translation_parser.add_argument("x", type=float, help="X translation (East to West)")
     translation_parser.add_argument("y", type=float, help="Y translation (South to North)")
     translation_parser.add_argument("--save-path", type=str, help="Path to save the translated geotiff")
+
+    # registration command
+    registration_parser = subparsers.add_parser("registration", help="Register a geotiff file onto the osm map")
+    registration_parser.add_argument("geotiff_path", type=str, help="Path to the geotiff file to register")
+    registration_parser.add_argument("--save-path", type=str, help="Path to save the registered geotiff")
+    registration_parser.add_argument("--translate", action="store_true", help="Translate the geotiff to the selected point")
+    registration_parser.add_argument("--registration-path", type=str, help="Path to save the translation values")
+    registration_parser.add_argument("--layer", type=str, help="Layer of the map (osm, streets, satellite)")
 
     return parser
 
