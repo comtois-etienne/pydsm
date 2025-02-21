@@ -219,6 +219,7 @@ def zones(args):
     Crops the geotiff file to the zones if --no-crop is not set and --crop-geotiff is not set
 
     :param args.geotiff_paths: str, path to the geotiff file (mandatory)
+    :param args.geotiff_base_path: str, path to the folder that contains all the geotiff files (optional)
     :param args.save_directory: str, path to save the zones (shapefile, geotiff) (optional)
     :param args.no_crop: bool, do not crop the geotiff to the zones (optional)
     :param args.dilate: float, dilation factor around the zones (optional) (default: 15.0m)
@@ -228,7 +229,11 @@ def zones(args):
     :param args.translate_y: float, Y translation (South to North) (optional)
     :param args.translate_file: str, path that contains the translation values (optional)
     """
-    save_folder = args.save_directory or utils.get_folder_path(args.geotiff_paths[0])
+    geotiff_paths = args.geotiff_paths
+    if args.geotiff_base_path:
+        geotiff_paths = [utils.append_file_to_path(args.geotiff_base_path, geotiff_path) for geotiff_path in geotiff_paths]
+
+    save_folder = args.save_directory or utils.get_folder_path(geotiff_paths[0])
     sample_size = args.sample_size or 3
     safe_zone = args.safe_zone or 20.0
     dilate = args.dilate or 15.0
@@ -240,16 +245,16 @@ def zones(args):
         x = df['x'][0]
         y = df['y'][0]
 
-    print(f'* Extracting zones from {args.geotiff_paths[0]}')
+    print(f'* Extracting zones from {geotiff_paths[0]}')
     uuids = geo.extract_zones(
-        args.geotiff_paths[0], 
+        geotiff_paths[0], 
         save_folder, 
         sample_size=sample_size, 
         safe_zone=safe_zone
     )
     print(f'* Saved to {save_folder}')
 
-    geotiff_paths = [] if args.no_crop else args.geotiff_paths
+    geotiff_paths = [] if args.no_crop else geotiff_paths
     for geotiff_path in geotiff_paths:
         print(f'* Cropping {geotiff_path}')
         geotiff_file = geo.open_geotiff(geotiff_path)
@@ -485,6 +490,7 @@ def parser_setup():
     # zones command
     zones_parser = subparsers.add_parser("zones", help="Crops a geotiff into zones surrounded by streets")
     zones_parser.add_argument("geotiff_paths", nargs='+', help="Path to the geotiff files. The first one is used to find the zones.")
+    zones_parser.add_argument("--geotiff-base-path", type=str, help="Path to the folder that contains all the geotiff files")
     zones_parser.add_argument("--save-directory", type=str, help="Path to save the zones (shapefile, geotiff)")
     zones_parser.add_argument("--no-crop", action="store_true", help="Do not crop the geotiff to the zones")
     zones_parser.add_argument("--dilate", type=float, help="Dilation factor around the zones (default: 15.0m)")
