@@ -57,7 +57,7 @@ def save_geotiff(gdal_file: osgeo.gdal.Dataset, path: str) -> None:
 
 ########## PROPRIETIES ##########
 
-def get_epsg(gdal_file: osgeo.gdal.Dataset) -> int:
+def get_epsg(gdal_file: osgeo.gdal.Dataset) -> EPSG:
     """
     :param gdal_file: gdal dataset
     :return: EPSG code of the dataset
@@ -69,7 +69,7 @@ def get_epsg(gdal_file: osgeo.gdal.Dataset) -> int:
 
 def get_origin(gdal_file: osgeo.gdal.Dataset) -> Coordinate:
     """
-    Top left corner of the dataset in the coordinate system
+    Top left corner of the dataset in the coordinate system  
     see https://gdal.org/en/stable/tutorials/geotransforms_tut.html
 
     :param gdal_file: gdal dataset
@@ -89,12 +89,12 @@ def get_center(gdal_file: osgeo.gdal.Dataset) -> Coordinate:
     return get_coordinate_at_pixel(gdal_file, (shape[0] // 2, shape[1] // 2))
 
 
-def get_scales(gdal_file: osgeo.gdal.Dataset) -> tuple[float]:
+def get_scales(gdal_file: osgeo.gdal.Dataset) -> tuple[Scale, Scale]:
     """
-    Spacial resolution of the dataset in the coordinate system
-    West-East pixel resolution, North-South pixel resolution
-    North-South pixel resolution is negative
-    see https://gdal.org/en/stable/tutorials/geotransforms_tut.html
+    Spacial resolution of the dataset in the coordinate system  
+    West-East pixel resolution, North-South pixel resolution  
+    North-South pixel resolution is negative  
+    see https://gdal.org/en/stable/tutorials/geotransforms_tut.html  
 
     :param gdal_file: gdal dataset
     :return: dimension of the pixel in the coordinate system (m/px, -m/px)
@@ -102,7 +102,7 @@ def get_scales(gdal_file: osgeo.gdal.Dataset) -> tuple[float]:
     return gdal_file.GetGeoTransform()[1], gdal_file.GetGeoTransform()[5]
 
 
-def get_shape(gdal_file: osgeo.gdal.Dataset) -> tuple[int]:
+def get_shape(gdal_file: osgeo.gdal.Dataset) -> Shape:
     """
     Pixel sizes of the dataset
 
@@ -112,7 +112,7 @@ def get_shape(gdal_file: osgeo.gdal.Dataset) -> tuple[int]:
     return gdal_file.RasterYSize, gdal_file.RasterXSize
 
 
-def get_size(gdal_file: osgeo.gdal.Dataset) -> tuple[float]:
+def get_size(gdal_file: osgeo.gdal.Dataset) -> Size:
     """
     Spacial size of the dataset in meters
 
@@ -124,7 +124,7 @@ def get_size(gdal_file: osgeo.gdal.Dataset) -> tuple[float]:
     return abs(x * pixel_size[0]), abs(y * pixel_size[1])
 
 
-def get_dtype(gdal_file: osgeo.gdal.Dataset):
+def get_dtype(gdal_file: osgeo.gdal.Dataset) -> int:
     """
     :param gdal_file: gdal dataset
     :return: data type of the dataset
@@ -135,10 +135,10 @@ def get_dtype(gdal_file: osgeo.gdal.Dataset):
 def get_bbox(gdal_file: osgeo.gdal.Dataset, format_coordinates='bbox') -> Coordinates:
     """
     :param gdal_file: gdal dataset
-    :param format: format of the bounding box ('bbox' or 'polygon')
-        - `bbox`: bounding box of the dataset ( (min_x, min_y), (max_x, max_y) )
-        - `polygon`: bounding box of the dataset as a polygon ( 4 coordinates )
-        - `ring`: bounding box of the dataset as a closed ring ( 5 coordinates )
+    :param format_coordinates: format of the bounding box ('bbox' or 'polygon')  
+        - `bbox` bounding box of the dataset ( (min_x, min_y), (max_x, max_y) )  
+        - `polygon` bounding box of the dataset as a polygon ( 4 coordinates )  
+        - `ring` bounding box of the dataset as a closed ring ( 5 coordinates )  
     :return: bounding box of the dataset ( (min_x, min_y), (max_x, max_y) )
     """
     origin = get_origin(gdal_file)
@@ -218,7 +218,7 @@ def get_pixels_at_coordinates(gdal_file: osgeo.gdal.Dataset, coords: Coordinates
 
 ########## CONVERSIONS ##########
 
-def reproject(gdal_file: osgeo.gdal.Dataset, epsg: int) -> osgeo.gdal.Dataset:
+def reproject(gdal_file: osgeo.gdal.Dataset, epsg: EPSG) -> osgeo.gdal.Dataset:
     """
     Changes the coordinate system of the dataset to the given EPSG code
     
@@ -232,8 +232,11 @@ def reproject(gdal_file: osgeo.gdal.Dataset, epsg: int) -> osgeo.gdal.Dataset:
     return gdal.AutoCreateWarpedVRT(gdal_file, None, target.ExportToWkt(), gdal.GRA_NearestNeighbour)
 
 
-def to_ndarray(gdal_file: osgeo.gdal.Dataset, band_count=None) -> np.ndarray:
+def to_ndarray(gdal_file: osgeo.gdal.Dataset, band_count: int = None) -> np.ndarray:
     """
+    Extracts the array of the dataset  
+    Uses gdal_file.RasterCount to get the number of bands if band_count is not provided
+
     :param gdal_file: gdal dataset
     :param band_count: number of bands to read (1 for grayscale, 4 for RGB with alpha)
     :return: array of the dataset
@@ -246,7 +249,11 @@ def to_ndarray(gdal_file: osgeo.gdal.Dataset, band_count=None) -> np.ndarray:
 
 def to_xyz(gdal_file: osgeo.gdal.Dataset) -> np.ndarray:
     """
-    :param gdal_file: gdal dataset (dsm like)
+    Creates a matrix containing every coordinate and its altitude  
+    `Warning`: the resulting matrix is very large and should be used with caution  
+    Use get_coordinates_at_pixel for a more efficient way to get the coordinates
+
+    :param gdal_file: gdal dataset (dsm like - no orthophoto)
     :return: array of the coordinates of the pixels in the coordinate system (x, y, z)
     """
     coordinates = get_coordinates_at_pixels(gdal_file) # x, y
@@ -280,7 +287,7 @@ def round_to_mm(gdal_file: osgeo.gdal.Dataset) -> osgeo.gdal.Dataset:
     return to_gdal_like(array, gdal_file)
 
 
-def rescale(gdal_file: osgeo.gdal.Dataset, scale: float) -> osgeo.gdal.Dataset:
+def rescale(gdal_file: osgeo.gdal.Dataset, scale: Scale) -> osgeo.gdal.Dataset:
     """
     Rescales the dataset to the given scale in meters per pixel
 
@@ -294,7 +301,7 @@ def rescale(gdal_file: osgeo.gdal.Dataset, scale: float) -> osgeo.gdal.Dataset:
     return nda_to_gdal(array, get_epsg(gdal_file), get_origin(gdal_file), abs(scale))
 
 
-def resize(gdal_file: osgeo.gdal.Dataset, shape: tuple[int], scale: float = None) -> osgeo.gdal.Dataset:
+def resize(gdal_file: osgeo.gdal.Dataset, shape: Shape, scale: Scale = None) -> osgeo.gdal.Dataset:
     """
     Resizes the dataset to the given shape  
     `Warning`: the scale of the dataset is not preserved.  

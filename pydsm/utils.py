@@ -13,7 +13,7 @@ DTYPE_TO_GDAL = {
     np.float64: gdal.GDT_Float64, # 7
 }
 """
-Mapping of Python data types to GDAL data types
+Mapping of Python data types to GDAL data types  
 """
 
 
@@ -24,28 +24,31 @@ DTYPE_TO_NP = {
     gdal.GDT_Int64: np.int64,
 }
 """
-Mapping of GDAL data types to NumPy data types
+Mapping of GDAL data types to NumPy data types  
 """
 
 
 Point = tuple[int, int]
 """
-A point (pixel) on a matrix
-Origin is at the top-left corner of the matrix
-The first element of the tuple is the row index (y) or (i)
-The second element of the tuple is the column index (x) or (j)
+`(y, x)` or `(i, j)`  
+A point (pixel) on a matrix  
+Origin is at the top-left corner of the matrix  
+The first element of the tuple is the row index (y) or (i)  
+The second element of the tuple is the column index (x) or (j)  
 """
 
 
 Points = list[Point]
 """
-A list of points (pixels) on a matrix [ (i, j), ... ] or [ (y, x), ... ]
+`[ (y, x), ... ]`  or `[ (i, j), ... ]`
+A list of points (pixels) on a matrix 
 """
 
 
 Coordinate = tuple[float, float] | tuple[int, int]
 """
-A coordinate on the Earth's surface or a Cartesian coordinate  
+`(lon, lat)` or `(x, y)`  
+A coordinate on the Earth's surface or a Cartesian coordinate   
 The first element of the tuple is the longitude (lon) or x-coordinate in meters  
 The second element of the tuple is the latitude (lat) or y-coordinate in meters  
 """
@@ -53,17 +56,45 @@ The second element of the tuple is the latitude (lat) or y-coordinate in meters
 
 Coordinates = list[Coordinate]
 """
-A list of coordinates on the Earth's surface or Cartesian coordinates
-[ (lon, lat), ... ] or [ (x, y), ... ]
+`[ (lon, lat), ... ]` or `[ (x, y), ... ]`  
+A list of coordinates on the Earth's surface or Cartesian coordinates  
 """
 
 
+Meters = float
+"""
+Distance in meters
+"""
+
+
+Shape = tuple[int, int]
+"""
+`(height, width)` or `(y, x)`  
+Shape of a matrix (height x width) in pixels
+"""
+
+
+Size = tuple[Meters, Meters]
+"""
+`(width, height)` or `(x, y)`  
+Size of a matrix (width x height) in meters
+"""
+
+
+Scale = float
+"""
+`m / px`  
+Scale of a matrix (meters per pixel)
+"""
+
+
+#todo rename NoneIndex
 Index = int
 """
 Node index (street intersection id)
 """
 
-
+#todo rename NoneIndexes
 Indexes = list[Index]
 """
 A list of node indexes (street intersection ids) [index_0, ...]

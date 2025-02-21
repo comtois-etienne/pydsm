@@ -16,11 +16,10 @@ from .utils import *
 
 def write_numpy(npz_path: str, *, data: Optional[Any]=None, metadata: Optional[Any]=None) -> None:
     """
-    Writes data and metadata to a compressed numpy (.npz) file.
-    Data and metadata are wrapped in a numpy array before being written to the file.
-    Data and metadata are stored in the 'data' and 'metadata' keys of the .npz file.
+    Writes data and metadata to a compressed numpy (.npz) file.  
+    Data and metadata are wrapped in a numpy array before being written to the file.  
+    Data and metadata are stored in the 'data' and 'metadata' keys of the .npz file.  
 
-    Parameters:
     :param npz_path: the path to the .npz file to write to.
     :param data: the data to write to the file. Defaults to None.
     :param metadata: the metadata to write to the file. Defaults to None.
@@ -39,6 +38,7 @@ def write_numpy(npz_path: str, *, data: Optional[Any]=None, metadata: Optional[A
 def read_numpy(npz_path: str) -> Tuple[Any, Any]:
     """
     Reads data and metadata from a compressed numpy (.npz) file.
+
     :param npz_path: str, path to the .npz file to read from.
     :return: a tuple containing the data and metadata read from the file.
     """
@@ -49,6 +49,7 @@ def read_numpy(npz_path: str) -> Tuple[Any, Any]:
 def read_numpy_data(npz_path: str) -> Tuple[Any, type]:
     """
     Reads only the data from a compressed numpy (.npz) file.
+
     :param npz_path: str, path to the .npz file to read from.
     :return: a tuple containing the data and its type read from the file.
     """
@@ -59,6 +60,7 @@ def read_numpy_data(npz_path: str) -> Tuple[Any, type]:
 def read_numpy_metadata(npz_path: str) -> Tuple[Any, type]:
     """
     Reads only the metadata from a compressed numpy (.npz) file.
+
     :param npz_path: str, path to the .npz file to read from.
     :return: tuple of the metadata and its type read from the file.
     """
@@ -71,6 +73,7 @@ def read_numpy_metadata(npz_path: str) -> Tuple[Any, type]:
 def normalize(array: np.ndarray) -> np.ndarray:
     """
     Normalize the array to [0.0, 1.0]
+
     :param arr: np.ndarray of shape (n, m, k).
     """
     min_val = np.min(array)
@@ -84,6 +87,7 @@ def normalize(array: np.ndarray) -> np.ndarray:
 def to_uint8(array: np.ndarray) -> np.ndarray:
     """
     Convert the array to an 8bit integer array.
+
     :param arr: np.ndarray of shape (n, m, k).
     """
     norm = normalize(array)
@@ -93,6 +97,7 @@ def to_uint8(array: np.ndarray) -> np.ndarray:
 def convert_2D_to_3D(array: np.array, rev=False) -> np.array:
     """
     2D array to 3D array
+
     :param img: 2D image
     :param rev: reverse the image so the color is applied to the black pixels
     :return: 3D image
@@ -104,7 +109,7 @@ def convert_2D_to_3D(array: np.array, rev=False) -> np.array:
 
 def nda_round(array: np.ndarray, decimals: int=2) -> np.ndarray:
     """
-    Round the array to the specified number of decimals if the array is a float.
+    Round the array to the specified number of decimals if the array is a float.  
     Round to the lower integer if the array is an integer.
     
     :param arr: np.ndarray of shape (n, m, k).
@@ -124,9 +129,9 @@ def nda_round(array: np.ndarray, decimals: int=2) -> np.ndarray:
 
 def rescale(array: np.ndarray, current_spacial_resolution: float | tuple[float, float], new_spacial_resolution: float | tuple[float, float] = 0.02) -> np.ndarray:
     """
-    Sub-pixel rescaling of the array.
-    Google maps has a max pan-shapened resolution of ~15cm/px (0.15m/px)
-    Bigger value for spacial resolution means a smaller value for the new resolution.
+    Sub-pixel rescaling of the array.  
+    Google maps has a max pan-shapened resolution of ~15cm/px (0.15m/px)  
+    Bigger value for spacial resolution means a smaller value for the new resolution.  
     
     :param arr: np.ndarray of shape (n, m).
     :param current_spacial_resolution: float, resolution of the array. (width, height) in (m/px)
@@ -148,6 +153,7 @@ def rescale(array: np.ndarray, current_spacial_resolution: float | tuple[float, 
 def downsample(array: np.ndarray, factor: int) -> np.ndarray:
     """
     Downsample the array 1 pixel is kept every factor pixels.
+
     :param arr: np.ndarray of shape (n, m)
     :param factor: int, factor to downsample the array
     :return: np.ndarray of shape (n // factor, m // factor)
@@ -158,6 +164,7 @@ def downsample(array: np.ndarray, factor: int) -> np.ndarray:
 def upscale_nearest_neighbour(array: np.ndarray, factor: int) -> np.ndarray:
     """
     Upscale an array using nearest neighbour interpolation
+
     :param array: np.ndarray of shape (n, m).
     :param factor: int, factor to upscale the array.
     :return: np.ndarray of shape (n * factor, m * factor).
@@ -182,6 +189,7 @@ def to_cmap(array: np.ndarray, cmap: str='viridis', nrm=True) -> np.ndarray:
 def dsm_extract_mask(array: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """
     Extracts the mask from the DSM and replaces the mask values with the minimum value of the DSM.
+
     :param array: np.ndarray of shape (n, m).
     :return: tuple of the array and the mask : np.ndarray of shape (n, m).
     """
@@ -198,7 +206,7 @@ def dsm_extract_mask(array: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 def dsm_to_cmap(array: np.ndarray, cmap: str='viridis') -> np.ndarray:
     """
-    The 1 layer image is converted to a color image using a colormap.
+    The 1 layer image is converted to a color image using a colormap.  
     We assume linear values in float. The smallest value is used as a mask.
     
     :param dsm: np.ndarray of shape (n, m).
@@ -267,7 +275,7 @@ def get_mask(array: np.ndarray, min_mask_size = 0.02) -> np.ndarray:
 
 def remove_mask_values(array: np.ndarray, min_value_ratio=0.02) -> np.ndarray:
     """
-    Removes the lowest value of the array and replaces it with NaN
+    Removes the lowest value of the array and replaces it with NaN  
     Used to display a dsm
     
     :param nda: array of the dataset
@@ -281,9 +289,9 @@ def remove_mask_values(array: np.ndarray, min_value_ratio=0.02) -> np.ndarray:
 
 def round_to_mm(array: np.ndarray, dtype=np.float32) -> np.ndarray:
     """
-    Converts from meters to meters with a precision of millimeters.
-    ~ assuming the tallest building on earth is (830m) on top of mount everest (8848m)
-    ~ 9,679,000mm -> fits in 32 signed bits (to keep negative values)
+    Converts from meters to meters with a precision of millimeters.  
+    ~ assuming the tallest building on earth is (830m) on top of mount everest (8848m)  
+    ~ 9,679,000mm -> fits in 32 signed bits (to keep negative values)  
     
     :param nda: np.ndarray of shape (n, m).
     :param dtype: data type of the output array (default np.float32).
@@ -357,11 +365,12 @@ def random_dtm(size: int=512, skip=1) -> np.ndarray:
     return normalize(array)
 
 
-def save_to_wavefront(array: np.ndarray, file_path, origin=(0.0, 0.0), pixel_size=(1.0, 1.0)):
+def save_to_wavefront(array: np.ndarray, file_path: str, origin=(0.0, 0.0), pixel_size=(1.0, 1.0)):
     """
-    Warning : works at small scale, but not at large scale
-    Converts a 2D array containing height values to a Wavefront .obj file.
-    :param ndarray: 2D array of the dsm
+    `Warning` works at small scale, but not at large scale  
+    Converts a 2D array containing height values to a Wavefront .obj file.  
+
+    :param array: 2D array of the dsm
     :param file_path: path to save the obj file
     :param origin: origin of the coordinate system
     :param pixel_size: size of each pixel (distance between each pixel)
@@ -429,6 +438,7 @@ def __gaussian_blur_from_boxes(array: np.ndarray, boxes: pd.DataFrame, sigma: fl
 def anonymise_with_yolov8n(array: np.ndarray) -> np.ndarray:
     """
     Blur the bounding boxes humans in the image using a Gaussian filter.
+    
     :param ndarray: 3D array of the image
     :return: 3D array of the image with blurred bounding boxes
     """

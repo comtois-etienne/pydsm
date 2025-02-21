@@ -59,7 +59,7 @@ def save_from_gdal(gdal_file: gdal.Dataset, shapefile_path: str) -> None:
     shapefile = None  # close the shapefile
 
 
-def save_from_coords(coords: list, epsg: int, shapefile_path: str) -> None:
+def save_from_coords(coords: Coordinates, epsg: EPSG, shapefile_path: str) -> None:
     """
     Creates a shapefile from a list of coordinates.
     
@@ -103,8 +103,10 @@ def save_from_coords(coords: list, epsg: int, shapefile_path: str) -> None:
     shapefile = None
 
 
-def save_from_csv(csv_path: str, shapefile_path: str, epsg: int = None) -> None:
+def save_from_csv(csv_path: str, shapefile_path: str, epsg: EPSG = None) -> None:
     """
+    Creates a shapefile from a CSV file containing coordinates. (look for geo.save_csv)
+
     :param csv_path: Path to the CSV file containing coordinates (x, y)
     :param shapefile_path: Path to the output shapefile
     :param epsg: EPSG code for the coordinate system. 
@@ -124,7 +126,7 @@ def save_from_csv(csv_path: str, shapefile_path: str, epsg: int = None) -> None:
     save_from_coords(bounds.values.tolist(), epsg, shapefile_path)
 
 
-def save_csv(csv_path: str, coordinates: Coordinates, epsg=CRS_GPS, metadata: dict = None) -> None:
+def save_csv(csv_path: str, coordinates: Coordinates, epsg: EPSG = CRS_GPS, metadata: dict = None) -> None:
     """
     Saves a list of coordinates to a csv file
 
@@ -152,7 +154,9 @@ def open_shapefile(shapefile_path: str) -> Coordinates:
     Converts a shapefile to a list of coordinates.
     
     :param shapefile_path: Path to the shapefile
-    :return: List of coordinates for each feature. If the shapefile contains points, lines, or polygons, it will return a list of lists or tuples depending on geometry.
+    :return: List of coordinates for each feature.  
+        If the shapefile contains points, lines, or polygons;  
+        it will return a list of lists or tuples depending on geometry.
     """
     # Open the shapefile
     datasource = ogr.Open(shapefile_path)
@@ -195,7 +199,7 @@ def open_shapefile(shapefile_path: str) -> Coordinates:
 
 ########## SHAPEFILE FUNCTIONS ##########
 
-def get_epsg(shapefile_path: str) -> int:
+def get_epsg(shapefile_path: str) -> EPSG:
     """
     Gets the EPSG code of a shapefile.
     
@@ -216,7 +220,7 @@ def get_epsg(shapefile_path: str) -> int:
 
 ########## COORDINATE FUNCTIONS ##########
 
-def reproject(coordinates: Coordinates, src_epsg: int, dst_epsg: int, round_to_millimeters=True) -> Coordinates:
+def reproject(coordinates: Coordinates, src_epsg: EPSG, dst_epsg: EPSG, round_to_millimeters=True) -> Coordinates:
     """
     Converts a list of coordinates from one projection system to another
 
@@ -250,12 +254,12 @@ def reproject(coordinates: Coordinates, src_epsg: int, dst_epsg: int, round_to_m
 
 def dilate(coordinates: Coordinates, distance: float=10.0) -> Coordinates:
     """
-    Dillates a list of coordinates forming a polygon by a given distance
-    `warning` : EPSG:4326 is not supported for dilation. Please use a projected coordinate system.
+    Dillates a list of coordinates forming a polygon by a given distance  
+    `warning` EPSG:4326 is not supported for dilation. Please use a projected coordinate system.
 
     :param coordinates: List of coordinates to dilate (x, y) or (lon, lat)
     :param distance: Distance to dilate the coordinates in meters (default: 10.0m)
-    :param epsg: EPSG code of the coordinates
+    :return: List of dilated coordinates
     """
     coords = np.array(coordinates)
     polygon = Polygon(coords)
@@ -317,9 +321,9 @@ def graph_from_coord(coord: Coordinate, distance: int=500, network_type='drive')
     return ox.graph_from_point((coord[1], coord[0]), dist=distance, network_type=network_type)
 
 
-def get_surrounding_streets(G: nx.MultiDiGraph, coordinate: Coordinate, street_name_exclusions: list[str]) -> tuple[UUIDv4, Coordinates, list[int]] | None:
+def get_surrounding_streets(G: nx.MultiDiGraph, coordinate: Coordinate, street_name_exclusions: list[str]) -> tuple[UUIDv4, Coordinates, Indexes] | None:
     """
-    Finds a closed path around a coordinate folowing the streets
+    Finds a closed path around a coordinate folowing the streets (city block that contains the coordinate)  
     The path is the one with the shortest number of nodes (shortest path not garantied)
 
     :param G: graph of the streets
@@ -343,7 +347,7 @@ def get_surrounding_streets(G: nx.MultiDiGraph, coordinate: Coordinate, street_n
 
 def save_surrounding_streets(uuid_str: UUIDv4, coords: Coordinates, indexes: Indexes, folder: str = None) -> None:
     """
-    Saves to csv and shp the coordinates of the surrounding streets of a given coordinate. 
+    Saves to csv and shp the coordinates of the surrounding streets of a given coordinate.  
     Will create these files :
     - `folder/uuid.csv` : list of coordinates (lon, lat) of the streets with metadata (uuid, epsg, indexes)
     - `folder/uuid.shp` : shapefile of the streets
@@ -354,7 +358,7 @@ def save_surrounding_streets(uuid_str: UUIDv4, coords: Coordinates, indexes: Ind
     :param uuid_str: UUID string
     :param coords: list of coordinates [(lon, lat), ...]
     :param indexes: list of node indexes in the path [u, v, w, ...]
-    :param folder: folder to save the files
+    :param folder: folder to save the files in
     """
     folder = folder[:-1] if folder[-1] == '/' else folder
     path = f'{folder}/{uuid_str}' if folder else f'{uuid_str}'
@@ -464,7 +468,8 @@ class Edge:
 
     def get_indexes(self) -> list[tuple]:
         """
-        :return: list of node indexes pairs in the path [(u_0, v_0), (u_1, v_1), ...] such as the v_0 does not necessarily equal u_1
+        :return: list of node indexes pairs in the path [(u_0, v_0), (u_1, v_1), ...]  
+            such as the v_0 does not necessarily equal u_1
         """
         return [edge.index() for edge in self.get_path()]
     
@@ -504,7 +509,7 @@ def __edge_factory(u: Index, v: Index, edge_dict: dict) -> Edge:
 
 def __get_edges_at_coordinate(G: nx.MultiDiGraph, coord: Coordinate, tolerance = 0.0) -> gpd.GeoDataFrame:
     """
-    Get edges that start or end at a given coordinate
+    Get edges that start or end at a given coordinate  
     Bruteforce method to find the edges at a given coordinate
 
     :param G: graph
@@ -624,12 +629,12 @@ def __stop_condition(seed_edge: Edge, edge: Edge, origin: Coordinate) -> bool:
 
 def __path_to_coords_from_ordered(edges: list[Edge], simplified=False) -> tuple[Coordinates, Indexes]:
     """
-    Converts a list of edges to an ordered list of coordinates
-    Some edges may be in reverse direction because on one-way streets
-    Coordinates are ordered to create a continuous closed path
+    Converts a list of edges to an ordered list of coordinates  
+    Some edges may be in reverse direction because on one-way streets  
+    Coordinates are ordered to create a continuous closed path  
 
-    uses intersection indexes to determine the direction of the path
-    verifies if the edges contain a geometry
+    uses intersection indexes to determine the direction of the path  
+    verifies if the edges contain a geometry  
 
     :param edges: list of edges
     :param simplified: simplified path (only start and end coordinates of each edge)
@@ -687,14 +692,14 @@ def __pop_edge(edges: list[Edge], index_search) -> tuple[list[Edge], Edge]:
 
 def __path_to_coords_from_unordered(edges: list[Edge], simplified=False) -> tuple[Coordinates, Indexes]:
     """
-    Converts a list of edges to an ordered list of coordinates
-    Some edges may be in reverse direction because on one-way streets
-    Coordinates are ordered to create a continuous closed path
+    Converts a list of edges to an ordered list of coordinates  
+    Some edges may be in reverse direction because on one-way streets  
+    Coordinates are ordered to create a continuous closed path  
 
-    uses intersection indexes to determine the direction of the path
-    verifies if the edges contain a geometry
-    reorders the edges to close the path
-    `warning` : force closes the path if the path is not closed
+    uses intersection indexes to determine the direction of the path  
+    verifies if the edges contain a geometry  
+    reorders the edges to close the path  
+    `warning` force closes the path if the path is not closed  
 
     :param edges: list of edges
     :param simplified: simplified path (only start and end coordinates of each edge)
@@ -766,7 +771,7 @@ def __get_ordered_path_indexes(edges: list[Edge]) -> Indexes:
 
 def __get_ordered_path_indexes_from_unordered(edges: list[Edge]) -> Indexes:
     """
-    works if the edges are not ordered and if the path is closed
+    works if the edges are not ordered and if the path is closed  
     more robust than __get_ordered_path_indexes
 
     :param edges: list of edges
@@ -791,7 +796,7 @@ def __get_ordered_path_indexes_from_unordered(edges: list[Edge]) -> Indexes:
 
 def __uuid(indexes: Indexes) -> UUIDv4:
     """
-    Generate a UUID based on the hash of the path
+    Generate a UUID based on the hash of the path  
     Two paths with the same edges will always have the same UUID (no matter the start and end point)
 
     :param indexes: list of node indexes
