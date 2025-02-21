@@ -89,13 +89,13 @@ Scale of a matrix (meters per pixel)
 
 
 #todo rename NoneIndex
-Index = int
+NodeIndex = int
 """
 Node index (street intersection id)
 """
 
 #todo rename NoneIndexes
-Indexes = list[Index]
+NodeIndexes = list[NodeIndex]
 """
 A list of node indexes (street intersection ids) [index_0, ...]
 """

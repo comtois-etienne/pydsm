@@ -321,7 +321,7 @@ def graph_from_coord(coord: Coordinate, distance: int=500, network_type='drive')
     return ox.graph_from_point((coord[1], coord[0]), dist=distance, network_type=network_type)
 
 
-def get_surrounding_streets(G: nx.MultiDiGraph, coordinate: Coordinate, street_name_exclusions: list[str]) -> tuple[UUIDv4, Coordinates, Indexes] | None:
+def get_surrounding_streets(G: nx.MultiDiGraph, coordinate: Coordinate, street_name_exclusions: list[str]) -> tuple[UUIDv4, Coordinates, NodeIndexes] | None:
     """
     Finds a closed path around a coordinate folowing the streets (city block that contains the coordinate)  
     The path is the one with the shortest number of nodes (shortest path not garantied)
@@ -345,7 +345,7 @@ def get_surrounding_streets(G: nx.MultiDiGraph, coordinate: Coordinate, street_n
     return uuid_str, path_coords, indexes
 
 
-def save_surrounding_streets(uuid_str: UUIDv4, coords: Coordinates, indexes: Indexes, folder: str = None) -> None:
+def save_surrounding_streets(uuid_str: UUIDv4, coords: Coordinates, indexes: NodeIndexes, folder: str = None) -> None:
     """
     Saves to csv and shp the coordinates of the surrounding streets of a given coordinate.  
     Will create these files :
@@ -491,7 +491,7 @@ def __is_path_closed(edges: list[Edge]) -> bool:
     return path_coords[0] == path_coords[-1]
 
 
-def __edge_factory(u: Index, v: Index, edge_dict: dict) -> Edge:
+def __edge_factory(u: NodeIndex, v: NodeIndex, edge_dict: dict) -> Edge:
     """
     Convert edge dict to Edge object for the path finding algorithm
 
@@ -627,7 +627,7 @@ def __stop_condition(seed_edge: Edge, edge: Edge, origin: Coordinate) -> bool:
     return False
 
 
-def __path_to_coords_from_ordered(edges: list[Edge], simplified=False) -> tuple[Coordinates, Indexes]:
+def __path_to_coords_from_ordered(edges: list[Edge], simplified=False) -> tuple[Coordinates, NodeIndexes]:
     """
     Converts a list of edges to an ordered list of coordinates  
     Some edges may be in reverse direction because on one-way streets  
@@ -690,7 +690,7 @@ def __pop_edge(edges: list[Edge], index_search) -> tuple[list[Edge], Edge]:
     return edges, None
 
 
-def __path_to_coords_from_unordered(edges: list[Edge], simplified=False) -> tuple[Coordinates, Indexes]:
+def __path_to_coords_from_unordered(edges: list[Edge], simplified=False) -> tuple[Coordinates, NodeIndexes]:
     """
     Converts a list of edges to an ordered list of coordinates  
     Some edges may be in reverse direction because on one-way streets  
@@ -749,7 +749,7 @@ def __path_to_coords_from_unordered(edges: list[Edge], simplified=False) -> tupl
     return list(zip(lons, lats)), indexes
 
 
-def __get_ordered_path_indexes(edges: list[Edge]) -> Indexes:
+def __get_ordered_path_indexes(edges: list[Edge]) -> NodeIndexes:
     """
     works only if the edges are ordered and the path is closed
 
@@ -769,7 +769,7 @@ def __get_ordered_path_indexes(edges: list[Edge]) -> Indexes:
     return indexes
 
 
-def __get_ordered_path_indexes_from_unordered(edges: list[Edge]) -> Indexes:
+def __get_ordered_path_indexes_from_unordered(edges: list[Edge]) -> NodeIndexes:
     """
     works if the edges are not ordered and if the path is closed  
     more robust than __get_ordered_path_indexes
@@ -794,7 +794,7 @@ def __get_ordered_path_indexes_from_unordered(edges: list[Edge]) -> Indexes:
     return indexes
 
 
-def __uuid(indexes: Indexes) -> UUIDv4:
+def __uuid(indexes: NodeIndexes) -> UUIDv4:
     """
     Generate a UUID based on the hash of the path  
     Two paths with the same edges will always have the same UUID (no matter the start and end point)
