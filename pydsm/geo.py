@@ -26,6 +26,7 @@ from .shp import get_surrounding_streets as shp_get_surrounding_streets
 from .shp import is_inside as shp_is_inside
 from .shp import save_surrounding_streets as shp_save_surrounding_streets
 from .shp import plot_path as shp_plot_path
+from .shp import area as shp_area
 
 from .utils import *
 
@@ -449,7 +450,7 @@ def crop_from_shapefile(gdal_file: osgeo.gdal.Dataset, shapefile_path: str, mask
     return gdal_croped
 
 
-def extract_zones(geotif_path: str, save_directory: str = './', street_name_exclusions: list[str] = None, search_radius: int=500, sample_size: int=3, safe_zone: float=10) -> list[UUIDv4]:
+def extract_zones(geotif_path: str, save_directory: str = './', street_name_exclusions: list[str] = None, search_radius: int=500, sample_size: int=3, safe_zone: float=10, min_area=2500) -> list[UUIDv4]:
     """
     Extracts the zones around the points of the geotiff file that are inside the bounding box of the geotiff
     Saves the shapefiles of the extracted zones in the save_directory
@@ -460,6 +461,7 @@ def extract_zones(geotif_path: str, save_directory: str = './', street_name_excl
     :param search_radius: radius around the point to search for streets (default 500 meters)
     :param sample_size: number of points on the longest side to use as seed for the path search
     :param safe_zone: disntance around the extracted path that needs to be inside the bounding box of the geotiff
+    :param min_area: minimum area of the zone in square meters
     :return: list of uuid strings of the saved shapefiles
     """
     gdal_file = open_geotiff(geotif_path)
@@ -470,7 +472,6 @@ def extract_zones(geotif_path: str, save_directory: str = './', street_name_excl
     G = shp_graph_from_coord(origin, search_radius)
 
     bbox_src = get_bbox(gdal_file, format_coordinates='ring')
-    bbox_dst = shp_reproject(bbox_src, epsg, CRS_GPS)
 
     points = shp_get_sample_points(get_shape(gdal_file), sample_size, True)
     coordinates = [get_coordinate_at_pixel(gdal_file, point) for point in points]
@@ -485,7 +486,8 @@ def extract_zones(geotif_path: str, save_directory: str = './', street_name_excl
         path_coords_dst = shp_reproject(path_coords, CRS_GPS, epsg)
         dilate_path = shp_dilate(path_coords_dst, safe_zone)
 
-        if shp_is_inside(bbox_src, dilate_path):
+        area = shp_area(dilate_path)
+        if shp_is_inside(bbox_src, dilate_path) and area > min_area:
             zones[uuid_str] = (path_coords, indexes)
             # shp_plot_path(path_coords, coord)
 
