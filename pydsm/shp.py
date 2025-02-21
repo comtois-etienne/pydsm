@@ -263,7 +263,6 @@ def dilate(coordinates: Coordinates, distance: float=10.0) -> Coordinates:
     return list(buffer_polygon.exterior.coords)
 
 
-# todo : test and remove too small areas
 def area(coordinates: Coordinates) -> float:
     """
     Calculates the area of a polygon formed by a list of coordinates
