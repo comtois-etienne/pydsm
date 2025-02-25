@@ -205,10 +205,19 @@ def crop(args):
     :param args.shapefile_path: str, path to the shapefile (mandatory)
     :param args.save_path: str, path to save the cropped geotiff (optional)
     """
-    save_path = args.save_path or f'{utils.remove_extension(args.geotiff_path)}_crop.tif'
-    dilate = args.dilate or 5.0
+    path = utils.get_folder_path(args.geotiff_path)
+    uuid = utils.remove_extension(utils.get_filename(args.shapefile_path))
+    name = utils.remove_extension(utils.get_filename(args.geotiff_path))
+
+    if args.save_path:
+        if utils.get_extension(args.save_path) == '':
+            save_path = utils.append_file_to_path(args.save_path, f'{uuid}_{name}.tif')
+        else: save_path = args.save_path
+    else: save_path = utils.append_file_to_path(path, f'{uuid}_{name}.tif')
+
+    dilate = args.dilate or 15.0
     gdal = geo.open_geotiff(args.geotiff_path)
-    cropped = geo.crop_from_shapefile(gdal, args.shapefile_path, dilate_size=dilate)
+    cropped = geo.crop_from_shapefile(gdal, args.shapefile_path, dilate_size=dilate, mask_value=np.NaN)
     geo.save_geotiff(cropped, save_path)
     print(f'* Saved to {save_path}')
 
@@ -484,7 +493,7 @@ def parser_setup():
     crop_parser = subparsers.add_parser("crop", help="Crop a geotiff file with a shapefile")
     crop_parser.add_argument("geotiff_path", type=str, help="Path to the geotiff file")
     crop_parser.add_argument("shapefile_path", type=str, help="Path to the shapefile")
-    crop_parser.add_argument("--dilate", type=float, help="Dilation factor around the shapefile (default: 5.0m)")
+    crop_parser.add_argument("--dilate", type=float, help="Dilation factor around the shapefile (default: 15.0m)")
     crop_parser.add_argument("--save-path", type=str, help="Path to save the cropped geotiff")
 
     # zones command
