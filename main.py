@@ -217,7 +217,7 @@ def crop(args):
 
     dilate = args.dilate or 15.0
     gdal = geo.open_geotiff(args.geotiff_path)
-    cropped = geo.crop_from_shapefile(gdal, args.shapefile_path, dilate_size=dilate, mask_value=np.NaN)
+    cropped = geo.crop_from_shapefile(gdal, args.shapefile_path, dilate_size=dilate)
     geo.save_geotiff(cropped, save_path)
     print(f'* Saved to {save_path}')
 
