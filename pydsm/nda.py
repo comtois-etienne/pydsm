@@ -165,10 +165,11 @@ def rescale(array: np.ndarray, current_spacial_resolution: float | tuple[float, 
 
     w_ratio = abs(current_spacial_resolution[0] / new_spacial_resolution[0])
     h_ratio = abs(current_spacial_resolution[1] / new_spacial_resolution[1])
-    
-    print(f"Rescaling {array.shape} from {current_spacial_resolution} to {new_spacial_resolution} ({w_ratio}, {h_ratio})")
 
-    return zoom(array, zoom=(w_ratio, h_ratio), order=3)
+    # we need to keep the depth ratio (color layers) for the orthophoto
+    zoom_ratio = (w_ratio, h_ratio) if array.ndim == 2 else (w_ratio, h_ratio, 1)
+
+    return zoom(array, zoom=zoom_ratio)
 
 
 def downsample(array: np.ndarray, factor: int) -> np.ndarray:
