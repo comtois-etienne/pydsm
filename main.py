@@ -326,6 +326,22 @@ def resize(args):
     print(f'* Saved to {save_path}')
 
 
+def rescale(args):
+    """
+    Rescale a geotiff file from its original scale to a new scale
+
+    :param args.geotiff_path: str, path to the geotiff file (mandatory)
+    :param args.scale: float, scale factor in meters/px (mandatory)
+    :param args.save_path: str, path to save the rescaled (optional)
+    """
+    save_path = args.save_path or f'{utils.remove_extension(args.geotiff_path)}_rescale.tif'
+    gdal = geo.open_geotiff(args.geotiff_path)
+    print(f'* Rescaling from {geo.get_scales(gdal)[0]}m/px to {args.scale}m/px')
+    rescaled = geo.rescale(gdal, args.scale)
+    geo.save_geotiff(rescaled, save_path)
+    print(f'* Saved to {save_path}')
+
+
 def translation(args):
     """
     2D translation of a geotiff file
@@ -430,6 +446,7 @@ COMMANDS = {
     'zones': zones,
     'info': info,
     'resize': resize,
+    'rescale': rescale,
     'translation': translation,
     'registration': registration
 }
@@ -518,6 +535,12 @@ def parser_setup():
     resize_parser.add_argument("geotiff_path", type=str, help="Path to the geotiff file to resize")
     resize_parser.add_argument("geotiff_like_path", type=str, help="Path to the geotiff file to get the shape from")
     resize_parser.add_argument("--save-path", type=str, help="Path to save the resized geotiff")
+
+    # rescale command
+    rescale_parser = subparsers.add_parser("rescale", help="Rescale a geotiff file")
+    rescale_parser.add_argument("scale", type=float, help="Scale factor in meters/px")
+    rescale_parser.add_argument("geotiff_path", type=str, help="Path to the geotiff file to rescale")
+    rescale_parser.add_argument("--save-path", type=str, help="Path to save the rescaled geotiff")
 
     # translation command
     translation_parser = subparsers.add_parser("translation", help="Translate a geotiff file")
