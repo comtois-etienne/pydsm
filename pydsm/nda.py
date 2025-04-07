@@ -35,15 +35,34 @@ def write_numpy(npz_path: str, *, data: Optional[Any]=None, metadata: Optional[A
     )
 
 
-def read_numpy(npz_path: str) -> Tuple[Any, Any]:
+def write_numpy_napari(npz_path: str, array: np.ndarray) -> None:
+    """
+    Writes a numpy array to a compressed numpy (.npz) file.  
+    The array is stored in the 'arr_0' key of the .npz file.
+
+    :param npz_path: the path to the .npz file to write to.
+    :param array: the numpy array to write to the file.
+    """
+    np.savez_compressed(npz_path, arr_0=array)
+
+
+def read_numpy(npz_path: str, npz_format='pydsm') -> Tuple[Any, Any]:
     """
     Reads data and metadata from a compressed numpy (.npz) file.
 
     :param npz_path: str, path to the .npz file to read from.
+    :param npz_format: str, format of the data. Defaults to 'pydsm'.  
+        `pydsm` will return the data and metadata as they are stored in the file.  
+        `napari` will return the data at `arr_0`.  
+        `None` will return the data as is.  
     :return: a tuple containing the data and metadata read from the file.
     """
     npz = np.load(npz_path, allow_pickle=True)
-    return npz['data'][0], npz['metadata'][0]
+    if npz_format == 'pydsm': 
+        return npz['data'][0], npz['metadata'][0]
+    if npz_format == 'napari':
+        return npz['arr_0']
+    return npz
 
 
 def read_numpy_data(npz_path: str) -> Tuple[Any, type]:
@@ -146,6 +165,8 @@ def rescale(array: np.ndarray, current_spacial_resolution: float | tuple[float, 
 
     w_ratio = abs(current_spacial_resolution[0] / new_spacial_resolution[0])
     h_ratio = abs(current_spacial_resolution[1] / new_spacial_resolution[1])
+    
+    print(f"Rescaling {array.shape} from {current_spacial_resolution} to {new_spacial_resolution} ({w_ratio}, {h_ratio})")
 
     return zoom(array, zoom=(w_ratio, h_ratio), order=3)
 
