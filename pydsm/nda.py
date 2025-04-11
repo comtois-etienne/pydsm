@@ -7,8 +7,7 @@ from osgeo import gdal, ogr, osr
 import pandas as pd
 import cv2
 from typing import Any, Optional, Tuple
-import skimage
-import os
+
 
 from .utils import *
 
@@ -487,37 +486,61 @@ def anonymise_with_yolov8n(array: np.ndarray) -> np.ndarray:
     return __gaussian_blur_from_boxes(array, boxes)
 
 
-def save_subimages(array: np.ndarray, output_folder: str, size: int = 2800, min_overlap: float = 0.5) -> None:
+class SubimageGenerator:
     """
-    Cuts the array into overlapping subimages and saves them in the output folder.
-
-    :param ndarray: array to be cut into overlapping subimages
-    :param output_folder: folder to save the subimages
-    :param size: size of the subimages
-    :param min_overlap: minimum overlap between the subimages
-        overlap might be bigger to keep a costant spacing between the subimages until the last one
-    :return: None, saves the subimages in the output folder
+    Splits a numpy array into patches of a given size with a specified overlap.
+    The generator yields the coordinates of the top-left corner of each patch (y, x) in matricial coordinates
+    and the corresponding subimage.
+    The patches are generated in a row-major order, starting from the top-left corner of the array.
+    The generator stops when all patches have been yielded.
     """
-    def __get_img_count(length: int, size: int, min_overlap: float) -> int:
-        return 1 + math.ceil( (length - size) / (size - size * min_overlap) )
 
-    height, width = array.shape[:2]
-    count_width = __get_img_count(width, size, min_overlap)
-    count_height = __get_img_count(height, size, min_overlap)
-    offset_width = int((width - size) / (count_width - 1))
-    offset_height = int((height - size) / (count_height - 1))
+    def __init__(self, array: np.ndarray, size: int = 1024, min_overlap: float = 0.25):
+        """
+        :param array: The input numpy array to be split into patches.
+        :param size: The size of the patches to be generated.
+        :param min_overlap: The minimum overlap between adjacent patches, expressed as a percentage of the patch size.
+            the overlap is calculated as (size - size * min_overlap)
+            the actual overlap is greater or equal to this value to ensure that the patches fit within the array.
+        """
 
-    for i in range(count_height):
-        for j in range(count_width):
-            x = j * offset_width
-            y = i * offset_height
-            name = f'{y}_{x}.png'
-            subimage = array[y:y+size, x:x+size]
-            # will use the alpha layer if it exists
-            layer_subimage = subimage if len(subimage.shape) == 2 else subimage[:, :, -1]
-            layer_count = 1 if len(subimage.shape) == 2 else subimage.shape[2]
-            perc_not_zero = np.count_nonzero(layer_subimage) / (subimage.size // layer_count)
-            if perc_not_zero > min_overlap:
-                subimage = to_uint8(subimage)
-                skimage.io.imsave(os.path.join(output_folder, name), subimage)
+        self.array = array
+        self.size = size
+        self.min_overlap = min_overlap
+
+        self.height, self.width = array.shape[:2]
+        self.count_width = self._get_img_count(self.width)
+        self.count_height = self._get_img_count(self.height)
+        self.offset_width = int((self.width - size) / (self.count_width - 1))
+        self.offset_height = int((self.height - size) / (self.count_height - 1))
+
+        self.i = 0
+        self.j = 0
+
+    def _get_img_count(self, length: int) -> int:
+        return 1 + math.ceil((length - self.size) / (self.size - self.size * self.min_overlap))
+
+    def __iter__(self):
+        return self
+
+    def __next__(self) -> tuple[tuple[int, int], np.ndarray]:
+        """
+        Returns the coordinates of the top-left corner of the patch (y, x) in matricial coordinates
+        and the corresponding subimage.
+        :return: A tuple containing the coordinates (y, x) and the subimage.
+        :raises StopIteration: When all patches have been yielded.
+        """
+        while self.i < self.count_height:
+            while self.j < self.count_width:
+                y = self.i * self.offset_height
+                x = self.j * self.offset_width
+                self.j += 1
+
+                subimage = self.array[y:y+self.size, x:x+self.size]
+                return (y, x), subimage
+
+            self.j = 0
+            self.i += 1
+
+        raise StopIteration
 
