@@ -296,9 +296,11 @@ def rescale(gdal_file: osgeo.gdal.Dataset, scale: Scale) -> osgeo.gdal.Dataset:
     :return: gdal dataset with the new scale
     """
     current_scales = get_scales(gdal_file)
+    size = get_size(gdal_file)
     array = to_ndarray(gdal_file)
     array = nda_rescale(array, current_scales, scale)
-    return nda_to_gdal(array, get_epsg(gdal_file), get_origin(gdal_file), abs(scale))
+    new_scale = size[0] / array.shape[1]
+    return nda_to_gdal(array, get_epsg(gdal_file), get_origin(gdal_file), abs(new_scale))
 
 
 def resize(gdal_file: osgeo.gdal.Dataset, shape: Shape, scale: Scale = None) -> osgeo.gdal.Dataset:
