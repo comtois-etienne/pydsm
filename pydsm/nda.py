@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from scipy.ndimage import zoom
 from osgeo import gdal, ogr, osr
 import pandas as pd
+import cv2
 from typing import Any, Optional, Tuple
 import skimage
 import os
@@ -189,9 +190,20 @@ def upscale_nearest_neighbour(array: np.ndarray, factor: int) -> np.ndarray:
 
     :param array: np.ndarray of shape (n, m).
     :param factor: int, factor to upscale the array.
-    :return: np.ndarray of shape (n * factor, m * factor).
+    :return: np.ndarray of shape (n * factor, m * factor)
     """
     return np.repeat(np.repeat(array, factor, axis=0), factor, axis=1)
+
+
+def rescale_nearest_neighbour(array: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
+    """
+    Upscale or downscale an array using nearest neighbour interpolation.
+
+    :param array: np.ndarray of shape (n, m).
+    :param shape: tuple of the new size (y, x) (array.shape)
+    :return: np.ndarray of shape (y, x)
+    """
+    return cv2.resize(array, (shape[1], shape[0]), interpolation=cv2.INTER_NEAREST)
 
 
 def to_cmap(array: np.ndarray, cmap: str='viridis', nrm=True) -> np.ndarray:
