@@ -174,7 +174,7 @@ def get_coordinate_at_pixel(gdal_file: osgeo.gdal.Dataset, point: Point, precisi
     return round(origin[0] + x * pixel_size[0], precision), round(origin[1] + y * pixel_size[1], precision)
 
 
-def get_coordinates_at_pixels(gdal_file: osgeo.gdal.Dataset) -> Coordinates | np.ndarray:
+def get_coordinates_at_all_pixels(gdal_file: osgeo.gdal.Dataset) -> Coordinates | np.ndarray:
     """
     :param gdal_file: gdal dataset
     :return: array of the coordinates of the pixels in the coordinate system (x, y)
@@ -256,7 +256,7 @@ def to_xyz(gdal_file: osgeo.gdal.Dataset) -> np.ndarray:
     :param gdal_file: gdal dataset (dsm like - no orthophoto)
     :return: array of the coordinates of the pixels in the coordinate system (x, y, z)
     """
-    coordinates = get_coordinates_at_pixels(gdal_file) # x, y
+    coordinates = get_coordinates_at_all_pixels(gdal_file) # x, y
     nda = to_ndarray(gdal_file) # z
     return np.dstack((coordinates, nda))
 
