@@ -158,7 +158,7 @@ def get_bbox(gdal_file: osgeo.gdal.Dataset, format_coordinates='bbox') -> Coordi
 
 ########## COORDINATES ##########
 
-def get_coordinate_at_pixel(gdal_file: osgeo.gdal.Dataset, point: Point, precision=3) -> Coordinate:
+def get_coordinate_at_pixel(gdal_file: osgeo.gdal.Dataset, point: Point, precision: int=3) -> Coordinate:
     """
     :param gdal_file: gdal dataset
     :param point: pixel of the desired coordinate (i, j) or (y, x) in the dataset
@@ -172,6 +172,26 @@ def get_coordinate_at_pixel(gdal_file: osgeo.gdal.Dataset, point: Point, precisi
     x = w - x if x < 0 else x
     y = h - y if y < 0 else y
     return round(origin[0] + x * pixel_size[0], precision), round(origin[1] + y * pixel_size[1], precision)
+
+
+def get_coordinates_at_pixels(gdal_file: osgeo.gdal.Dataset, points: np.ndarray, precision: int=3) -> Coordinates | np.ndarray:
+    """
+    :param gdal_file: gdal dataset
+    :param points: array of the pixels of the desired coordinates (i, j) or (y, x) or (y, x, z) in the dataset
+    :param precision: number of decimals to round the coordinate (default: 3 (millimetric precision))
+    :return: array of the coordinates of the pixels in the coordinate system (x, y) or (x, y, z)
+    """
+    pixel_size = get_scales(gdal_file)
+    pixel_size = np.array([pixel_size[0], pixel_size[1], pixel_size[0]])
+    origin = get_origin(gdal_file)
+    origin = (origin[0], origin[1], 0.0)
+
+    contains_z = points.shape[1] == 3
+    points = np.array(points) if contains_z else np.insert(np.array(points), 2, 0, axis=1)
+    points = points[:, [1, 0, 2]] # reorder to (x, y, z)
+
+    coords = np.round((points * pixel_size + origin), precision)
+    return coords if contains_z else coords[:, :2]
 
 
 def get_coordinates_at_all_pixels(gdal_file: osgeo.gdal.Dataset) -> Coordinates | np.ndarray:
