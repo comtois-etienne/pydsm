@@ -493,7 +493,7 @@ def get_mask_area(mask: np.ndarray, scale: Scale) -> float:
     return round(area * ratio, 3)
 
 
-def tree_modeling_rbh(
+def tree_modeling(
         ndsm: osgeo.gdal.Dataset, 
         dtm: osgeo.gdal.Dataset, 
         instance_masks: np.ndarray, 
