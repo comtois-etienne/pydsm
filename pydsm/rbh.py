@@ -1,29 +1,30 @@
 import numpy as np
 import osgeo
-import json
-import os
 
 from skimage import measure
 from skimage.measure import label
 from skimage.measure import regionprops
 from skimage.transform import rotate
 from skimage.morphology import convex_hull_image
-from skimage.morphology import binary_erosion
-from skimage.morphology import disk
 from skimage.draw import polygon
 
 from scipy.spatial import Delaunay
 from scipy.ndimage import gaussian_filter
 
 from .obj import WavefrontObject
+from .obj import WavefrontGroup
+from .obj import WavefrontVertex
+
 from .geo import to_ndarray as geo_to_ndarray
 from .geo import get_scales as geo_get_scales
 from .geo import get_coordinates_at_pixels as geo_get_coordinates_at_pixels
 from .geo import get_coordinate_at_pixel as geo_get_coordinate_at_pixel
-from .nda import rescale_nearest_neighbour as nda_rescale_nearest_neighbour
+
+from .nda import shrink_mask as nda_shrink_mask
 from .nda import normalize as nda_normalize
-from .obj import WavefrontGroup
-from .obj import WavefrontVertex
+from .nda import are_touching as nda_are_touching
+
+from .utils import *
 
 
 def crop_bounding(mask: np.ndarray, ndsm: np.ndarray) -> tuple[np.ndarray, np.ndarray, tuple[int, int]]:
@@ -41,7 +42,7 @@ def crop_bounding(mask: np.ndarray, ndsm: np.ndarray) -> tuple[np.ndarray, np.nd
     return mask[y_min:y_max, x_min:x_max], ndsm[y_min:y_max, x_min:x_max], (y_min, x_min)
 
 
-def get_mask(instance_mask: np.ndarray, ndsm: np.ndarray, padding: int=300) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def get_instance_mask(instance_mask: np.ndarray, ndsm: np.ndarray, padding: int=300) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Get the mask for a specific integer id.
 
@@ -120,7 +121,7 @@ def normalize_orientation(mask: np.ndarray, lndsm: np.ndarray, from_convex_hull=
     return mask_rotated, lndsm_rotated, angle
 
 
-def get_centerlines(lndsm: np.ndarray, mask_z: np.ndarray, scale = 0.02, smooth=True) -> tuple[np.ndarray, np.ndarray]:
+def get_centerlines(lndsm: np.ndarray, mask_z: np.ndarray, scale: Scale=0.02, smooth=True) -> tuple[np.ndarray, np.ndarray]:
     """
     Get the centerlines (y and x cross sections) of the local ndsm using a Gaussian filter.  
 
@@ -163,7 +164,7 @@ def centerline_to_array(centerline: np.ndarray, padding=300, flip_y=True) -> np.
     return mask
 
 
-def sort_contour(contour: np.ndarray) -> np.ndarray:
+def __sort_contour(contour: np.ndarray) -> np.ndarray:
     """
     Sort the contour on Y and on X.
 
@@ -175,7 +176,7 @@ def sort_contour(contour: np.ndarray) -> np.ndarray:
     return sorted_on_y, sorted_on_x
 
 
-def get_index(point: np.ndarray, contour: np.ndarray) -> int:
+def __get_index(point: np.ndarray, contour: np.ndarray) -> int:
     """
     Get the index of a point in the contour.
 
@@ -186,7 +187,7 @@ def get_index(point: np.ndarray, contour: np.ndarray) -> int:
     return np.where((contour[:, 0] == point[0]) & (contour[:, 1] == point[1]))[0][0]
 
 
-def get_next_side(side: np.ndarray, contour: np.ndarray) -> np.ndarray:
+def __get_next_side(side: np.ndarray, contour: np.ndarray) -> np.ndarray:
     """
     Get the next side of the contour.
 
@@ -195,12 +196,12 @@ def get_next_side(side: np.ndarray, contour: np.ndarray) -> np.ndarray:
     :return: 2D numpy array of the next side
     """
     length = len(contour)
-    index = sorted([get_index(side[0], contour), get_index(side[1], contour)])
+    index = sorted([__get_index(side[0], contour), __get_index(side[1], contour)])
     index = index[::-1] if index[0] == 0 else index
     return np.array((contour[(index[1]+1) % length], contour[(index[1]+2) % length]))
 
 
-def get_prev_side(side: np.ndarray, contour: np.ndarray) -> np.ndarray:
+def __get_prev_side(side: np.ndarray, contour: np.ndarray) -> np.ndarray:
     """
     Get the previous side of the contour.
 
@@ -209,74 +210,34 @@ def get_prev_side(side: np.ndarray, contour: np.ndarray) -> np.ndarray:
     :return: 2D numpy array of the previous side
     """
     length = len(contour)
-    index = sorted([get_index(side[0], contour), get_index(side[1], contour)])
+    index = sorted([__get_index(side[0], contour), __get_index(side[1], contour)])
     index = index[::-1] if index[0] == 0 else index
     return np.array((contour[(index[0]-2) % length], contour[(index[0]-1) % length]))
 
 
-def get_bottom_side(contour: np.ndarray) -> np.ndarray:
+def __get_bottom_side(contour: np.ndarray) -> np.ndarray:
     """
     Get the bottom side (segment of 2 points) of the contour (sorted on Y).
 
     :param contour: 2D numpy array, list of points
     :return: 2D numpy array, 2 points of the bottom side
     """
-    cz_sorted_on_y, _ = sort_contour(contour)
+    cz_sorted_on_y, _ = __sort_contour(contour)
     return cz_sorted_on_y[-2:]
 
 
-def get_top_side(contour: np.ndarray) -> np.ndarray:
+def __get_top_side(contour: np.ndarray) -> np.ndarray:
     """
     Get the top side (segment of 2 points) of the contour (sorted on Y).
     
     :param contour: 2D numpy array, list of points
     :return: 2D numpy array, 2 points of the top side
     """
-    cz_sorted_on_y, _ = sort_contour(contour)
+    cz_sorted_on_y, _ = __sort_contour(contour)
     return cz_sorted_on_y[:2]
 
 
-def rotate_points(center: tuple[float, float], points: np.array, angle_deg: float) -> np.ndarray:
-    """
-    Rotate points around a center by a given angle in degrees.
-
-    :param center: Tuple of the center coordinates (y, x)
-    :param points: 2D numpy array of the points to rotate (y, x, z)
-    :param angle_deg: Angle in degrees to rotate the points
-    :return: 2D numpy array of the rotated points (y, x, z)
-    """
-    angle_rad = np.deg2rad(angle_deg)
-    cy, cx = center[0], center[1]
-    y, x, z = points[:, 0], points[:, 1], points[:, 2]
-
-    dy, dx = y - cy, x - cx
-    ry = dy * np.cos(angle_rad) - dx * np.sin(angle_rad)
-    rx = dy * np.sin(angle_rad) + dx * np.cos(angle_rad)
-    ny, nx = ry + cy, rx + cx
-
-    rotated = np.stack((ny, nx, z), axis=1)
-    return rotated
-
-
-def shrink_mask(mask: np.ndarray, shrink_factor: float = 0.1) -> np.ndarray:
-    """
-    Shrink the mask by a factor
-
-    :param mask: 2D numpy array
-    :param shrink_factor: Factor to shrink the mask (default is 0.1) (10% of the original size)
-    :return: Shrinked mask
-    """
-    height, width = mask.shape
-    height_red = int(height * shrink_factor)
-    width_red = int(width * shrink_factor)
-
-    mask_padded = np.pad(mask, ((height_red, height_red), (width_red, width_red)), mode='constant', constant_values=0)
-    mask_padded = nda_rescale_nearest_neighbour(mask_padded, (height, width))
-
-    return mask_padded
-
-
-def get_top_by_ratio(lndsm: np.ndarray, mask: np.ndarray, area_ratio=0.2) -> np.ndarray:
+def __get_top_by_area(lndsm: np.ndarray, mask: np.ndarray, area_ratio=0.2) -> np.ndarray:
     """
     Get the highest mask covering `area_ratio` of the area.
 
@@ -298,7 +259,7 @@ def get_top_by_ratio(lndsm: np.ndarray, mask: np.ndarray, area_ratio=0.2) -> np.
     return top
 
 
-def get_top_by_height(lndsm: np.ndarray, height=0.8) -> np.ndarray:
+def __get_top_by_height(lndsm: np.ndarray, height=0.8) -> np.ndarray:
     """
     Get the mask of the tree where the height is greater than the given height percentile.
 
@@ -311,7 +272,7 @@ def get_top_by_height(lndsm: np.ndarray, height=0.8) -> np.ndarray:
     return top
 
 
-def get_top(lndsm: np.ndarray, mask: np.ndarray, area_ratio=0.15) -> np.ndarray:
+def __get_top(lndsm: np.ndarray, mask: np.ndarray, area_ratio=0.15) -> np.ndarray:
     """
     Get the smallest top of 2 methods:
     - the highest mask covering `area_ratio` of the area. see `get_top_by_ratio`
@@ -322,40 +283,16 @@ def get_top(lndsm: np.ndarray, mask: np.ndarray, area_ratio=0.15) -> np.ndarray:
     :param area_ratio: Ratio of the area to consider as the top
     :return: 2D numpy array mask of the top
     """
-    mask_shrinked = shrink_mask(mask, shrink_factor=0.2)
+    mask_shrinked = nda_shrink_mask(mask, shrink_factor=0.2)
     lndsm = lndsm * mask_shrinked
 
-    top_by_ratio = get_top_by_ratio(lndsm, mask_shrinked, area_ratio=area_ratio)
-    top_by_height = get_top_by_height(lndsm, height=(1 - area_ratio))
+    top_by_ratio = __get_top_by_area(lndsm, mask_shrinked, area_ratio=area_ratio)
+    top_by_height = __get_top_by_height(lndsm, height=(1 - area_ratio))
     top = np.logical_and(top_by_ratio, top_by_height)
     return top
 
 
-def pixel_to_height(pixel: int, padding: int, scale: float) -> float:
-    """
-    Convert pixel to height in meters.
-
-    :param pixel: Pixel value at the specified scale
-    :param padding: Padding to remove from the pixel value
-    :param scale: Scale of the image in meters per pixel
-    :return: Height in meters
-    """
-    return (pixel - padding) * scale
-
-
-def height_to_pixel(height: float, padding: int, scale: float) -> int:
-    """
-    Convert height in meters to pixel.
-
-    :param height: Height in meters
-    :param padding: Padding to add to the pixel value
-    :param scale: Scale of the image in meters per pixel
-    :return: Pixel value
-    """
-    return int(height / scale) + padding
-
-
-def get_ring_one_height(lndsm: np.ndarray, mask_z: np.ndarray, ring_0_height: float, scale: float) -> float:
+def __get_ring_one_height(lndsm: np.ndarray, mask_z: np.ndarray, ring_0_height: float, scale: Scale) -> float:
     """
     Get the height of the ring 1 (second from the top).
     Uses the cross sections of the local nDSM of the tree in x and y to get the average height of the ring 1.
@@ -379,15 +316,15 @@ def get_ring_one_height(lndsm: np.ndarray, mask_z: np.ndarray, ring_0_height: fl
     contour_y = get_contour(mask_y, convex_hull=True, smooth=False, edges=6)
     contour_x = get_contour(mask_x, convex_hull=True, smooth=False, edges=6)
 
-    top_y = get_top_side(contour_y)
-    top_x = get_top_side(contour_x)
+    top_y = __get_top_side(contour_y)
+    top_x = __get_top_side(contour_x)
 
-    point_y_a = sort_contour(get_next_side(top_y, contour_y))[0][0]
-    point_y_b = sort_contour(get_prev_side(top_y, contour_y))[0][0]
+    point_y_a = __sort_contour(__get_next_side(top_y, contour_y))[0][0]
+    point_y_b = __sort_contour(__get_prev_side(top_y, contour_y))[0][0]
     point_y_avg = np.mean([point_y_a, point_y_b], axis=0)
 
-    point_x_a = sort_contour(get_next_side(top_x, contour_x))[0][0]
-    point_x_b = sort_contour(get_prev_side(top_x, contour_x))[0][0]
+    point_x_a = __sort_contour(__get_next_side(top_x, contour_x))[0][0]
+    point_x_b = __sort_contour(__get_prev_side(top_x, contour_x))[0][0]
     point_x_avg = np.mean([point_x_a, point_x_b], axis=0)
 
     top_height = ((height_y - point_y_avg[0]) + (height_x - point_x_avg[0])) / 2
@@ -396,7 +333,7 @@ def get_ring_one_height(lndsm: np.ndarray, mask_z: np.ndarray, ring_0_height: fl
     return round(pixel_to_height(avg_height, padding=100, scale=scale), 3)
 
 
-def get_rings_heights(lndsm: np.ndarray, mask_z: np.ndarray, ring_0: np.ndarray, scale: float) -> list[int]:
+def __get_rings_heights(lndsm: np.ndarray, mask_z: np.ndarray, ring_0: np.ndarray, scale: Scale) -> list[int]:
     """
     Get the heights of the rings :  
     - ring 0 height: highest point of the tree  
@@ -424,7 +361,7 @@ def get_rings_heights(lndsm: np.ndarray, mask_z: np.ndarray, ring_0: np.ndarray,
     lndsm_top[~mask_top] = np.nan
     ring_0_height = round(np.nanmax(lndsm_top), 3)
 
-    ring_1_height = get_ring_one_height(lndsm, mask_z, ring_0_height, scale=scale)
+    ring_1_height = __get_ring_one_height(lndsm, mask_z, ring_0_height, scale=scale)
     top_third_height = (ring_0_height - ring_1_height)
 
     # 1 1 1/2 (221)
@@ -441,19 +378,7 @@ def get_rings_heights(lndsm: np.ndarray, mask_z: np.ndarray, ring_0: np.ndarray,
     return rings.tolist()
 
 
-def add_z(points: list, z: int | float) -> np.ndarray:
-    """
-    Adds the z value to the points the coordinates of the points are kept in the same order.
-    todo : optimize this function with numpy
-    
-    :param points: 2D numpy array of the points
-    :param z: Z value to add
-    :return: 2D numpy array with the z value added (x, y, z)
-    """
-    return np.array([[x, y, z] for x, y in points])
-
-
-def get_center_squares() -> tuple[np.ndarray, np.ndarray]:
+def __get_center_squares() -> tuple[np.ndarray, np.ndarray]:
     """
     Triangulation of the center belt of squares of the RBH.   
     The indexing is always the same for every RBH.  
@@ -480,7 +405,7 @@ def get_center_squares() -> tuple[np.ndarray, np.ndarray]:
     return np.array(square_indexes), np.array(triangles_indexes)
 
 
-def get_RBH_mesh(ndsm_array: np.ndarray, instance_mask: np.ndarray, scale: float = 0.02) -> tuple[np.ndarray, np.ndarray]:
+def get_RBH_mesh(ndsm_array: np.ndarray, instance_mask: np.ndarray, scale: Scale) -> tuple[np.ndarray, np.ndarray]:
     """
     The RBH is divided in 4 rings :  
     - ring 0: the top of the tree parralel to the ground  
@@ -507,23 +432,23 @@ def get_RBH_mesh(ndsm_array: np.ndarray, instance_mask: np.ndarray, scale: float
     :param scale: Scale of the nDSM in meters per pixel (default is 0.02 m per pixel)
     :return: list of points in matricial format (y, x, z) (values in pixels from the origin of the ndsm), triangles indexes
     """
-    mask_z, lndsm, origin = get_mask(instance_mask, ndsm_array, 400)
+    mask_z, lndsm, origin = get_instance_mask(instance_mask, ndsm_array, 400)
     mask_z, lndsm, angle = normalize_orientation(mask_z, lndsm)
 
-    top_mask = get_top(lndsm, mask_z)
+    top_mask = __get_top(lndsm, mask_z)
     ring_1 = get_contour(mask_z, convex_hull=True, smooth=False, edges=8)
     ring_0 = get_contour(top_mask, convex_hull=True, smooth=False, edges=4, drop_last=True)
-    ring_0_z, ring_1_z, ring_2_z, ring_3_z = get_rings_heights(lndsm, mask_z, ring_0, scale)
+    ring_0_z, ring_1_z, ring_2_z, ring_3_z = __get_rings_heights(lndsm, mask_z, ring_0, scale)
 
     tree_trunk_origin = np.round(np.mean(ring_0, axis=0), 0).astype(int) + origin[:2]
 
-    _, center_triangles_indexes = get_center_squares()
+    _, center_triangles_indexes = __get_center_squares()
     points = np.array(ring_0.tolist() + ring_1.tolist())
     tri = Delaunay(points)
     triangles_indexes = np.array(tri.simplices.copy().tolist() + (tri.simplices.copy() + len(points)).tolist() + center_triangles_indexes.tolist())
 
-    points_top = np.array((add_z(ring_0, ring_0_z).tolist() + add_z(ring_1, ring_1_z).tolist())) # (y, x, z)
-    points_bot = np.array((add_z(ring_0, ring_3_z).tolist() + add_z(ring_1, ring_2_z).tolist())) # (y, x, z)
+    points_top = np.array((add_z_to_points(ring_0, ring_0_z).tolist() + add_z_to_points(ring_1, ring_1_z).tolist())) # (y, x, z)
+    points_bot = np.array((add_z_to_points(ring_0, ring_3_z).tolist() + add_z_to_points(ring_1, ring_2_z).tolist())) # (y, x, z)
 
     all_points = np.array((points_top.tolist() + points_bot.tolist())) # (y, x, z)
     rotation_center = np.array(mask_z.shape) / 2 - 0.5 # same rotation center as skimage.transform.rotate
@@ -533,23 +458,24 @@ def get_RBH_mesh(ndsm_array: np.ndarray, instance_mask: np.ndarray, scale: float
     return all_points, triangles_indexes, tree_trunk_origin
 
 
-def get_mask_height(instance_mask: np.ndarray, ndsm_array: np.ndarray) -> float:
+def get_mask_height(instance_mask: np.ndarray, ndsm_array: np.ndarray, shrink_factor=0.2) -> float:
     """
     Returns the height of the mask in meters.  
     The mask is shrinked to remove high values at the edges of the mask as they can be part of another tree.  
 
     :param instance_mask: 2D numpy array of the instance mask (same size as the nDSM array)
     :param ndsm_array: 2D numpy array of the nDSM
+    :param shrink_factor: Factor to shrink the mask (default is 0.2) (to remove high values at the edges of the mask)
     :return: Height of the mask in meters rounded to 3 decimal places (millimeters)
     """
-    mask_z, lndsm, _ = get_mask(instance_mask, ndsm_array, 400)
-    mask_shrinked = shrink_mask(mask_z, shrink_factor=0.2)
+    mask_z, lndsm, _ = get_instance_mask(instance_mask, ndsm_array, 400)
+    mask_shrinked = nda_shrink_mask(mask_z, shrink_factor=shrink_factor)
     lndsm = lndsm * mask_shrinked
     height = np.nanmax(lndsm)
     return round(height, 3)
 
 
-def get_mask_area(mask: np.ndarray, scale: float) -> float:
+def get_mask_area(mask: np.ndarray, scale: Scale) -> float:
     """
     Get the area of the mask in m².
 
@@ -565,32 +491,6 @@ def get_mask_area(mask: np.ndarray, scale: float) -> float:
     ratio = mask_area / (mask.shape[0] * mask.shape[1])
 
     return round(area * ratio, 3)
-
-
-def get_rejection_region(ortho: osgeo.gdal.Dataset, dilatation: int = 2) -> np.ndarray:
-    """
-    Get the rejection region of the ortho image.
-
-    :param ortho: osgeo.gdal.Dataset of the ortho image containing 4 bands (RGB and alpha)
-    :param dilatation: Dilation of the rejection region in pixels (default is 2)
-        - This is used to remove the trees touching the border of the image
-    :return: 2D numpy array of the rejection region with a dilation of 2 pixels
-    """
-    ortho_array = geo_to_ndarray(ortho)
-    region = ortho_array[..., 3]
-    rejection_region = ~binary_erosion(region, disk(dilatation))
-    return rejection_region
-
-
-def are_touching(mask_a: np.ndarray, mask_b: np.ndarray) -> bool:
-    """
-    True if the two masks touch eachother.
-
-    :param mask_a: 2D numpy array of the first mask
-    :param mask: 2D numpy array of the second mask
-    :return: True if the masks touch eachother, False otherwise
-    """
-    return np.sum(np.logical_and(mask_a, mask_b)) > 0
 
 
 def tree_modeling_rbh(
@@ -643,7 +543,7 @@ def tree_modeling_rbh(
 
     for mask_id in unique_ids:
         instance_mask = (instance_masks == mask_id)
-        if are_touching(rejection_region, instance_mask):
+        if nda_are_touching(rejection_region, instance_mask):
             print(f'   skipping {mask_id} for touching the border') if verbose else None
             continue
 
@@ -682,19 +582,4 @@ def tree_modeling_rbh(
         wavefront_objects.append(wavefront_object)
 
     return wavefront_objects, objects_metadata
-
-
-def write_metadata(metadata: dict, uuid: str, output_dir: str = './') -> None:
-    """
-    Write the metadata to a json file.
-
-    :param metadata: Metadata to write
-    :param uuid: UUID of the orthophoto
-    :param output_dir: Output directory
-    """
-    if not os.path.exists(output_dir):
-        raise FileNotFoundError(f"Output directory {output_dir} does not exist.")
-
-    with open(os.path.join(output_dir, f'{uuid}_trees_metadata.json'), 'w') as f:
-        json.dump(metadata, f, indent=4)
 

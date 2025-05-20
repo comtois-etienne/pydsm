@@ -146,6 +146,17 @@ def nda_round(array: np.ndarray, decimals: int=2) -> np.ndarray:
         return x.astype(int) if decimals == 0 else x
 
 
+def are_touching(mask_a: np.ndarray, mask_b: np.ndarray) -> bool:
+    """
+    True if the two masks touch eachother.
+
+    :param mask_a: 2D binary numpy array of the first mask
+    :param mask: 2D binary numpy array of the second mask
+    :return: True if the masks touch eachother, False otherwise
+    """
+    return np.sum(np.logical_and(mask_a, mask_b)) > 0
+
+
 def rescale(array: np.ndarray, current_spacial_resolution: float | tuple[float, float], new_spacial_resolution: float | tuple[float, float] = 0.02) -> np.ndarray:
     """
     Sub-pixel rescaling of the array.  
@@ -253,14 +264,14 @@ def dsm_to_cmap(array: np.ndarray, cmap: str='viridis') -> np.ndarray:
     return array
 
 
-def to_gdal(array: np.ndarray, epsg: int, origin: tuple, pixel_size: float = 1.0) -> gdal.Dataset:
+def to_gdal(array: np.ndarray, epsg: int, origin: tuple, pixel_size: Scale = 1.0) -> gdal.Dataset:
     """
     Converts a NumPy array to a GDAL dataset.
     
     :param nda: NumPy array (2D or 3D)
     :param epsg: EPSG code of the coordinate system
     :param origin: Origin of the coordinate system (x, y) (top left corner of the array)
-    :param pixel_size: Size of each pixel (assumes square pixels)
+    :param pixel_size: Size of each pixel in meters per pixel (assumes square pixels)
     :return: GDAL dataset
     """
     # Get dimensions
@@ -318,6 +329,24 @@ def remove_mask_values(array: np.ndarray, min_value_ratio=0.02) -> np.ndarray:
     mask = get_mask(array, min_value_ratio)
     array[mask] = np.nan
     return array
+
+
+def shrink_mask(mask: np.ndarray, shrink_factor: float = 0.1) -> np.ndarray:
+    """
+    Shrink the mask by a factor
+
+    :param mask: 2D binary numpy array
+    :param shrink_factor: Factor to shrink the mask (default is 0.1) (10% of the original size)
+    :return: Shrinked mask
+    """
+    height, width = mask.shape
+    height_red = int(height * shrink_factor)
+    width_red = int(width * shrink_factor)
+
+    mask_padded = np.pad(mask, ((height_red, height_red), (width_red, width_red)), mode='constant', constant_values=0)
+    mask_padded = rescale_nearest_neighbour(mask_padded, (height, width))
+
+    return mask_padded
 
 
 def round_to_mm(array: np.ndarray, dtype=np.float32) -> np.ndarray:

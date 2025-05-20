@@ -1,5 +1,7 @@
 import numpy as np
 from osgeo import gdal
+import json
+import os
 
 
 ########## TYPES ##########
@@ -219,4 +221,83 @@ def epsgio_link_to_coord(url: str) -> Coordinate:
     url = url.split("&")
     coord = [float(url[1].split("=")[1]), float(url[2].split("=")[1])]
     return tuple(coord)
+
+
+########## JSON FUNCTIONS ##########
+
+def write_dict_as_json(metadata: dict, name: str, output_dir: str = './') -> None:
+    """
+    Write the dict to a json file.
+
+    :param metadata: Metadata to write
+    :param name: Name of the json file (without extension)
+    :param output_dir: Output directory
+    """
+    if not os.path.exists(output_dir):
+        raise FileNotFoundError(f"Output directory {output_dir} does not exist.")
+
+    with open(os.path.join(output_dir, f'{name}.json'), 'w') as f:
+        json.dump(metadata, f, indent=4)
+
+
+########## CONVERSIONS FUNCTIONS ##########
+
+def pixel_to_height(pixel: int, scale: Scale, padding: int=0) -> Meters:
+    """
+    Convert pixel to height in meters.
+
+    :param pixel: Pixel value at the specified scale
+    :param padding: Padding to remove from the pixel value
+    :param scale: Scale of the image in meters per pixel
+    :return: Height in meters
+    """
+    return (pixel - padding) * scale
+
+
+def height_to_pixel(height: Meters, scale: Scale, padding: int=0) -> int:
+    """
+    Convert height in meters to pixel.
+
+    :param height: Height in meters
+    :param padding: Padding to add to the pixel value
+    :param scale: Scale of the image in meters per pixel
+    :return: Pixel value
+    """
+    return int(height / scale) + padding
+
+
+########## POINTS FUNCTIONS ##########
+
+def rotate_points(center: tuple[float, float], points: np.array, angle_deg: float) -> np.ndarray:
+    """
+    Rotate points around a center by a given angle in degrees.
+
+    :param center: Tuple of the center coordinates (y, x)
+    :param points: 2D numpy array of the points to rotate (y, x, z)
+    :param angle_deg: Angle in degrees to rotate the points
+    :return: 2D numpy array of the rotated points (y, x, z)
+    """
+    angle_rad = np.deg2rad(angle_deg)
+    cy, cx = center[0], center[1]
+    y, x, z = points[:, 0], points[:, 1], points[:, 2]
+
+    dy, dx = y - cy, x - cx
+    ry = dy * np.cos(angle_rad) - dx * np.sin(angle_rad)
+    rx = dy * np.sin(angle_rad) + dx * np.cos(angle_rad)
+    ny, nx = ry + cy, rx + cx
+
+    rotated = np.stack((ny, nx, z), axis=1)
+    return rotated
+
+
+def add_z_to_points(points: list, z: int | float) -> np.ndarray:
+    """
+    Adds the z value to the points the coordinates of the points are kept in the same order.
+    todo : optimize this function with numpy
+    
+    :param points: 2D numpy array of the points
+    :param z: Z value to add
+    :return: 2D numpy array with the z value added (x, y, z)
+    """
+    return np.array([[x, y, z] for x, y in points])
 

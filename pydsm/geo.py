@@ -1,7 +1,10 @@
 import osgeo
 from osgeo import gdal, ogr, osr
 import numpy as np
+
 from skimage import draw
+from skimage.morphology import binary_erosion
+from skimage.morphology import disk
 
 from scipy.ndimage import median_filter
 from scipy.ndimage import distance_transform_edt
@@ -433,6 +436,24 @@ def mask_from_points(gdal_file: osgeo.gdal.Dataset, points: Points) -> np.ndarra
     rr, cc = draw.polygon(r, c)
     mask[rr, cc] = True
     return mask
+
+
+def get_outside_mask(gdal_file: osgeo.gdal.Dataset, dilatation: int = 2) -> np.ndarray:
+    """
+    Get the rejection region of the orthophoto - the area outside the orthophoto
+
+    :param gdal_file: osgeo.gdal.Dataset of the orthophoto containing 4 bands (RGB and alpha)
+    :param dilatation: Dilation of the rejection region in pixels (default is 2)
+        - This is used to remove the elements that are touching the border
+    :return: 2D numpy array of the rejection region with a dilation of 2 pixels
+    """
+    if gdal_file.RasterCount != 4:
+        raise RuntimeError("The orthophoto must have 4 bands (RGB and alpha).")
+
+    ortho_array = to_ndarray(gdal_file)
+    region = ortho_array[..., 3]
+    rejection_region = ~binary_erosion(region, disk(dilatation))
+    return rejection_region
 
 
 def mask_from_shapefile(gdal_file: osgeo.gdal.Dataset, shapefile_path: str) -> np.ndarray:
