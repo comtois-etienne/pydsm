@@ -13,3 +13,6 @@
 
 
 ./main.py zones data/evelyn_caisse/2950/orthophoto.tif data/evelyn_caisse/2950/ndsm.tif data/evelyn_caisse/2950/dsm.tif data/evelyn_caisse/2950/dtm.tif --save-directory processed/ --translate-file data/evelyn_caisse/2950/translate.csv 
+
+
+./main.py rbh --masks 'processed/done/63907176-29e6-4990-81fc-238b71bcf93f_trees.npz' --ndsm 'processed/done/63907176-29e6-4990-81fc-238b71bcf93f_ndsm.tif' --dtm 'processed/poirier/63907176-29e6-4990-81fc-238b71bcf93f_dtm.tif' --ortho 'processed/done/63907176-29e6-4990-81fc-238b71bcf93f_orthophoto.tif' -v --save-dir="./rbh-test/" --offset=15
