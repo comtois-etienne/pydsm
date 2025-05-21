@@ -544,20 +544,20 @@ def tree_modeling(
     for mask_id in unique_ids:
         instance_mask = (instance_masks == mask_id)
         if nda_are_touching(rejection_region, instance_mask):
-            print(f'   skipping {mask_id} for touching the border') if verbose else None
+            print(f'  {mask_id} : skipped for touching the border') if verbose else None
             continue
 
         area = get_mask_area(instance_mask, scale=scale)
         if area < ((2*minimum_radius)**2):
-            print(f'   skipping {mask_id} with area {area}') if verbose else None
+            print(f'  {mask_id} : skipped for small area {area}') if verbose else None
             continue
 
         height = get_mask_height(instance_mask, ndsm_array)
         if height < minimum_height:
-            print(f'   skipping {mask_id} with height {height}')
+            print(f'  {mask_id} : skipped for small height {height}') if verbose else None
             continue
 
-        print(f'processing {mask_id} with area {area} and height {height}') if verbose else None
+        print(f'  {mask_id} : processing with area {area} and height {height}') if verbose else None
 
         name = f'{uuid}_{mask_id}'
         points, indexes, origin = get_RBH_mesh(ndsm_array, instance_mask, scale=scale)
