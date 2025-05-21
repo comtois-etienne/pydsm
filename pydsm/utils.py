@@ -225,18 +225,14 @@ def epsgio_link_to_coord(url: str) -> Coordinate:
 
 ########## JSON FUNCTIONS ##########
 
-def write_dict_as_json(metadata: dict, name: str, output_dir: str = './') -> None:
+def write_dict_as_json(metadata: dict, file_path: str) -> None:
     """
     Write the dict to a json file.
 
     :param metadata: Metadata to write
-    :param name: Name of the json file (without extension)
-    :param output_dir: Output directory
+    :param file_path: Name of the json file
     """
-    if not os.path.exists(output_dir):
-        raise FileNotFoundError(f"Output directory {output_dir} does not exist.")
-
-    with open(os.path.join(output_dir, f'{name}.json'), 'w') as f:
+    with open(file_path, 'w') as f:
         json.dump(metadata, f, indent=4)
 
 
