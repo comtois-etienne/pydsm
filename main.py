@@ -14,6 +14,8 @@ import pandas as pd
 import pydsm.geo as geo
 import pydsm.nda as nda
 import pydsm.shp as shp
+import pydsm.obj as obj
+import pydsm.rbh as rbh
 import pydsm.utils as utils
 
 
@@ -410,6 +412,53 @@ def registration(args):
         print(f'* Saved to {save_path}')
 
 
+def RBH(args):
+    """
+    Generates geometry objects for trees from the masks and the ndsm.  
+    The triangulated rhombicuboctahedron (RBH) geometry is used to represent the trees. 
+    The dtm is used to get the ground level of the trees.
+    The orthophoto is used to get the rejection region of the trees. 
+
+    :param args.masks_path: str, path to the masks (mandatory)
+    :param args.ndsm_path: str, path to the nDSM (mandatory)
+    :param args.dtm_path: str, path to the DTM (mandatory)
+    :param args.ortho_path: str, path to the orthophoto (mandatory)
+    :param args.save_path: str, path to directory to save the wavefront and metadata (optional) (default: current directory)
+    :param args.elevation_offset: float, elevation offset for the trees instead of relying on the DTM (optional) (default: False)
+    :param args.verbose: bool, verbose mode to display the whole process (optional) (default: False)
+    :return: None (saves the wavefront and metadata to disk)
+    """
+    if not os.path.exists(args.save_dir):
+        print(f'* Creating directory {args.save_dir}')
+        os.makedirs(args.save_dir)
+
+    print(f'* Generating wavefront objects from masks in {args.masks}')
+    instance_masks = nda.read_numpy(args.masks, npz_format='napari')
+    ndsm = geo.open_geotiff(args.ndsm)
+    rejection_region = geo.get_outside_mask(geo.open_geotiff(args.ortho))
+    dtm = geo.open_geotiff(args.dtm)
+    uuid = os.path.basename(args.ortho).split('_')[0]
+
+    wavefront_objects, objects_metadata = rbh.tree_modeling(
+        ndsm=ndsm,
+        dtm=dtm,
+        instance_masks=instance_masks,
+        rejection_region=rejection_region,
+        uuid=uuid,
+        elevation_offset=args.offset,
+        verbose=args.verbose,
+    )
+
+    obj_path = utils.append_file_to_path(args.save_dir, f'{uuid}_trees.obj')
+    meta_path = utils.append_file_to_path(args.save_dir, f'{uuid}_trees_metadata.json')
+    
+    obj.write_wavefront(wavefront_objects, file_path=obj_path, swap_yz=False, precision=3)
+    print(f'* Saved to {obj_path}')
+
+    utils.write_dict_as_json(objects_metadata, file_path=meta_path)
+    print(f'* Saved to {meta_path}')
+
+
 # GENERAL COMMANDS
 
 def _silence():
@@ -448,7 +497,8 @@ COMMANDS = {
     'resize': resize,
     'rescale': rescale,
     'translation': translation,
-    'registration': registration
+    'registration': registration,
+    'rbh': RBH,
 }
 
 
@@ -518,7 +568,7 @@ def parser_setup():
     zones_parser.add_argument("geotiff_paths", nargs='+', help="Path to the geotiff files. The first one is used to find the zones.")
     zones_parser.add_argument("--geotiff-base-path", type=str, help="Path to the folder that contains all the geotiff files")
     zones_parser.add_argument("--save-directory", type=str, help="Path to save the zones (shapefile, geotiff)")
-    zones_parser.add_argument("--no-crop", action="store_true", help="Do not crop the geotiff to the zones")
+    zones_parser.add_argument("--no-crop", action="store_true", help="Do not crop the geotiff to the zones") #todo default to false
     zones_parser.add_argument("--dilate", type=float, help="Dilation factor around the zones (default: 15.0m)")
     zones_parser.add_argument("--safe-zone", type=float, help="The zone is only kept if there is at least X meters around it (default: 20.0m)")
     zones_parser.add_argument("--sample-size", type=int, help="Sample size (number of seeds) to find the zones (default: 3 (3x3))")
@@ -556,6 +606,16 @@ def parser_setup():
     registration_parser.add_argument("--translate", action="store_true", help="Translate the geotiff to the selected point")
     registration_parser.add_argument("--registration-path", type=str, help="Path to save the translation values")
     registration_parser.add_argument("--layer", type=str, help="Layer of the map (osm, streets, satellite)")
+
+    # rbh command
+    rbh_parser = subparsers.add_parser("rbh", help="Create a wavefront file containing RBH shaped trees from geotiffs and instance masks")
+    rbh_parser.add_argument("--masks", "--masks-path", type=str, help="Path to the instance masks", required=True)
+    rbh_parser.add_argument("--ndsm", "--ndsm-path", type=str, help="Path to the nDSM file", required=True)
+    rbh_parser.add_argument("--dtm", "--dtm-path", type=str, help="Path to the DTM file", required=True)
+    rbh_parser.add_argument("--ortho", "--ortho-path", type=str, help="Path to the orthophoto file containing the alpha channel", required=True)
+    rbh_parser.add_argument("--offset", "--elevation-offset", type=float, help="Elevation offset for the trees - The DTM values will be used if no offset is given", default=False)
+    rbh_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode - Show the progression of each tree", default=False)
+    rbh_parser.add_argument("--save-dir", type=str, help="Path to save the wavefront file", default='./')
 
     return parser
 
