@@ -297,3 +297,29 @@ def add_z_to_points(points: list, z: int | float) -> np.ndarray:
     """
     return np.array([[x, y, z] for x, y in points])
 
+
+########## DRONE SURVEY FUNCTIONS ##########
+
+def get_capture_airspeed(diagonal_fov, image_ratio, hagl, time_delay=2.0, minimum_overlap=0.7) -> float:
+    """
+    Calculate the drone capture airspeed based on the diagonal field of view, image ratio, and height above ground level (HAGL).  
+    Requirements for DJI Mini 3 Pro with WebODM:
+    - fov=82.1 degrees (24mm lens)
+    - image_ratio=4/3
+    - hagl=60.0 meters
+    - time_delay=2.0 seconds (default)
+    - minimum_overlap=0.7 (default)
+
+    :param diagonal_fov: Diagonal field of view in degrees.
+    :param image_ratio: Aspect ratio of the image (width / height).
+    :param hagl: Height above ground level in meters.
+    :param time_delay: Time delay between each photos in seconds (default is 2.0).
+    :param minimum_overlap: Minimum overlap between images as a fraction (default is 0.7).
+    :return: Capture airspeed in m/s.
+    """
+    diagonal_length = 2 * hagl * np.tan(np.radians(diagonal_fov / 2))
+    vertical_lenght = diagonal_length / np.sqrt(1 + image_ratio**2)
+    overlap_distance = vertical_lenght * (1 - minimum_overlap)
+    capture_airspeed = overlap_distance / time_delay
+    return capture_airspeed
+
