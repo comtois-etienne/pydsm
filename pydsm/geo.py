@@ -535,6 +535,7 @@ def extract_zones(geotif_path: str, save_directory: str = './', street_name_excl
         uuid_str, path_coords, indexes = res
         path_coords_dst = shp_reproject(path_coords, CRS_GPS, epsg)
         dilate_path = shp_dilate(path_coords_dst, safe_zone)
+        if dilate_path is None: continue
 
         area = shp_area(dilate_path)
         if shp_is_inside(bbox_src, dilate_path) and area > min_area:

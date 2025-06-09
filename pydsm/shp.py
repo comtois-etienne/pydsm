@@ -259,11 +259,15 @@ def dilate(coordinates: Coordinates, distance: float=10.0) -> Coordinates:
 
     :param coordinates: List of coordinates to dilate (x, y) or (lon, lat)
     :param distance: Distance to dilate the coordinates in meters (default: 10.0m)
-    :return: List of dilated coordinates
+    :return: List of dilated coordinates or None if the dilation fails
     """
     coords = np.array(coordinates)
     polygon = Polygon(coords)
     buffer_polygon = polygon.buffer(distance)
+    if not hasattr(buffer_polygon, 'exterior'):
+        return None
+    if not hasattr(buffer_polygon.exterior, 'coords'):
+        return None
     return list(buffer_polygon.exterior.coords)
 
 
