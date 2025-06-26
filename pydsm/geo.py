@@ -146,7 +146,7 @@ def get_bbox(gdal_file: osgeo.gdal.Dataset, format_coordinates='bbox') -> Coordi
     """
     origin = get_origin(gdal_file)
     size = get_size(gdal_file)
-    bbox = [ origin, (origin[0] + size[0], origin[1] - size[1]) ]
+    bbox = [ (origin[0], origin[1] - size[1]), (origin[0] + size[0], origin[1]) ]
     polygon = [ bbox[0], (bbox[1][0], bbox[0][1]), bbox[1], (bbox[0][0], bbox[1][1])]
     ring = polygon + [polygon[0]]
 
