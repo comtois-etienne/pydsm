@@ -156,6 +156,13 @@ def get_bbox(gdal_file: osgeo.gdal.Dataset, format_coordinates='bbox') -> Coordi
         return polygon
     if format_coordinates == 'ring':
         return ring
+    if format_coordinates == 'dict':
+        return {
+            'min_x': bbox[0][0],
+            'min_y': bbox[0][1],
+            'max_x': bbox[1][0],
+            'max_y': bbox[1][1]
+        }
     raise ValueError("format_coordinates must be 'bbox', 'polygon' or 'ring'")
 
 
