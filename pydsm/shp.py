@@ -254,7 +254,7 @@ def reproject(coordinates: Coordinates, src_epsg: EPSG, dst_epsg: EPSG, round_to
 
 def dilate(coordinates: Coordinates, distance: float=10.0) -> Coordinates:
     """
-    Dillates a list of coordinates forming a polygon by a given distance  
+    Dilates a list of coordinates forming a polygon by a given distance  
     `warning` EPSG:4326 is not supported for dilation. Please use a projected coordinate system.
 
     :param coordinates: List of coordinates to dilate (x, y) or (lon, lat)
