@@ -151,6 +151,7 @@ def get_bbox(gdal_file: osgeo.gdal.Dataset, format_coordinates='bbox') -> Coordi
         - `bbox` bounding box of the dataset ( (min_x, min_y), (max_x, max_y) )  
         - `polygon` bounding box of the dataset as a polygon ( 4 coordinates )  
         - `ring` bounding box of the dataset as a closed ring ( 5 coordinates )  
+        - `dict` bounding box of the dataset as a dictionary with keys 'min_x', 'min_y', 'max_x', 'max_y'
     :return: bounding box of the dataset ( (min_x, min_y), (max_x, max_y) )
     """
     origin = get_origin(gdal_file)
