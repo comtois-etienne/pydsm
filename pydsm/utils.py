@@ -298,6 +298,19 @@ def add_z_to_points(points: list, z: int | float) -> np.ndarray:
     return np.array([[x, y, z] for x, y in points])
 
 
+def distance_to_point(coords: Points, point: Point, to_int=True):
+    """
+    Calculate the distance from a point to a set of coordinates.
+    :param coords: 2D numpy array of coordinates [(y, x), ...]
+    :param point: Point (y, x) to calculate the distance to
+    :param to_int: If True, return the distances as integers (default is True)
+    :return: 1D numpy array of distances from the point to each coordinate
+    """
+    coords = np.array(coords)
+    distances = np.sqrt((coords[:, 0] - point[0])**2 + (coords[:, 1] - point[1])**2)
+    return distances.astype(int) if to_int else distances
+
+
 ########## DRONE SURVEY FUNCTIONS ##########
 
 def get_capture_airspeed(diagonal_fov, image_ratio, hagl, time_delay=2.0, minimum_overlap=0.7) -> float:
