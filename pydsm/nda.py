@@ -7,6 +7,7 @@ from osgeo import gdal, ogr, osr
 import pandas as pd
 import cv2
 from typing import Any, Optional, Tuple
+from skimage.morphology import disk, binary_erosion
 
 
 from .utils import *
@@ -185,7 +186,8 @@ def rescale(array: np.ndarray, current_spacial_resolution: float | tuple[float, 
 
 def downsample(array: np.ndarray, factor: int) -> np.ndarray:
     """
-    Downsample the array 1 pixel is kept every factor pixels.
+    Downsample the array 1 pixel is kept every factor pixels.  
+    Decimation method.  
 
     :param arr: np.ndarray of shape (n, m)
     :param factor: int, factor to downsample the array
@@ -347,6 +349,25 @@ def shrink_mask(mask: np.ndarray, shrink_factor: float = 0.1) -> np.ndarray:
     mask_padded = rescale_nearest_neighbour(mask_padded, (height, width))
 
     return mask_padded
+
+
+def get_border_coords(mask, decimation=512):
+    """
+    Get the coordinates of the border of the mask.
+
+    :param mask: 2D binary numpy array
+    :param decimation: int, decimation factor to reduce the number of points (default is 512)
+    :return: np.ndarray of shape (n, 2) with the coordinates of the border of the mask.
+    """
+    mask = mask.astype(bool)
+    mask = downsample(mask, decimation)
+
+    mask_erosion = binary_erosion(mask, disk(1))
+    result = np.logical_xor(mask, mask_erosion)
+    coords = np.column_stack(np.where(result > 0))
+    coords = coords * decimation
+    
+    return coords
 
 
 def round_to_mm(array: np.ndarray, dtype=np.float32) -> np.ndarray:
