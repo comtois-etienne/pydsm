@@ -116,6 +116,17 @@ def get_shape(gdal_file: osgeo.gdal.Dataset) -> Shape:
     return gdal_file.RasterYSize, gdal_file.RasterXSize
 
 
+def get_precision(gdal_file: osgeo.gdal.Dataset) -> int:
+    """
+    Precision of the dataset in decimal places
+
+    :param gdal_file: gdal dataset
+    :return: precision of the dataset in number of decimal places
+    """
+    scale = get_scales(gdal_file)[0]
+    return len(str(scale).split('.')[1]) if '.' in str(scale) else 0
+
+
 def get_size(gdal_file: osgeo.gdal.Dataset, round_size=True) -> Size:
     """
     Spacial size of the dataset in meters
@@ -130,7 +141,7 @@ def get_size(gdal_file: osgeo.gdal.Dataset, round_size=True) -> Size:
     x_size = abs(x * pixel_size[0])
     y_size = abs(y * pixel_size[1])
     if round_size:
-        decimals = len(str(scale).split('.')[1]) if '.' in str(scale) else 0
+        decimals = get_precision(gdal_file)
         x_size = round(x_size, decimals)
         y_size = round(y_size, decimals)
     return x_size, y_size
@@ -517,6 +528,8 @@ def crop_from_shapefile(gdal_file: osgeo.gdal.Dataset, shapefile_path: str, mask
     return gdal_croped
 
 
+########## TILES ##########
+
 def _get_first_tile_coordinates(gdal_file: osgeo.gdal.Dataset, tile_spacing: Meters = 50):
     """
     Get the coordinates of the first tile in the geotiff based on the tile spacing.
@@ -538,7 +551,7 @@ def _get_first_tile_coordinates(gdal_file: osgeo.gdal.Dataset, tile_spacing: Met
     return first_tile
 
 
-def tile_geotiff(gdal_file: osgeo.gdal.Dataset, tile_spacing: Meters = 50, scale: Scale = 0.02, min_tile_distance: Meters = None, mask_ratio_threshold: float = 0.98) -> list[osgeo.gdal.Dataset]:
+def tile_geotiff(gdal_file: osgeo.gdal.Dataset, tile_size: Meters = 50, scale: Scale = 0.02, min_tile_distance: Meters = None, mask_ratio_threshold: float = 0.98) -> list[osgeo.gdal.Dataset]:
     """
     Split the geotiff into tiles of defined size and scale.  
     Note that the output tiles can be upscaled or downscaled based on the scale parameter.  
@@ -546,28 +559,31 @@ def tile_geotiff(gdal_file: osgeo.gdal.Dataset, tile_spacing: Meters = 50, scale
     `Warning`: Works does not for geographic projections (e.g. WGS84 (GPS)). Only works for projected coordinate systems (e.g. UTM). Please reproject your geotiff before using this function.  
 
     :param gdal_file: gdal dataset
-    :param tile_spacing: size of the tiles in meters (default is 50m). Use icrements of 1m. 
+    :param tile_size: size of the tiles in meters (default is 50m). Use icrements of 1m. 
     :param scale: scale in meters per pixel for the tiles (default is 0.02)
     :param min_tile_distance: minimum distance from the center of the tile to the edge of the geotiff in meters (default is the radius of the circumscribed circle)
     :param mask_ratio_threshold: ratio of the mask that must be filled to consider the tile valid (default is 0.98 (98%))
     :return: list of tiles as gdal datasets and their distances from the center of the geotiff in meters.
     """
     epsg = get_epsg(gdal_file)
+    if epsg != 2950:
+        # todo : better check and test other projection systems
+        raise RuntimeError("The geotiff must be in a projected coordinate system (e.g. 2950). Please reproject your geotiff before using this function.")
+
     array = to_ndarray(gdal_file)
     gdal_scale = get_scales(gdal_file)[0]
 
-    decimation = int(10.24 / round(gdal_scale, 2))
+    decimation = int(10.24 / round(gdal_scale, 2)) # hard coded ratio to reduce the calculation time
     coords = nda_get_border_coords(array[:,:,3], decimation)
-    min_tile_distance = min_tile_distance or ( tile_spacing / 2 * 1.414 ) # radius of the circumscribed circle
+    min_tile_distance = min_tile_distance or ( tile_size / 2 * 1.414 ) # radius of the circumscribed circle
 
     max_mask_val = np.max(array[:,:,3])
-    tile_size = round(tile_spacing, 0) - scale
     tile_resolution = int(round((tile_size / scale), 0))
-    first_tile = _get_first_tile_coordinates(gdal_file, tile_spacing)
+    first_tile = _get_first_tile_coordinates(gdal_file, tile_size)
 
     w, h = get_size(gdal_file)
-    nx = int(w // tile_spacing) # number of tiles in x direction
-    ny = int(h // tile_spacing) # number of tiles in y direction
+    nx = int(w // tile_size) # number of tiles in x direction
+    ny = int(h // tile_size) # number of tiles in y direction
 
     xline, yline = first_tile
     tiles = [] # list of geotiff
@@ -577,33 +593,33 @@ def tile_geotiff(gdal_file: osgeo.gdal.Dataset, tile_spacing: Meters = 50, scale
         for _ in range(0, ny):
             tile_origin = (xline, yline)
             top_left = get_pixel_at_coordinate(gdal_file, tile_origin)
-            bottom_right = get_pixel_at_coordinate(gdal_file, (xline + tile_spacing, yline - tile_spacing))
+            bottom_right = get_pixel_at_coordinate(gdal_file, (xline + tile_size, yline - tile_size))
             tile = array[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
             mask = tile[:,:,3]
             ratio = np.sum(mask) / mask.size / max_mask_val
 
             if ratio < mask_ratio_threshold:
                 # print(f"Tile at {top_left} with ratio of {ratio:.2f}")
-                xline += tile_spacing
+                xline += tile_size
                 continue
 
-            tile_center = np.array(tile_origin) + (tile_spacing / 2, -tile_spacing / 2)
+            tile_center = np.array(tile_origin) + (tile_size / 2, -tile_size / 2)
             point = get_pixel_at_coordinate(gdal_file, tile_center)
             distances = distance_to_point(coords, point) * gdal_scale
             min_distance = np.min(distances)
 
             if min_distance < min_tile_distance:
                 # print(f"Tile at {top_left} with distance of {min_distance:.2f}m")
-                xline += tile_spacing
+                xline += tile_size
                 continue
 
             tile = cv2_resize(tile, (tile_resolution, tile_resolution), interpolation=INTER_CUBIC)
             tile = nda_to_gdal(tile, epsg, (xline, yline), scale)
             tiles.append(tile)
             tile_distances.append(min_distance)
-            xline += tile_spacing
+            xline += tile_size
         xline, _ = first_tile
-        yline -= tile_spacing
+        yline -= tile_size
 
     return tiles, tile_distances
 
@@ -647,6 +663,108 @@ def display_tile_grid(gdal_file: osgeo.gdal.Dataset, tile_spacing: Meters = 50, 
 
     plt.show()
 
+
+def open_geotiff_tiles(tiles_paths: list[str]) -> list[osgeo.gdal.Dataset]:
+    """
+    Opens a list of geotiff files and checks if they have the same scale and shape.
+
+    :param tiles_paths: list of paths to the geotiff files
+    :return: list of gdal datasets of the geotiff files
+    :raises ValueError: if the tiles do not have the same scale or shape
+    """
+    tiles = []
+    scales = []
+    shapes = []
+
+    for tile_path in tiles_paths:
+        if not os.path.exists(tile_path):
+            print(f"Tile {tile_path} does not exist.")
+            continue
+        tiles.append(open_geotiff(tile_path))
+        scales.append(get_scales(tiles[-1])[0])
+        shapes.append(get_shape(tiles[-1]))
+
+    if np.unique(np.array(scales)).size > 1:
+        raise ValueError("All tiles must have the same scale.")
+    
+    if np.unique(np.array(shapes)).size > 1:
+        raise ValueError("All tiles must have the same shape.")
+
+    return tiles
+
+
+def get_tiles_bbox(tiles: list[osgeo.gdal.Dataset]) -> dict:
+    """
+    Get the bounding box surrounding all the given tiles.
+
+    :param tiles: list of gdal datasets of the tiles
+    :return: dictionary with the bounding box coordinates and the origin
+        - 'min_x': minimum x coordinate
+        - 'min_y': minimum y coordinate
+        - 'max_x': maximum x coordinate
+        - 'max_y': maximum y coordinate
+        - 'origin': tuple of the origin coordinates (min_x, max_y)
+    """
+    min_x = np.inf
+    min_y = np.inf
+    max_x = -1
+    max_y = -1
+
+    for tile in tiles:
+        bbox = get_bbox(tile, format_coordinates='dict')
+        min_x = min(min_x, bbox['min_x'])
+        min_y = min(min_y, bbox['min_y'])
+        max_x = max(max_x, bbox['max_x'])
+        max_y = max(max_y, bbox['max_y'])
+
+    return {
+        'min_x': min_x,
+        'min_y': min_y,
+        'max_x': max_x,
+        'max_y': max_y,
+        'origin': (min_x, max_y)
+    }
+
+
+def merge_tiles(tiles: list[osgeo.gdal.Dataset]) -> osgeo.gdal.Dataset:
+    """
+    Merge a list of tiles into a single gdal dataset.
+
+    :param tiles: list of gdal datasets of the tiles
+    :return: merged gdal dataset of the tiles
+    """
+    bbox = get_tiles_bbox(tiles)
+    origin = np.array(bbox['origin'])
+
+    scale = get_scales(tiles[0])[0]
+    precision = get_precision(tiles[0])
+    tile_array = to_ndarray(tiles[0])
+    shape = np.array(tile_array.shape)
+
+    diff_x = round(abs(bbox['max_x'] - bbox['min_x']), precision)
+    diff_y = round(abs(bbox['max_y'] - bbox['min_y']), precision)
+    shape[1] = int(round(diff_x / scale, 0))
+    shape[0] = int(round(diff_y / scale, 0))
+
+    array = np.zeros(shape, dtype=tile_array.dtype)
+
+    for tile in tiles:
+        tile_array = to_ndarray(tile)
+        tile_shape = np.array(tile_array.shape)
+        tile_origin = np.array(get_origin(tile))
+
+        position = np.round(np.abs(tile_origin - origin) / scale, 0).astype(int)
+        position = position[::-1]
+
+        array[
+            position[0]:position[0] + tile_shape[0], 
+            position[1]:position[1] + tile_shape[1]
+        ] = tile_array
+
+    return nda_to_gdal(array, get_epsg(tiles[0]), origin, scale)
+
+
+########## ZONES ##########
 
 def extract_zones(geotif_path: str, save_directory: str = './', street_name_exclusions: list[str] = None, search_radius: int=500, sample_size: int=3, safe_zone: float=10, min_area=2500) -> list[UUIDv4]:
     """
