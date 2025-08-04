@@ -1,6 +1,6 @@
 
 # 1. reproject geotiff to your local projection
-./main.py reproject dsm.tif --save-path 2950/dsm.tif --epsg 2950
+./main.py reproject 2950 dsm.tif --save-path 2950/dsm.tif
 
 # 2. create ndsm from dsm and dtm
 ./main.py ndsm dsm.tif dtm.tif --correct-dtm --resize orthophoto.tif
