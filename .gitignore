@@ -2,6 +2,8 @@ notebook.ipynb
 images
 data
 data/*
+tiles
+tiles/*
 strath
 cache
 processed
