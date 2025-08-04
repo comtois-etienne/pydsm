@@ -11,6 +11,7 @@ logs
 .bak
 *.png
 *.jpg
+*.tif
 *.ipynb
 *.obj
 *.csv
