@@ -134,12 +134,17 @@ def to_cmap(path: str, cmap: str = None, save_path: str = None):
     gdal = geo.open_geotiff(path)
     print(f'* Generating {cmap} colormap from {path}')
     array = geo.to_ndarray(gdal)
-    if np.min(array) == 0.0:
-        array_cmap = nda.to_cmap(array, cmap=cmap)
-        array_cmap = nda.to_uint8(array_cmap)
+
+    if cmap == 'rgb':
+        # array_cmap = array[..., :3]
+        array = nda.to_uint8(array)
+    elif np.min(array) == 0.0:
+        array = nda.to_cmap(array, cmap=cmap)
+        array = nda.to_uint8(array)
     else:
-        array_cmap = nda.dsm_to_cmap(array, cmap=cmap)
-    iio.imwrite(save_path, array_cmap)
+        array = nda.dsm_to_cmap(array, cmap=cmap)
+    
+    iio.imwrite(save_path, array)
     print(f'* Saved to {save_path}')
 
 
@@ -496,4 +501,44 @@ def generate_rbh_wavefront(
 
     utils.write_dict_as_json(objects_metadata, file_path=meta_path)
     print(f'* Saved to {meta_path}')
+
+
+def extract_tiles(orthophoto_path: str, ndsm_path: str, tiles_dir: str, date: str, tile_size: int = None, scale: float = None, verbose: bool = True) -> None:
+    """
+    Extract valid tiles from an orthophoto and NDSM, and save them to a directory.
+
+    :param orthophoto_path: path to the orthophoto geotiff file
+    :param ndsm_path: path to the NDSM geotiff file
+    :param tiles_dir: directory to save the extracted tiles (must contain a 'orthophoto' and 'ndsm' subdirectory)
+    :param date: date of the tiles (used in the naming convention of the saved tiles)
+    :param tile_size: size of the tiles in meters (default is 50m)
+    :param scale: scale in meters per pixel to resize the tiles (default is 0.02)
+    :param verbose: whether to display the tile grid (default is True)
+    :return: None (saves the tiles to the directory)    
+    """
+    tile_size = tile_size or 50  # default tile size in meters
+    scale = scale or 0.02  # default scale in meters per pixel
+    
+    orthophoto = geo.open_geotiff(orthophoto_path)
+    ndsm = geo.open_geotiff(ndsm_path)
+
+    print(f'* Extracting tiles from \'{orthophoto_path}\'')
+    tiles_coordinates, tile_distances = geo.get_tiles_coordinates(orthophoto, tile_size, scale)
+
+    print(f'* Cropping into tiles with size {tile_size}m and scale {scale}m/pixel')
+    ortho_tiles = geo.crop_into_tiles(orthophoto, tiles_coordinates, tile_size, scale)
+    ndsm_tiles = geo.crop_into_tiles(ndsm, tiles_coordinates, tile_size, scale)
+
+    if verbose:
+        geo.display_tile_grid(orthophoto, tile_size, tiles=ortho_tiles)
+
+    print(f'* Saving {len(ortho_tiles)} orthophoto tiles')
+    ortho_dir = os.path.join(tiles_dir, 'orthophoto')
+    geo.save_tiles(ortho_tiles, tile_distances, ortho_dir, date)
+    print(f'  Tiles saved to \'{ortho_dir}\'')
+
+    print(f'* Saving {len(ndsm_tiles)} NDSM tiles')
+    ndsm_dir = os.path.join(tiles_dir, 'ndsm')
+    geo.save_tiles(ndsm_tiles, tile_distances, ndsm_dir, date)
+    print(f'  Tiles saved to \'{ndsm_dir}\'')
 
