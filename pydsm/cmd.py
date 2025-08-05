@@ -53,13 +53,13 @@ def compute_ndsm(dsm_path: str, dtm_path: str, ndsm_path: str = None, correct_dt
         print(f'* Correcting DTM values')
         dtm = geo.correct_dtm(dtm)
 
-    print(f'* Generating nDSM from {dsm_path} and {dtm_path}')
+    print(f'* Generating nDSM from \'{dsm_path}\' and \'{dtm_path}\'')
     capture_height = capture_height or 60.0
     ndsm = geo.to_ndsm(dsm, dtm, capture_height=capture_height)
 
     ndsm_path = ndsm_path or utils.append_file_to_path(utils.get_folder_path(dsm_path), 'ndsm.tif')
     geo.save_geotiff(ndsm, ndsm_path)
-    print(f'* Saved to {ndsm_path}')
+    print(f'* Saved to \'{ndsm_path}\'')
 
 
 def display_epsg(path: str):
@@ -97,7 +97,7 @@ def reproject_geotiff(path: str, save_path: str = None, epsg=4326):
 
     save_path = save_path or f'{utils.remove_extension(path)}_{epsg}.tif'
     geo.save_geotiff(reprojected, save_path)
-    print(f'* Saved to {save_path}')
+    print(f'* Saved to \'{save_path}\'')
 
 
 def to_xyz(path: str, save_path: str = None):
@@ -117,7 +117,7 @@ def to_xyz(path: str, save_path: str = None):
     print(f'* Generating XYZ from EPSG {epsg}')
     xyz = geo.to_xyz(gdal)
     nda.write_numpy(save_path, data=xyz, metadata={'epsg': epsg})
-    print(f'* Saved to {save_path}')
+    print(f'* Saved to \'{save_path}\'')
 
 
 def to_cmap(path: str, cmap: str = None, save_path: str = None):
@@ -132,7 +132,7 @@ def to_cmap(path: str, cmap: str = None, save_path: str = None):
     cmap = cmap or 'viridis'
     save_path = save_path or f'{utils.remove_extension(path)}_{cmap}.png'
     gdal = geo.open_geotiff(path)
-    print(f'* Generating {cmap} colormap from {path}')
+    print(f'* Generating {cmap} colormap from \'{path}\'')
     array = geo.to_ndarray(gdal)
 
     if cmap == 'rgb':
@@ -145,7 +145,7 @@ def to_cmap(path: str, cmap: str = None, save_path: str = None):
         array = nda.dsm_to_cmap(array, cmap=cmap)
     
     iio.imwrite(save_path, array)
-    print(f'* Saved to {save_path}')
+    print(f'* Saved to \'{save_path}\'')
 
 
 def overlay_values(path: str, y: int, x: int, h: int, w: int, cmap: str = None, save_path: str = None, region: bool = False, downscale: int = None):
@@ -174,21 +174,21 @@ def overlay_values(path: str, y: int, x: int, h: int, w: int, cmap: str = None, 
         x, y, x2, y2 = x // downscale, y // downscale, x2 // downscale, y2 // downscale
 
     if region:
-        print(f'* Generating {cmap} colormap of {path}')
+        print(f'* Generating {cmap} colormap of \'{path}\'')
         region_path = save_path.replace('_values.png', '_region.png')
         array_cmap = nda.to_cmap(array, cmap=cmap)
         array_cmap = nda.to_uint8(array_cmap)
         rr, cc = polygon([y, y, y2, y2], [x, x2, x2, x], shape=array.shape)
         array_cmap[rr, cc] = array_cmap[rr, cc] // 2
         iio.imwrite(region_path, array_cmap)
-        print(f'* Saved to {region_path}')
+        print(f'* Saved to \'{region_path}\'')
 
-    print(f'* Overlaying values of {path}')
+    print(f'* Overlaying values of \'{path}\'')
     array = array[y:y2, x:x2]
     round_value = 0 if array.dtype == int else 3
     overlayed = nda.overlay_values(array, cmap=cmap, round_value=round_value)
     iio.imwrite(save_path, overlayed)
-    print(f'* Saved to {save_path}')
+    print(f'* Saved to \'{save_path}\'')
 
 
 def csv_to_shapefile(csv_path: str, shapefile_path: str = None, epsg: int = None):
@@ -209,7 +209,7 @@ def csv_to_shapefile(csv_path: str, shapefile_path: str = None, epsg: int = None
     """
     shp_path = shapefile_path or f'{utils.remove_extension(csv_path)}.shp'
     shp.save_from_csv(csv_path, shp_path, epsg=epsg)
-    print(f'* Saved to {shapefile_path}')
+    print(f'* Saved to \'{shapefile_path}\'')
 
 
 def crop_geotiff(geotiff_path: str, shapefile_path: str, save_path: str = None, dilate: float = 15.0):
@@ -234,7 +234,7 @@ def crop_geotiff(geotiff_path: str, shapefile_path: str, save_path: str = None, 
     gdal = geo.open_geotiff(geotiff_path)
     cropped = geo.crop_from_shapefile(gdal, shapefile_path, dilate_size=dilate)
     geo.save_geotiff(cropped, save_path)
-    print(f'* Saved to {save_path}')
+    print(f'* Saved to \'{save_path}\'')
 
 
 def extract_by_zone(geotiff_paths: list,
@@ -278,7 +278,7 @@ def extract_by_zone(geotiff_paths: list,
         x = df['x'][0]
         y = df['y'][0]
 
-    print(f'* Extracting zones from {geotiff_paths[0]}')
+    print(f'* Extracting zones from \'{geotiff_paths[0]}\'')
     uuids = geo.extract_zones(
         geotiff_paths[0], 
         save_folder, 
@@ -289,7 +289,7 @@ def extract_by_zone(geotiff_paths: list,
 
     geotiff_paths = [] if no_crop else geotiff_paths
     for geotiff_path in geotiff_paths:
-        print(f'* Cropping {geotiff_path}')
+        print(f'* Cropping \'{geotiff_path}\'')
         geotiff_file = geo.open_geotiff(geotiff_path)
 
         if x or y:
@@ -304,7 +304,7 @@ def extract_by_zone(geotiff_paths: list,
             file_path = f'{save_path}_{name}.tif'
             croped_ortho = geo.crop_from_shapefile(geotiff_file, f'{save_path}.shp', dilate_size=dilate)
             geo.save_geotiff(croped_ortho, file_path)
-            print(f'  Saved to {file_path}')
+            print(f'  Saved to \'{file_path}\'')
 
 
 def display_geotiff_info(path: str):
@@ -315,7 +315,7 @@ def display_geotiff_info(path: str):
     :return: None (displays the information to the console)
     """
     gdal = geo.open_geotiff(path)
-    print(f'* Information about {path}')
+    print(f'* Information about \'{path}\'')
 
     print(f'* Raster info:')
     print(f'  Shape: {geo.get_shape(gdal)}')
@@ -349,7 +349,7 @@ def resize_geotiff_like(geotiff_path: str, geotiff_like_path: str, save_path: st
     print(f'* Resizing from {geo.get_shape(gdal)} to {geo.get_shape(gdal_like)}')
     resized = geo.resize_like(gdal, gdal_like)
     geo.save_geotiff(resized, save_path)
-    print(f'* Saved to {save_path}')
+    print(f'* Saved to \'{save_path}\'')
 
 
 def rescale_geotiff(geotiff_path: str, scale: float, save_path: str = None):
@@ -366,7 +366,7 @@ def rescale_geotiff(geotiff_path: str, scale: float, save_path: str = None):
     print(f'* Rescaling from {geo.get_scales(gdal)[0]}m/px to {scale}m/px')
     rescaled = geo.rescale(gdal, scale)
     geo.save_geotiff(rescaled, save_path)
-    print(f'* Saved to {save_path}')
+    print(f'* Saved to \'{save_path}\'')
 
 
 def translate_geotiff(geotiff_path: str, x: float, y: float, save_path: str = None):
@@ -390,7 +390,7 @@ def translate_geotiff(geotiff_path: str, x: float, y: float, save_path: str = No
     print(f'* Translating {geotiff_path} by {x}m X and {y}m Y')
     translated = geo.translation(gdal, (x, y))
     geo.save_geotiff(translated, save_path)
-    print(f'* Saved to {save_path}')
+    print(f'* Saved to \'{save_path}\'')
 
 
 def geotiff_registration(
@@ -417,7 +417,7 @@ def geotiff_registration(
     geotiff = geo.open_geotiff(geotiff_path)
     url = utils.epsgio_link_from_coord(geo.get_center(geotiff), geo.get_epsg(geotiff), layer=layer)
 
-    print(f'* Registering {geotiff_path} onto the OSM map')
+    print(f'* Registering \'{geotiff_path}\' onto the OSM map')
     print(f'  Please select a point on the map to register the geotiff')
     print(f'  Opening {url} in 3s...', end=' ')
     time.sleep(1)
@@ -439,13 +439,13 @@ def geotiff_registration(
 
     df = pd.DataFrame({'x': [x], 'y': [y]})
     df.to_csv(csv_path, index=False)
-    print(f'* Saved to {csv_path}')
+    print(f'* Saved to \'{csv_path}\'')
 
     if translate:
         print(f'* Translating {geotiff_path} by {x}m X and {y}m Y')
         translated = geo.translation(geotiff, (x, y))
         geo.save_geotiff(translated, save_path)
-        print(f'* Saved to {save_path}')
+        print(f'* Saved to \'{save_path}\'')
 
 
 def generate_rbh_wavefront(
@@ -473,7 +473,7 @@ def generate_rbh_wavefront(
     :return: None (saves the wavefront and metadata to disk)
     """
     if not os.path.exists(save_dir):
-        print(f'* Creating directory {save_dir}')
+        print(f'* Creating directory \'{save_dir}\'')
         os.makedirs(save_dir)
 
     print(f'* Generating wavefront objects from masks in {masks_path}')
@@ -497,10 +497,10 @@ def generate_rbh_wavefront(
     meta_path = utils.append_file_to_path(save_dir, f'{uuid}_trees_metadata.json')
     
     obj.write_wavefront(wavefront_objects, file_path=obj_path, swap_yz=False, precision=3)
-    print(f'* Saved to {obj_path}')
+    print(f'* Saved to \'{obj_path}\'')
 
     utils.write_dict_as_json(objects_metadata, file_path=meta_path)
-    print(f'* Saved to {meta_path}')
+    print(f'* Saved to \'{meta_path}\'')
 
 
 def extract_tiles(orthophoto_path: str, ndsm_path: str, tiles_dir: str, date: str, tile_size: int = None, scale: float = None, verbose: bool = True) -> None:
