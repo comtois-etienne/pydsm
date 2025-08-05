@@ -6,6 +6,8 @@ from scipy.ndimage import zoom
 from osgeo import gdal, ogr, osr
 import pandas as pd
 import cv2
+from cv2 import resize as cv2_resize
+from cv2 import INTER_CUBIC
 from typing import Any, Optional, Tuple
 from skimage.morphology import disk, binary_erosion
 
@@ -216,6 +218,21 @@ def rescale_nearest_neighbour(array: np.ndarray, shape: tuple[int, int]) -> np.n
     :return: np.ndarray of shape (y, x)
     """
     return cv2.resize(array, (shape[1], shape[0]), interpolation=cv2.INTER_NEAREST)
+
+
+def crop_resize(array: np.ndarray, bbox: tuple[Coordinate, Coordinate], resolution: int) -> np.ndarray:
+    """
+    Crop and resize a numpy array to a given bounding box and resolution.
+    
+    :param array: numpy array to crop and resize
+    :param bbox: bounding box as a tuple of top left (y,x) and bottom right (y,x) pixel coordinates
+    :param resolution: desired resolution in pixels
+    :return: cropped and resized numpy array
+    """
+    top_left, bottom_right = bbox
+    tile = array[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
+    resized_array = cv2_resize(tile, (resolution, resolution), interpolation=INTER_CUBIC)
+    return resized_array
 
 
 def to_cmap(array: np.ndarray, cmap: str='viridis', nrm=True) -> np.ndarray:
