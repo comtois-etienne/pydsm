@@ -531,7 +531,6 @@ def crop_from_shapefile(gdal_file: osgeo.gdal.Dataset, shapefile_path: str, mask
 
 ########## TILES ##########
 
-# todo : put private
 def _get_first_tile_coordinates(gdal_file: osgeo.gdal.Dataset, tile_spacing: Meters = 50):
     """
     Get the coordinates of the first tile in the geotiff based on the tile spacing.
@@ -593,11 +592,12 @@ def get_tiles_coordinates(gdal_file: osgeo.gdal.Dataset, tile_size: Meters = 50,
         Higher distances should indicate better quality tiles.
     """
     array = to_ndarray(gdal_file)
+    shape = array.shape
     gdal_scale = get_scales(gdal_file)[0]
 
-    decimation = int(10.24 / round(gdal_scale, 2)) # hard coded ratio to reduce the calculation time
+    decimation = int(512 / 100 / round(gdal_scale, 2)) # hard coded ratio to reduce the number of calculation
     coords = nda_get_border_coords(array[:,:,3], decimation)
-    min_tile_distance = min_tile_distance or ( tile_size / 2 * 1.414 ) # radius of the circumscribed circle
+    min_tile_distance = min_tile_distance or ( tile_size / 2 * 1.414 * 1.01 ) # radius of the circumscribed circle + 1% margin
 
     max_mask_val = np.max(array[:,:,3])
     tile_resolution = _get_tile_resolution(tile_size, scale)
@@ -611,15 +611,22 @@ def get_tiles_coordinates(gdal_file: osgeo.gdal.Dataset, tile_size: Meters = 50,
     tiles_coordinates = []
     tile_distances = [] # list of distances form the center of the tile to the edge of the geotiff
 
-    for _ in range(0, nx):
-        for _ in range(0, ny):
-            tile_origin = (xline, yline)
-            bbox = _get_tile_bbox(gdal_file, tile_origin, tile_size)
+    for _ in range(0, nx + 1):
+        for _ in range(0, ny + 1):
+            tile_origin = (xline, yline) # in meters from the coordinate system origin
+            bbox = _get_tile_bbox(gdal_file, tile_origin, tile_size) # pixel coordinates
+
+            if bbox[1][0] > shape[0] or bbox[1][1] > shape[1]:
+                # print(f"  Tile {bbox[0]} is out of bounds, skipping.")
+                xline += tile_size
+                continue
+
             tile = nda_crop_resize(array, bbox, tile_resolution)
             mask = tile[:,:,3]
             ratio = np.sum(mask) / mask.size / max_mask_val
 
             if ratio < mask_ratio_threshold:
+                # print(f"  Tile {bbox[0]} has a mask ratio of {ratio:.2f}, skipping.")
                 xline += tile_size
                 continue
 
@@ -629,6 +636,7 @@ def get_tiles_coordinates(gdal_file: osgeo.gdal.Dataset, tile_size: Meters = 50,
             min_distance = np.min(distances)
 
             if min_distance < min_tile_distance:
+                # print(f"  Tile {bbox[0]} has a minimum distance of {min_distance:.2f}m, skipping.")
                 xline += tile_size
                 continue
 
@@ -662,48 +670,28 @@ def crop_into_tile(gdal_file: osgeo.gdal.Dataset, tile_origin: Coordinate, tile_
     return tile
 
 
-def crop_into_tiles(gdal_file: osgeo.gdal.Dataset, tiles_coordinates: Coordinates, tile_size: Meters = 50, scale: Scale = 0.02) -> list[osgeo.gdal.Dataset]:
+def save_tile(tile: osgeo.gdal.Dataset, tile_distance: Meters, tiles_dir: str, date: str = None) -> None:
     """
-    Crop the gdal dataset to the tiles coordinates.
-    
-    :param gdal_file: gdal dataset
-    :param tiles_coordinates: list of tile coordinates (x, y) in meters
-    :param tile_size: size of the tiles in meters (default is 50m)
-    :param scale: scale in meters per pixel for the tiles (default is 0.02)
-    :return: list of gdal datasets of the cropped tiles
-    """
-    array = to_ndarray(gdal_file)
-    tiles = []
-    for tile_origin in tiles_coordinates:
-        tile = crop_into_tile(gdal_file, tile_origin, tile_size, scale, array)
-        tiles.append(tile)
-    return tiles
+    Save a single tile to the given directory with a specific naming convention.
+    Assuming the tile is square
 
-
-def save_tiles(tiles: list[osgeo.gdal.Dataset], tile_distances: list[Meters], tiles_dir: str, date: str = None) -> None:
-    """
-    Save the list of tiles to the given directory with a specific naming convention.
-
-    :param tiles: list of gdal datasets of the tiles
+    :param tile: gdal dataset of the tile
     :param tile_distances: list of distances from the center of the tiles to the edge of the geotiff in meters
     :param tiles_dir: directory to save the tiles
     :param date: date of the tiles (default is 0000-00-00)
     :return: None (saves the tiles to the directory)
     """
     date = date or '0000-00-00'
-    tile_size = int(get_size(tiles[0])[0])  # assuming all tiles have the same size
+    tile_size = int(get_size(tile)[0])
+    distance = int(round(tile_distance))
+    x, y = get_origin(tile)
 
-    for i in range(len(tiles)):
-        tile = tiles[i]
-        x, y = get_origin(tile)
-        distance = int(round(tile_distances[i]))
-
-        tile_name = f'{tile_size}_{int(x)}_{int(y)} ({date}) ({distance}m).tif'
-        save_path = append_file_to_path(tiles_dir, tile_name)
-        save_geotiff(tile, save_path)
+    tile_name = f'{tile_size}_{int(x)}_{int(y)} ({date}) ({distance}m).tif'
+    save_path = append_file_to_path(tiles_dir, tile_name)
+    save_geotiff(tile, save_path)
 
 
-def display_tile_grid(gdal_file: osgeo.gdal.Dataset, tile_spacing: Meters = 50, figure_size: int = 10, tiles: list[osgeo.gdal.Dataset] = None):
+def display_tile_grid(gdal_file: osgeo.gdal.Dataset, tile_spacing: Meters = 50, figure_size: int = 10, tiles_coordinates: Coordinates = None):
     """
     Display the tile grid of a geotiff file with matplotlib.  
 
@@ -734,10 +722,10 @@ def display_tile_grid(gdal_file: osgeo.gdal.Dataset, tile_spacing: Meters = 50, 
         plt.axhline(y=y[0], color='red', linestyle='--', linewidth=1.0)
         yline -= tile_spacing
 
-    if tiles is not None:
-        for tile in tiles:
-            coord = get_center(tile)
-            x, y = get_pixel_at_coordinate(gdal_file, coord)
+    if tiles_coordinates is not None:
+        for tile_coord in tiles_coordinates:
+            center = np.array(tile_coord) + (tile_spacing / 2, -tile_spacing / 2)
+            x, y = get_pixel_at_coordinate(gdal_file, center)
             plt.scatter(y, x, color='blue', s=100)
 
     plt.show()
