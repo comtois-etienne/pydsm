@@ -236,6 +236,18 @@ def write_dict_as_json(metadata: dict, file_path: str) -> None:
         json.dump(metadata, f, indent=4)
 
 
+def read_translate_csv(file_path: str):
+    """
+    Reads a CSV file and returns a dictionary with the first column as keys and the second column as values.
+    
+    :param file_path: str, path to the CSV file
+    :return: tuple, x and y translation
+    """
+    import pandas as pd
+    df = pd.read_csv(file_path)
+    return df['x'].iloc[0], df['y'].iloc[0]
+
+
 ########## CONVERSIONS FUNCTIONS ##########
 
 def pixel_to_height(pixel: int, scale: Scale, padding: int=0) -> Meters:
