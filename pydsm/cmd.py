@@ -139,10 +139,10 @@ def to_cmap(path: str, cmap: str = None, save_path: str = None, downsample: int 
     array = geo.to_ndarray(gdal)
 
     if downsample > 1:
-        print(f'* Downsampling by a factor of {downsample}')
+        print(f'  Downsampling by a factor of {downsample}')
         array = nda.downsample(array, downsample)
 
-    print(f'* Generating {cmap} colormap from \'{path}\'')
+    print(f'  Generating {cmap} colormap from \'{path}\'')
     if cmap == 'rgb':
         array = nda.to_uint8(array)
     elif np.min(array) == 0.0:
@@ -153,7 +153,7 @@ def to_cmap(path: str, cmap: str = None, save_path: str = None, downsample: int 
     
     array = array[..., :3]
     iio.imwrite(save_path, array)
-    print(f'* Saved to \'{save_path}\'')
+    print(f'  Saved to \'{save_path}\'')
 
 
 def overlay_values(path: str, y: int, x: int, h: int, w: int, cmap: str = None, save_path: str = None, region: bool = False, downscale: int = None):
