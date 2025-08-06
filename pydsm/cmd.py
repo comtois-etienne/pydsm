@@ -395,7 +395,7 @@ def translate_geotiff(geotiff_path: str, x: float, y: float, save_path: str = No
         print(f'  Consider reprojecting the geotiff to a Cartesian coordinate system')
         return
 
-    print(f'* Translating {geotiff_path} by {x}m X and {y}m Y')
+    print(f'* Translating \'{geotiff_path}\' by {x}m X and {y}m Y')
     translated = geo.translation(gdal, (x, y))
     geo.save_geotiff(translated, save_path)
     print(f'  Saved to \'{save_path}\'')
