@@ -34,11 +34,12 @@ def compute_ndsm(dsm_path: str, dtm_path: str, ndsm_path: str = None, correct_dt
     :param resize: str, path to the orthophoto to resize the DSM and DTM (optional)  
     :return: None (saves the nDSM to disk)  
     """
+    print(f'* Opening the geotiffs')
     dsm = geo.open_geotiff(dsm_path)
     dtm = geo.open_geotiff(dtm_path)
 
     if resize:
-        print(f'* Resizing DSM and DTM to the orthophoto shape')
+        print(f'  Resizing DSM and DTM to the orthophoto shape')
         orthophoto = geo.open_geotiff(resize)
         shape_ortho = geo.get_shape(orthophoto)
         dsm = geo.resize_like(dsm, orthophoto) if geo.get_shape(dsm) != shape_ortho else dsm
@@ -50,16 +51,16 @@ def compute_ndsm(dsm_path: str, dtm_path: str, ndsm_path: str = None, correct_dt
         return
 
     if correct_dtm:
-        print(f'* Correcting DTM values')
+        print(f'  Correcting DTM values')
         dtm = geo.correct_dtm(dtm)
 
-    print(f'* Generating nDSM from \'{dsm_path}\' and \'{dtm_path}\'')
+    print(f'  Generating nDSM from \'{dsm_path}\' and \'{dtm_path}\'')
     capture_height = capture_height or 60.0
     ndsm = geo.to_ndsm(dsm, dtm, capture_height=capture_height)
 
     ndsm_path = ndsm_path or utils.append_file_to_path(utils.get_folder_path(dsm_path), 'ndsm.tif')
     geo.save_geotiff(ndsm, ndsm_path)
-    print(f'* Saved to \'{ndsm_path}\'')
+    print(f'  Saved to \'{ndsm_path}\'')
 
 
 def display_epsg(path: str):
