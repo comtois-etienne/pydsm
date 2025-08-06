@@ -9,7 +9,7 @@ import cv2
 from cv2 import resize as cv2_resize
 from cv2 import INTER_CUBIC
 from typing import Any, Optional, Tuple
-from skimage.morphology import disk, binary_erosion
+from skimage.morphology import disk, binary_erosion, binary_dilation
 
 
 from .utils import *
@@ -231,8 +231,8 @@ def crop_resize(array: np.ndarray, bbox: tuple[Coordinate, Coordinate], resoluti
     """
     top_left, bottom_right = bbox
     tile = array[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
-    resized_array = cv2_resize(tile, (resolution, resolution), interpolation=INTER_CUBIC)
-    return resized_array
+    tile = cv2_resize(tile, (resolution, resolution), interpolation=INTER_CUBIC)
+    return tile
 
 
 def to_cmap(array: np.ndarray, cmap: str='viridis', nrm=True) -> np.ndarray:
@@ -379,11 +379,17 @@ def get_border_coords(mask, decimation=512):
     mask = mask.astype(bool)
     mask = downsample(mask, decimation)
 
-    mask_erosion = binary_erosion(mask, disk(1))
-    result = np.logical_xor(mask, mask_erosion)
+    mask_dilation = binary_dilation(mask, disk(1))
+    result = np.logical_xor(mask, mask_dilation)
+
+    # add exclusion border to the mask
+    ones = np.ones_like(result, dtype=bool)
+    ones[1:-1, 1:-1] = False
+    result = np.logical_or(result, ones)
+
     coords = np.column_stack(np.where(result > 0))
-    coords = coords * decimation
-    
+    coords = (coords * decimation) + (decimation // 4)
+
     return coords
 
 
