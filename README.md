@@ -44,7 +44,8 @@ DSM, DTM, nDSM and Ortophoto tools
 
 to avoid circular dependencies, the files can be imported in such a way that :  
 
-`main` --__import__--> (`geo`, `nda`, `shp`, `utils`)  
+`main` --__import__--> (`cmd`, `geo`, `nda`, `shp`, `utils`)  
+`cmd` --__import__--> (`geo`, `nda`, `shp`, `utils`)  
 `geo` --__import__--> (`nda`, `shp`, `utils`)  
 `nda` --__import__--> (`shp`, `utils`)  
 `shp` --__import__--> (`utils`)  
