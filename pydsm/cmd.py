@@ -511,7 +511,7 @@ def generate_rbh_wavefront(
     print(f'* Saved to \'{meta_path}\'')
 
 
-def extract_tiles(orthophoto_path: str, ndsm_path: str, tiles_dir: str, date: str, tile_size: int = None, scale: float = None, verbose: bool = True) -> None:
+def extract_tiles(orthophoto_path: str, tiles_dir: str, date: str, tile_size: int = None, scale: float = None, verbose: bool = True, *, ndsm_path: str = None, dsm_path: str = None) -> None:
     """
     Extract valid tiles from an orthophoto and NDSM, and save them to a directory.
     Tiles name : `{tile_size}_{x}_{y} ({date}) ({distance from border}m).tif`
@@ -528,11 +528,9 @@ def extract_tiles(orthophoto_path: str, ndsm_path: str, tiles_dir: str, date: st
     """
     tile_size = tile_size or 50  # default tile size in meters
     scale = scale or 0.02  # default scale in meters per pixel
-    
-    orthophoto = geo.open_geotiff(orthophoto_path)
-    ndsm = geo.open_geotiff(ndsm_path)
 
     print(f'* Extracting tiles from \'{orthophoto_path}\'')
+    orthophoto = geo.open_geotiff(orthophoto_path)
     tiles_coordinates, tile_distances = geo.get_tiles_coordinates(orthophoto, tile_size, scale)
 
     if verbose:
@@ -546,11 +544,23 @@ def extract_tiles(orthophoto_path: str, ndsm_path: str, tiles_dir: str, date: st
         geo.save_tile(tile, tile_distances[i], ortho_dir, date)
     print(f'  Tiles saved to \'{ortho_dir}\'')
 
-    print(f'* Cropping NDSM into tiles')
-    array = geo.to_ndarray(ndsm)
-    ndsm_dir = os.path.join(tiles_dir, 'ndsm')
-    for i in range(len(tiles_coordinates)):
-        tile = geo.crop_into_tile(ndsm, tiles_coordinates[i], tile_size, scale, array)
-        geo.save_tile(tile, tile_distances[i], ndsm_dir, date)
-    print(f'  Tiles saved to \'{ndsm_dir}\'')
+    if ndsm_path:
+        print(f'* Cropping NDSM into tiles')
+        ndsm = geo.open_geotiff(ndsm_path)
+        array = geo.to_ndarray(ndsm)
+        ndsm_dir = os.path.join(tiles_dir, 'ndsm')
+        for i in range(len(tiles_coordinates)):
+            tile = geo.crop_into_tile(ndsm, tiles_coordinates[i], tile_size, scale, array)
+            geo.save_tile(tile, tile_distances[i], ndsm_dir, date)
+        print(f'  Tiles saved to \'{ndsm_dir}\'')
+
+    if dsm_path:
+        print(f'* Cropping DSM into tiles')
+        ndsm = geo.open_geotiff(ndsm_path)
+        array = geo.to_ndarray(ndsm)
+        dsm_dir = os.path.join(tiles_dir, 'dsm')
+        for i in range(len(tiles_coordinates)):
+            tile = geo.crop_into_tile(ndsm, tiles_coordinates[i], tile_size, scale, array)
+            geo.save_tile(tile, tile_distances[i], dsm_dir, date)
+        print(f'  Tiles saved to \'{dsm_dir}\'')
 
