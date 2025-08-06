@@ -9,7 +9,7 @@ import cv2
 from cv2 import resize as cv2_resize
 from cv2 import INTER_CUBIC
 from typing import Any, Optional, Tuple
-from skimage.morphology import disk, binary_erosion, binary_dilation
+from skimage.morphology import disk, binary_dilation
 
 
 from .utils import *
