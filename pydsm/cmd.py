@@ -97,7 +97,7 @@ def reproject_geotiff(path: str, save_path: str = None, epsg=4326):
 
     save_path = save_path or f'{utils.remove_extension(path)}_{epsg}.tif'
     geo.save_geotiff(reprojected, save_path)
-    print(f'* Saved to \'{save_path}\'')
+    print(f'  Saved to \'{save_path}\'')
 
 
 def to_xyz(path: str, save_path: str = None):
@@ -120,7 +120,7 @@ def to_xyz(path: str, save_path: str = None):
     print(f'* Saved to \'{save_path}\'')
 
 
-def to_cmap(path: str, cmap: str = None, save_path: str = None):
+def to_cmap(path: str, cmap: str = None, save_path: str = None, downsample: int = None):
     """
     Converts a geotiff (dsm, dtm, ndsm) file to a colormap png
 
@@ -129,14 +129,20 @@ def to_cmap(path: str, cmap: str = None, save_path: str = None):
     :param save_path: str, path to save the colormap (optional)
     :return: None (saves the colormap to disk)
     """
+    downsample = downsample or 2
+    downsample = int(downsample)
     cmap = cmap or 'viridis'
-    save_path = save_path or f'{utils.remove_extension(path)}_{cmap}.png'
+    save_path = save_path or f'{utils.remove_extension(path)}_{cmap}.jpg'
+    print(f'* Opening \'{path}\'')
     gdal = geo.open_geotiff(path)
-    print(f'* Generating {cmap} colormap from \'{path}\'')
     array = geo.to_ndarray(gdal)
 
+    if downsample > 1:
+        print(f'* Downsampling by a factor of {downsample}')
+        array = nda.downsample(array, downsample)
+
+    print(f'* Generating {cmap} colormap from \'{path}\'')
     if cmap == 'rgb':
-        # array_cmap = array[..., :3]
         array = nda.to_uint8(array)
     elif np.min(array) == 0.0:
         array = nda.to_cmap(array, cmap=cmap)
@@ -144,6 +150,7 @@ def to_cmap(path: str, cmap: str = None, save_path: str = None):
     else:
         array = nda.dsm_to_cmap(array, cmap=cmap)
     
+    array = array[..., :3]
     iio.imwrite(save_path, array)
     print(f'* Saved to \'{save_path}\'')
 
@@ -390,7 +397,7 @@ def translate_geotiff(geotiff_path: str, x: float, y: float, save_path: str = No
     print(f'* Translating {geotiff_path} by {x}m X and {y}m Y')
     translated = geo.translation(gdal, (x, y))
     geo.save_geotiff(translated, save_path)
-    print(f'* Saved to \'{save_path}\'')
+    print(f'  Saved to \'{save_path}\'')
 
 
 def geotiff_registration(
@@ -435,17 +442,17 @@ def geotiff_registration(
     geo_coord = geo.get_coordinate_on_click(geotiff)
     x = round(osm_coord[0] - geo_coord[0], 1)
     y = round(osm_coord[1] - geo_coord[1], 1)
-    print(f'* Translation values: {x} {y} (x, y)')
+    print(f'  Translation values: {x} {y} (x, y)')
 
     df = pd.DataFrame({'x': [x], 'y': [y]})
     df.to_csv(csv_path, index=False)
-    print(f'* Saved to \'{csv_path}\'')
+    print(f'  Saved to \'{csv_path}\'')
 
     if translate:
         print(f'* Translating {geotiff_path} by {x}m X and {y}m Y')
         translated = geo.translation(geotiff, (x, y))
         geo.save_geotiff(translated, save_path)
-        print(f'* Saved to \'{save_path}\'')
+        print(f'  Saved to \'{save_path}\'')
 
 
 def generate_rbh_wavefront(
@@ -506,6 +513,8 @@ def generate_rbh_wavefront(
 def extract_tiles(orthophoto_path: str, ndsm_path: str, tiles_dir: str, date: str, tile_size: int = None, scale: float = None, verbose: bool = True) -> None:
     """
     Extract valid tiles from an orthophoto and NDSM, and save them to a directory.
+    Tiles name : `{tile_size}_{x}_{y} ({date}) ({distance from border}m).tif`
+        Bigger distances from the border should indicate better quality tiles.
 
     :param orthophoto_path: path to the orthophoto geotiff file
     :param ndsm_path: path to the NDSM geotiff file
@@ -525,20 +534,22 @@ def extract_tiles(orthophoto_path: str, ndsm_path: str, tiles_dir: str, date: st
     print(f'* Extracting tiles from \'{orthophoto_path}\'')
     tiles_coordinates, tile_distances = geo.get_tiles_coordinates(orthophoto, tile_size, scale)
 
-    print(f'* Cropping into tiles with size {tile_size}m and scale {scale}m/pixel')
-    ortho_tiles = geo.crop_into_tiles(orthophoto, tiles_coordinates, tile_size, scale)
-    ndsm_tiles = geo.crop_into_tiles(ndsm, tiles_coordinates, tile_size, scale)
-
     if verbose:
-        geo.display_tile_grid(orthophoto, tile_size, tiles=ortho_tiles)
+        geo.display_tile_grid(orthophoto, tile_size, tiles_coordinates=tiles_coordinates)
 
-    print(f'* Saving {len(ortho_tiles)} orthophoto tiles')
+    print(f'* Cropping orthophoto into tiles')
+    array = geo.to_ndarray(orthophoto)
     ortho_dir = os.path.join(tiles_dir, 'orthophoto')
-    geo.save_tiles(ortho_tiles, tile_distances, ortho_dir, date)
+    for i in range(len(tiles_coordinates)):
+        tile = geo.crop_into_tile(orthophoto, tiles_coordinates[i], tile_size, scale, array)
+        geo.save_tile(tile, tile_distances[i], ortho_dir, date)
     print(f'  Tiles saved to \'{ortho_dir}\'')
 
-    print(f'* Saving {len(ndsm_tiles)} NDSM tiles')
+    print(f'* Cropping NDSM into tiles')
+    array = geo.to_ndarray(ndsm)
     ndsm_dir = os.path.join(tiles_dir, 'ndsm')
-    geo.save_tiles(ndsm_tiles, tile_distances, ndsm_dir, date)
+    for i in range(len(tiles_coordinates)):
+        tile = geo.crop_into_tile(ndsm, tiles_coordinates[i], tile_size, scale, array)
+        geo.save_tile(tile, tile_distances[i], ndsm_dir, date)
     print(f'  Tiles saved to \'{ndsm_dir}\'')
 
