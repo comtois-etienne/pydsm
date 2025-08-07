@@ -531,7 +531,7 @@ def crop_from_shapefile(gdal_file: osgeo.gdal.Dataset, shapefile_path: str, mask
 
 ########## TILES ##########
 
-def _get_first_tile_coordinates(gdal_file: osgeo.gdal.Dataset, tile_spacing: Meters = 50):
+def _get_first_tile_coordinates(gdal_file: osgeo.gdal.Dataset, tile_spacing: Meters = 50) -> Coordinate:
     """
     Get the coordinates of the first tile in the geotiff based on the tile spacing.
 
@@ -618,7 +618,7 @@ def get_tiles_coordinates(gdal_file: osgeo.gdal.Dataset, tile_size: Meters = 50,
 
             if bbox[1][0] > shape[0] or bbox[1][1] > shape[1]:
                 # print(f"  Tile {bbox[0]} is out of bounds, skipping.")
-                xline += tile_size
+                yline -= tile_size
                 continue
 
             tile = nda_crop_resize(array, bbox, tile_resolution)
@@ -627,7 +627,7 @@ def get_tiles_coordinates(gdal_file: osgeo.gdal.Dataset, tile_size: Meters = 50,
 
             if ratio < mask_ratio_threshold:
                 # print(f"  Tile {bbox[0]} has a mask ratio of {ratio:.2f}, skipping.")
-                xline += tile_size
+                yline -= tile_size
                 continue
 
             tile_center = np.array(tile_origin) + (tile_size / 2, -tile_size / 2)
@@ -637,14 +637,15 @@ def get_tiles_coordinates(gdal_file: osgeo.gdal.Dataset, tile_size: Meters = 50,
 
             if min_distance < min_tile_distance:
                 # print(f"  Tile {bbox[0]} has a minimum distance of {min_distance:.2f}m, skipping.")
-                xline += tile_size
+                yline -= tile_size
                 continue
 
+            # print(f'  Tile {bbox[0]} accepted')
             tiles_coordinates.append(tile_origin)
             tile_distances.append(min_distance)
-            xline += tile_size
-        xline, _ = first_tile
-        yline -= tile_size
+            yline -= tile_size
+        _, yline = first_tile
+        xline += tile_size
 
     return tiles_coordinates, tile_distances
 
