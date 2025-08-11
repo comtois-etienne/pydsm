@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pydsm"
+version = "0.1.0"
+description = "Python DSM processing utilities"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Etienne Comtois" }
+]
+dependencies = [
+    "scikit-image==0.22.0",
+    "imageio==2.33.1",
+    "numpy==1.23.5",
+    "pandas==2.2.1",
+    "GDAL==3.6.2",
+    "scipy==1.12.0",
+    "opencv-python==4.6.0",
+    "tensorflow==2.12.0",
+    "matplotlib==3.8.0",
+    "shapely==2.0.5",
+    "geopandas==0.9.0",
+    "osmnx==1.9.3",
+    "plotly==5.19.0",
+    "networkx==3.1",
+    "ultralytics==8.3.40",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/comtois-etienne/pydsm"
+"Source" = "https://github.com/comtois-etienne/pydsm"
+
