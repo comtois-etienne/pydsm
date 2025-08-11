@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from scipy.ndimage import zoom
 from osgeo import gdal, ogr, osr
 import pandas as pd
-import cv2
+import cv2 # comment cv2/typing/__init__.py:168
 from cv2 import resize as cv2_resize
 from cv2 import INTER_CUBIC
 from typing import Any, Optional, Tuple
