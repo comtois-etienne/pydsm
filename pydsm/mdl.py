@@ -153,7 +153,7 @@ def apply_tree_species_codes(labels: np.ndarray, trees_df: pd.DataFrame, code_re
     trees['v'] = 0
     for i, (y, x) in enumerate(zip(trees['y'], trees['x'])):
         row_indexer = trees.index == i
-        trees.loc[row_indexer, 'v'] = labels[y, x]
+        trees.loc[row_indexer, 'v'] = labels[int(y), int(x)]
     trees = trees[trees['v'] != 0]
     trees = trees.drop(columns=['x', 'y'])
 
@@ -185,6 +185,32 @@ def downsample_species_array(array_species: np.ndarray, size=100) -> np.ndarray:
     return array_species_downsampled
 
 
+def get_centers(labels: np.ndarray, downsampling_size=100):
+    """
+    Returns the centers of the instances in the labels array.
+
+    :param labels: np.ndarray with shape (H, W) representing the instance segmentation labels.
+    :param downsampling_size: int, size to which the labels will be downsampled.
+    :return: tuple of two np.ndarrays:
+        - array_centers: binary numpy array with the centers of the instances set to `1.0` (size of `labels`)
+        - array_centers_downsampled: binary numpy array with the centers of the downsampled instances (size `downsampling_size`)
+    """
+    labels_downsampled = nda.rescale_nearest_neighbour(labels, (downsampling_size, downsampling_size))
+    centers = np.array(nda.get_labels_centers(labels_downsampled))
+
+    if centers.size == 0:
+        return np.zeros_like(labels), np.zeros((downsampling_size, downsampling_size))
+
+    array_centers_downsampled = np.zeros_like(labels_downsampled)
+    array_centers_downsampled[centers[:, 0], centers[:, 1]] = 1
+
+    centers = centers * (labels.shape[0] // downsampling_size)
+    array_centers = np.zeros_like(labels)
+    array_centers[centers[:, 0], centers[:, 1]] = 1
+
+    return array_centers, array_centers_downsampled
+
+
 def preprocess_tile(orthophoto: np.ndarray, dsm: np.ndarray, labels: np.ndarray, points: pd.DataFrame, downsampling_size=100, dsm_clip_height=30.0) -> np.ndarray:
     """
     :param orthophoto: np.ndarray with shape (H, W, 4) or (H, W, 3) representing the orthophoto image.
@@ -206,21 +232,14 @@ def preprocess_tile(orthophoto: np.ndarray, dsm: np.ndarray, labels: np.ndarray,
     dsm = nda.clip_rescale(dsm, dsm_clip_height)
     labels = nda.relabel(labels)
     species = apply_tree_species_codes(labels, points, get_tree_species_code)
-    
-    labels_downsampled = nda.rescale_nearest_neighbour(labels, (downsampling_size, downsampling_size))
-    centers = np.array(nda.get_labels_centers(labels_downsampled))
 
     species_downsampled = nda.rescale_nearest_neighbour(species, (downsampling_size, downsampling_size))
     species_downsampled = median_filter(species_downsampled, size=3)
 
-    array_centers_downsampled = np.zeros_like(labels_downsampled)
-    array_centers_downsampled[centers[:, 0], centers[:, 1]] = 1
-
-    centers = centers * (orthophoto.shape[0] // downsampling_size)
-    array_centers = np.zeros_like(labels)
-    array_centers[centers[:, 0], centers[:, 1]] = 1
-
+    labels_downsampled = nda.rescale_nearest_neighbour(labels, (downsampling_size, downsampling_size))
     labels_downsampled = median_filter(labels_downsampled, size=3)
+    
+    array_centers, array_centers_downsampled = get_centers(labels, downsampling_size)
 
     return {
         'orthophoto': orthophoto,
@@ -232,5 +251,111 @@ def preprocess_tile(orthophoto: np.ndarray, dsm: np.ndarray, labels: np.ndarray,
         'centers': array_centers,
         'centers_downsampled': array_centers_downsampled
     }
+
+
+def split_tile_dict(tile_dict: dict, downsampling_size=50) -> list:
+    """
+    Split a tile dictionary into 4 quadrants.
+    Top-left, top-right, bottom-left, bottom-right.
+
+    :param tile_dict: Dictionary containing tile data `{orthophoto, dsm, labels, species}`
+    :param downsampling_size: Size to which the labels and species will be downsampled.
+    :return: List of dictionaries, each containing the data for one quadrant. (`top-left`, `top-right`, `bottom-left`, `bottom-right`)
+    """
+    orthophoto = tile_dict['orthophoto']
+    dsm = tile_dict['dsm']
+    labels = tile_dict['labels']
+    species = tile_dict['species']
+
+    h, w = orthophoto.shape[:2]
+    mid_h, mid_w = h // 2, w // 2
+
+    sub_tiles = []
+    for i in range(2):
+        for j in range(2):
+            orthophoto_tile = orthophoto[i * mid_h:(i + 1) * mid_h, j * mid_w:(j + 1) * mid_w]
+            dsm_tile = dsm[i * mid_h:(i + 1) * mid_h, j * mid_w:(j + 1) * mid_w]
+            labels_tile = labels[i * mid_h:(i + 1) * mid_h, j * mid_w:(j + 1) * mid_w]
+            species_tile = species[i * mid_h:(i + 1) * mid_h, j * mid_w:(j + 1) * mid_w]
+
+            species_downsampled = nda.rescale_nearest_neighbour(species_tile, (downsampling_size, downsampling_size))
+            species_downsampled = median_filter(species_downsampled, size=3)
+
+            labels_downsampled = nda.rescale_nearest_neighbour(labels_tile, (downsampling_size, downsampling_size))
+            labels_downsampled = median_filter(labels_downsampled, size=3)
+
+            array_centers, array_centers_downsampled = get_centers(labels_tile, downsampling_size)
+
+            sub_tiles.append({
+                    'orthophoto': orthophoto_tile,
+                    'dsm': dsm_tile,
+                    'labels': labels_tile,
+                    'labels_downsampled': labels_downsampled,
+                    'species': species_tile,
+                    'species_downsampled': species_downsampled,
+                    'centers': array_centers,
+                    'centers_downsampled': array_centers_downsampled
+                })
+
+    return sub_tiles
+
+
+def save_tiles_dataset(tiles_dir):
+    """
+    Saves the tiles dataset by processing orthophotos, NDSMs, labels, and points.
+    Splits each tile into four sub-tiles and saves them in a compressed numpy format.
+    Each sub-tile is saved with a name indicating its position (nw, ne, sw, se).
+    
+    :param tiles_dir: Directory containing the `orthophoto`, `ndsm`, `labels`, and `points` directories.
+    :return: None (saves files to folder `dataset in `tiles_dir`)
+    """
+    orthophoto_dir = os.path.join(tiles_dir, 'orthophoto')
+    ndsm_dir = os.path.join(tiles_dir, 'ndsm')
+    labels_dir = os.path.join(tiles_dir, 'labels')
+    points_dir = os.path.join(tiles_dir, 'points')
+
+    names = ['(nw)', '(ne)', '(sw)', '(se)']
+
+    for file in os.listdir(orthophoto_dir):
+        if not file.endswith('.tif'):
+            continue
+
+        orthophoto_path = os.path.join(orthophoto_dir, file)
+        ndsm_path = os.path.join(ndsm_dir, file.replace('.tif', '.tif'))
+        labels_path = os.path.join(labels_dir, file.replace('.tif', '.npz'))
+        points_path = os.path.join(points_dir, file.replace('.tif', '.csv'))
+
+        orthophoto = geo.to_ndarray(geo.open_geotiff(orthophoto_path))
+        ndsm = geo.to_ndarray(geo.open_geotiff(ndsm_path))
+        labels = nda.read_numpy(labels_path, npz_format='napari')
+        points = pd.read_csv(points_path)
+
+        tile_dict = preprocess_tile(
+            orthophoto, 
+            ndsm, 
+            labels, 
+            points, 
+            downsampling_size=100, 
+            dsm_clip_height=30.0
+        )
+
+        sub_tiles_dicts = split_tile_dict(tile_dict)
+
+        for i, sub_tile in enumerate(sub_tiles_dicts):
+            tile_name = file.replace('.tif', f' {names[i]}.npz')
+            tile_path = os.path.join(tiles_dir, 'dataset', tile_name)
+            np.savez_compressed(
+                tile_path,
+                orthophoto=sub_tile['orthophoto'],
+                dsm=sub_tile['dsm'],
+                labels=sub_tile['labels'],
+                labels_downsampled=sub_tile['labels_downsampled'],
+                species=sub_tile['species'],
+                species_downsampled=sub_tile['species_downsampled'],
+                centers=sub_tile['centers'],
+                centers_downsampled=sub_tile['centers_downsampled']
+            )
+            print(f'Saved \'{tile_path}\'')
+        print('')
 
 
