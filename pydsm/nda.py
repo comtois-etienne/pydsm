@@ -9,6 +9,7 @@ import cv2 # comment cv2/typing/__init__.py:168
 from cv2 import resize as cv2_resize
 from cv2 import INTER_CUBIC
 from typing import Any, Optional, Tuple
+import skimage.transform
 from skimage.morphology import disk, binary_dilation
 
 
@@ -106,6 +107,19 @@ def normalize(array: np.ndarray) -> np.ndarray:
     return array
 
 
+def clip_rescale(array: np.ndarray, clip_height: 30.0):
+    """
+    Clips out all the values above clip_height and rescales the values from `[(min_value / clip_height), 1.0]` where `1.0` equals `clip_height`
+
+    :param array: np.ndarray dsm like array
+    :param clip_height: float, value that will be mapped to 1.0 in the return matrix
+    :return: np.ndarray
+    """
+    array = array / clip_height
+    array = np.clip(array, 0, 1.0)
+    return array
+
+
 def to_uint8(array: np.ndarray) -> np.ndarray:
     """
     Convert the array to an 8bit integer array.
@@ -114,6 +128,56 @@ def to_uint8(array: np.ndarray) -> np.ndarray:
     """
     norm = normalize(array)
     return (norm * 255).astype(np.uint8)
+
+
+def relabel(labels: np.ndarray) -> np.ndarray:
+    """
+    Relabels the input array by replacing each unique value with its index in the sorted unique values.  
+    This does not use the label() function from skimage.  
+    Two elements with the same value will be replaced by the same index.  
+    This removes gaps in the labels and ensures that the labels are contiguous.  
+    Does not relabel 0 if it exists or not as it is used as a background label.  
+    
+    :param array: Input numpy array with labels to be relabeled.
+    :return: numpy array with relabeled values.
+    """
+    array = labels.copy()
+    unique_values = np.unique(array)
+
+    if unique_values[0] == 0:
+        unique_values = unique_values[1:]
+
+    for i, value in enumerate(unique_values):
+        array[array == value] = (i + 1)
+
+    return array
+
+
+def get_labels_centers(labels: np.ndarray) -> list:
+    """
+    Get the centers of instances in a segmentation mask.  
+    The center point is garanteed to be inside the instance mask.  
+    Selects the median x value on the median y value. (y median values are selected first - then x on that y value)  
+    The background value `0` is ignored.  
+    Can be done with a downsampled version of the labels.  
+
+    :param labels: Segmentation mask with instance labels.
+    :return: List of (y, x) coordinates for each instance center.
+    """
+    unique_labels = np.unique(labels)
+    unique_labels = unique_labels[unique_labels != 0]
+    centers = []
+
+    for label in unique_labels:
+        instance_mask = (labels == label)
+        y, x = np.where(instance_mask)
+        y_median = int(np.median(y))
+        y_indexes = np.where(y == y_median)
+        x_values = x[y_indexes]
+        x_median = int(np.median(x_values))
+        centers.append((y_median, x_median))
+
+    return centers
 
 
 def convert_2D_to_3D(array: np.array, rev=False) -> np.array:
@@ -147,6 +211,35 @@ def nda_round(array: np.ndarray, decimals: int=2) -> np.ndarray:
     else :
         x = np.round(array, decimals)
         return x.astype(int) if decimals == 0 else x
+
+
+def replace_value_inplace(array: np.ndarray, old_values: list, new_values: list) -> None:
+    """
+    Replaces the specified values in the array `old_values` with their corresponding values in `new_values`
+
+    :param array: numpy array, dtype should be integer
+    :param old_values: list of values to be replaced (length must match new_values)
+    :param new_values: list of new values to replace old values with (length must match old_values)
+    :raises ValueError: if lengths of old_values and new_values do not match
+    """
+    array = array.copy()
+    old_values = np.array(old_values)
+    new_values = np.array(new_values)
+    max_val = max(old_values.max(), new_values.max())
+
+    old_values += (max_val + 1)
+    array += (max_val + 1)
+
+    if len(old_values) != len(new_values):
+        raise ValueError("Length of old_values and new_values must match.")
+    
+    for old, new in zip(old_values, new_values):
+        array[array == old] = new
+
+    array[array == (max_val + 1)] = 0
+    array[array > max_val] -= (max_val + 1)
+
+    return array
 
 
 def are_touching(mask_a: np.ndarray, mask_b: np.ndarray) -> bool:
@@ -190,6 +283,7 @@ def downsample(array: np.ndarray, factor: int) -> np.ndarray:
     """
     Downsample the array 1 pixel is kept every factor pixels.  
     Decimation method.  
+    Slower than `rescale_nearest_neighbour`. 
 
     :param arr: np.ndarray of shape (n, m)
     :param factor: int, factor to downsample the array
@@ -211,13 +305,26 @@ def upscale_nearest_neighbour(array: np.ndarray, factor: int) -> np.ndarray:
 
 def rescale_nearest_neighbour(array: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
     """
-    Upscale or downscale an array using nearest neighbour interpolation.
+    Upscale or downscale an array using nearest neighbour interpolation.  
+    About twice faster than `downsample` for the same result.  
 
     :param array: np.ndarray of shape (n, m).
     :param shape: tuple of the new size (y, x) (array.shape)
     :return: np.ndarray of shape (y, x)
     """
     return cv2.resize(array, (shape[1], shape[0]), interpolation=cv2.INTER_NEAREST)
+
+
+def rescale_linear(array: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
+    """
+    Upscale or downscale an array using bilinear interpolation.
+
+    :param array: np.ndarray of shape (n, m).
+    :param shape: tuple of the new size (y, x) (array.shape)
+    :return: np.ndarray of shape `shape`
+    """
+    array = array.astype(np.float32)
+    return cv2.resize(array, (shape[1], shape[0]), interpolation=cv2.INTER_LINEAR)
 
 
 def crop_resize(array: np.ndarray, bbox: tuple[Coordinate, Coordinate], resolution: int) -> np.ndarray:
