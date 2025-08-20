@@ -164,6 +164,13 @@ def get_labels_centers(labels: np.ndarray) -> list:
     :param labels: Segmentation mask with instance labels.
     :return: List of (y, x) coordinates for each instance center.
     """
+    def median(list):
+        """
+        `np.median` is not used as it returns the average of the two middle values when the list has an even number of elements
+        """
+        array = np.sort(list)
+        return array[len(array) // 2]
+
     unique_labels = np.unique(labels)
     unique_labels = unique_labels[unique_labels != 0]
     centers = []
@@ -171,10 +178,10 @@ def get_labels_centers(labels: np.ndarray) -> list:
     for label in unique_labels:
         instance_mask = (labels == label)
         y, x = np.where(instance_mask)
-        y_median = int(np.median(y))
+        y_median = int(median(y))
         y_indexes = np.where(y == y_median)
         x_values = x[y_indexes]
-        x_median = int(np.median(x_values))
+        x_median = int(median(x_values))
         centers.append((y_median, x_median))
 
     return centers
@@ -225,8 +232,11 @@ def replace_value_inplace(array: np.ndarray, old_values: list, new_values: list)
     array = array.copy()
     old_values = np.array(old_values)
     new_values = np.array(new_values)
-    max_val = max(old_values.max(), new_values.max())
 
+    if len(old_values) == 0 or len(new_values) == 0:
+        return array
+
+    max_val = max(old_values.max(), new_values.max())
     old_values += (max_val + 1)
     array += (max_val + 1)
 
