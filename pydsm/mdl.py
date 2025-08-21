@@ -383,3 +383,63 @@ def get_dataset_paths(dataset_dir, subset=None, *, shuffle=False) -> list[str]:
     if shuffle: np.random.shuffle(dataset_paths)
     return np.array(dataset_paths).tolist()
 
+
+# CLASSES WEIGHTS
+
+def _get_classes_weights(tile_path: str, key='species_downsampled', n_classes=18) -> np.ndarray:
+    """
+    Calculate the class weights from a single npz file.
+
+    :param tile_path: Path to the .npz file containing class data.
+    :param key: The key in the npz file that contains the class labels.
+    :param n_classes: The number of classes to consider for weight calculation.
+    :return: A numpy array of class weights of size (n_classes).
+    """
+    weights = np.zeros(n_classes)
+    data = np.load(tile_path)
+    classes = data[key]
+    size = classes.size
+
+    for i in range(n_classes):
+        weights[i] = np.sum(classes == i) / size
+
+    return weights
+
+
+def get_classes_weights(tiles_paths: list[str], key='species_downsampled', n_classes=18) -> np.ndarray:
+    """
+    Calculate the average class weights from npz files in the provided list of tile paths.
+
+    :param tiles_paths: A list of paths to .npz files containing class data.
+    :param key: The key in the npz file that contains the class labels.
+    :param n_classes: The number of classes to consider for weight calculation.
+    :return: A numpy array of average class weights of size (n_classes).
+    """
+    weights = np.zeros(n_classes)
+    count = 0
+    
+    for tile_path in tiles_paths:
+        weights += _get_classes_weights(tile_path, key, n_classes)
+        count += 1
+
+    weights /= count
+    return weights
+
+
+def rebalance_unknown_classes(weights: np.ndarray) -> np.ndarray:
+    """
+    Rebalance the weights to account for unknown classes at index 1.
+    This function modifies the weights array such that the weight for the unknown class
+    (index 1) is set to class_weight / (n_classes - 1), 
+    the other classes values (except index 0) are increased by the same value
+
+    :param weights: A numpy array of class weights.
+    :return: A numpy array of rebalanced class weights.
+    """
+    n_classes = len(weights)
+    unknown_weight = weights[1] / (n_classes - 1)
+    weights[1] = 0
+    unknown_weights = np.array([0] + [unknown_weight] * (n_classes - 1))
+    weights += unknown_weights
+    return weights
+
