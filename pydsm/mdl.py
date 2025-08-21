@@ -362,7 +362,7 @@ def tf_load_tile_npz(path, n_classes=18):
     return rgbd, classes
 
 
-def get_dataset_paths(dataset_dir, subset, shuffle=False) -> list[str]:
+def get_dataset_paths(dataset_dir, subset=None, *, shuffle=False) -> list[str]:
     """
     Retrieves paths to all .npz files in a specified subset directory.
 
@@ -372,10 +372,14 @@ def get_dataset_paths(dataset_dir, subset, shuffle=False) -> list[str]:
     :return: A list of string paths to .npz files in the specified subset directory
     """
     dataset_paths = []
-    subset_dir = os.path.join(dataset_dir, subset)
-    for file_name in os.listdir(subset_dir):
+
+    if subset is not None:
+        dataset_dir = os.path.join(dataset_dir, subset)
+
+    for file_name in os.listdir(dataset_dir):
         if file_name.endswith('.npz'):
-            dataset_paths.append(os.path.join(subset_dir, file_name))
+            dataset_paths.append(os.path.join(dataset_dir, file_name))
+
     if shuffle: np.random.shuffle(dataset_paths)
     return np.array(dataset_paths).tolist()
 
