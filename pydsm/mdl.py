@@ -91,10 +91,12 @@ def training_split(ortho_path, ndms_path, mask_path, output_dir, scale=0.02, ove
             )
 
 
+# SAVE NPZ TILES FUNCTIONS
+
 def get_tree_species_dict() -> dict:
     """
-    arrière-plan + inconnu + 5 especes + 13 genres + 1 famille
-    21 classes total
+    arrière-plan + inconnu + 5 especes + 10 genres + 1 famille
+    18 classes total
     """
     UNKNOWN_TREE = 1
     BETULACEAE = 17
@@ -358,4 +360,97 @@ def save_tiles_dataset(tiles_dir):
             print(f'Saved \'{tile_path}\'')
         print('')
 
+
+# LOAD NPZ TILES FUNCTIONS
+
+def _load_tiles_classes(data, n_classes=18, key='species_downsampled') -> np.ndarray:
+    """
+    The class no1 is the unknown class, which is a mix of all species (present or absent in the classification)
+
+    :param data: The data dictionary loaded from a .npz file
+    :param n_classes: The number of classes in the dataset, including background and unknown
+    :param key: The key in the data dictionary that contains the species labels
+    :return: A numpy array of shape (height, width, n_classes) with one-hot encoded classes
+    """
+    species_downsampled = data[key]
+    classes = to_categorical(species_downsampled, n_classes)
+    unknown = classes[..., 1] / (n_classes - 1)
+    zeros = np.zeros_like(unknown)
+    classes[..., 1] = zeros
+
+    stacked = np.repeat(unknown[:, :, np.newaxis], (n_classes - 1), axis=2)
+    stacked = np.concatenate((zeros[:, :, np.newaxis], stacked), axis=2)
+    classes = classes + stacked
+
+    return classes
+
+
+def _load_tiles_rgbd(data) -> np.ndarray:
+    """
+    Loads the orthophoto and DSM from the data dictionary and stacks them along the last dimension.
+
+    :param data: The data dictionary loaded from a .npz file
+    :return: A numpy array of shape (height, width, 4) with RGB and DSM channels stacked
+    """
+    ortho = data['orthophoto']
+    dsm = data['dsm']
+    return np.dstack((ortho, dsm))
+
+
+def load_tiles_data(path, n_classes=18) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Loads the RGB-D data and classes from a .npz file.
+
+    :param path: The path to the .npz file containing the data
+    :param n_classes: The number of classes in the dataset, including background and unknown
+    :return: A tuple (rgbd, classes) where rgbd is a numpy array of shape (height, width, 4)
+            and classes is a numpy array of shape (height, width, n_classes)
+    """
+    if isinstance(path, tf.Tensor):
+        path = path.numpy().decode("utf-8")
+    elif isinstance(path, bytes):
+        path = path.decode("utf-8")
+
+    data = np.load(str(path))
+    classes = _load_tiles_classes(data, n_classes)
+    rgbd = _load_tiles_rgbd(data)
+
+    return rgbd, classes
+
+
+def tf_load_tile_npz(path, n_classes=18):
+    """
+    TensorFlow wrapper for loading RGB-D data and classes from a .npz file.
+
+    :param path: The path to the .npz file containing the data
+    :param n_classes: The number of classes in the dataset, including background and unknown
+    :return: A tuple (rgbd, classes) where rgbd is a TensorFlow tensor of shape (1000, 1000, 4)
+            and classes is a TensorFlow tensor of shape (50, 50, n_classes)
+    """
+    rgbd, classes = tf.py_function(
+        func=load_tiles_data,
+        inp=[path, n_classes],
+        Tout=(tf.float32, tf.float32)
+    )
+    rgbd.set_shape((1000, 1000, 4))
+    classes.set_shape((50, 50, n_classes))
+    return rgbd, classes
+
+
+def get_dataset_paths(dataset_dir, subset, shuffle=False) -> list[str]:
+    """
+    Retrieves paths to all .npz files in a specified subset directory.
+
+    :param dataset_dir: The root directory containing the dataset
+    :param subset: The subset directory (e.g., 'train', 'val', 'test')
+    :param shuffle: Whether to shuffle the list of paths
+    :return: A list of string paths to .npz files in the specified subset directory
+    """
+    dataset_paths = []
+    subset_dir = os.path.join(dataset_dir, subset)
+    for file_name in os.listdir(subset_dir):
+        if file_name.endswith('.npz'):
+            dataset_paths.append(os.path.join(subset_dir, file_name))
+    if shuffle: np.random.shuffle(dataset_paths)
+    return np.array(dataset_paths).tolist()
 
