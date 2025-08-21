@@ -288,7 +288,7 @@ def save_tiles_dataset(tiles_dir):
 
 # LOAD NPZ TILES FUNCTIONS
 
-def _load_tiles_classes(data, n_classes=18, key='species_downsampled') -> np.ndarray:
+def _load_tiles_classes(data, n_classes=18, key='species', size: int = None) -> np.ndarray:
     """
     The class no1 is the unknown class, which is a mix of all species (present or absent in the classification)
 
@@ -297,20 +297,25 @@ def _load_tiles_classes(data, n_classes=18, key='species_downsampled') -> np.nda
     :param key: The key in the data dictionary that contains the species labels
     :return: A numpy array of shape (height, width, n_classes) with one-hot encoded classes
     """
-    species_downsampled = data[key]
-    classes = to_categorical(species_downsampled, n_classes)
-    unknown = classes[..., 1] / (n_classes - 1)
+    classes = data[key]
+
+    if size is not None:
+        classes = nda.rescale_nearest_neighbour(classes, (size, size))
+        classes = median_filter(classes, size=3)
+
+    one_hot = to_categorical(classes, n_classes)
+    unknown = one_hot[..., 1] / (n_classes - 1)
     zeros = np.zeros_like(unknown)
-    classes[..., 1] = zeros
+    one_hot[..., 1] = zeros
 
     stacked = np.repeat(unknown[:, :, np.newaxis], (n_classes - 1), axis=2)
     stacked = np.concatenate((zeros[:, :, np.newaxis], stacked), axis=2)
-    classes = classes + stacked
+    one_hot = one_hot + stacked
 
-    return classes
+    return one_hot
 
 
-def _load_tiles_rgbd(data) -> np.ndarray:
+def _load_tiles_rgbd(data, size: int = None) -> np.ndarray:
     """
     Loads the orthophoto and DSM from the data dictionary and stacks them along the last dimension.
 
@@ -319,10 +324,15 @@ def _load_tiles_rgbd(data) -> np.ndarray:
     """
     ortho = data['orthophoto']
     dsm = data['dsm']
-    return np.dstack((ortho, dsm))
+    rgbd = np.dstack((ortho, dsm))
+
+    if size is not None:
+        rgbd = nda.rescale_linear(rgbd, (size, size))
+
+    return rgbd
 
 
-def load_tiles_data(path, n_classes=18) -> tuple[np.ndarray, np.ndarray]:
+def load_tiles_data(path, n_classes=18, rgbd_size=1024, classes_size=64) -> tuple[np.ndarray, np.ndarray]:
     """
     Loads the RGB-D data and classes from a .npz file.
 
@@ -337,13 +347,13 @@ def load_tiles_data(path, n_classes=18) -> tuple[np.ndarray, np.ndarray]:
         path = path.decode("utf-8")
 
     data = np.load(str(path))
-    classes = _load_tiles_classes(data, n_classes)
-    rgbd = _load_tiles_rgbd(data)
+    rgbd = _load_tiles_rgbd(data, size=rgbd_size)
+    classes = _load_tiles_classes(data, n_classes, size=classes_size)
 
     return rgbd, classes
 
 
-def tf_load_tile_npz(path, n_classes=18):
+def tf_load_tile_npz(path, n_classes=18, rgbd_size=1024, classes_size=64) -> tuple[tf.Tensor, tf.Tensor]:
     """
     TensorFlow wrapper for loading RGB-D data and classes from a .npz file.
 
@@ -354,11 +364,11 @@ def tf_load_tile_npz(path, n_classes=18):
     """
     rgbd, classes = tf.py_function(
         func=load_tiles_data,
-        inp=[path, n_classes],
+        inp=[path, n_classes, rgbd_size, classes_size],
         Tout=(tf.float32, tf.float32)
     )
-    rgbd.set_shape((1000, 1000, 4))
-    classes.set_shape((50, 50, n_classes))
+    rgbd.set_shape((rgbd_size, rgbd_size, 4))
+    classes.set_shape((classes_size, classes_size, n_classes))
     return rgbd, classes
 
 
@@ -406,7 +416,7 @@ def _get_classes_weights(tile_path: str, key='species_downsampled', n_classes=18
     return weights
 
 
-def get_classes_weights(tiles_paths: list[str], key='species_downsampled', n_classes=18) -> np.ndarray:
+def get_dataset_weights(tiles_paths: list[str], key='species_downsampled', n_classes=18) -> np.ndarray:
     """
     Calculate the average class weights from npz files in the provided list of tile paths.
 
