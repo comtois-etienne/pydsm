@@ -13,6 +13,8 @@ import pydsm.nda as nda
 import pydsm.geo as geo
 import pydsm.utils as utils
 
+from keras.utils import to_categorical
+
 
 # SAVE NPZ TILES FUNCTIONS
 
