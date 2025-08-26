@@ -6,6 +6,10 @@ import math
 import matplotlib.pyplot as plt
 import os
 
+from pathlib import Path
+from ultralytics.data.dataset import YOLODataset
+from ultralytics.utils import LOGGER
+
 from .rbh import get_contour as rbh_get_contour
 from .nda import to_uint8 as nda_to_uint8
 
@@ -139,4 +143,56 @@ def save_to_class_index_file(dir_npz: str, dir_labels: str, visualize=False):
         with open(label_path, 'w') as f:
             f.write('\n'.join(class_index_lines))
             f.write('\n')
+
+
+class RGBDDataset(YOLODataset):
+    """
+    Override YOLODataset to load RGBD images from .npz files
+    Each .npz file must contain : 'orthophoto' and 'dsm' arrays
+    """
+    def load_image(self, i, rect_mode=True):
+        """Loads 1 image from dataset index 'i', returns (im, resized hw)."""
+        im = self.ims[i] # cached in RAM
+        f = self.im_files[i] # image path
+        fn = self.npy_files[i] # cached npy path
+
+        if im is None:  # not cached in RAM
+            if fn.exists():  # load npy
+                try:
+                    im = np.load(fn)
+                except Exception as e:
+                    LOGGER.warning(f"{self.prefix}WARNING ⚠️ Removing corrupt *.npy image file {fn} due to: {e}")
+                    Path(fn).unlink(missing_ok=True)
+                    im = cv2.imread(f)  # BGR
+            else:  # read image
+                # im = cv2.imread(f)  # BGR (old)
+                data = np.load(f)
+                rgb = data['orthophoto'][:, :, :3]
+                d = data['dsm']
+                bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+                im = nda_to_uint8(np.dstack((bgr, d)))
+            if im is None:
+                raise FileNotFoundError(f"Image Not Found {f}")
+
+            h0, w0 = im.shape[:2]  # orig hw
+            if rect_mode:  # resize long side to imgsz while maintaining aspect ratio
+                r = self.imgsz / max(h0, w0)  # ratio
+                if r != 1:  # if sizes are not equal
+                    w, h = (min(math.ceil(w0 * r), self.imgsz), min(math.ceil(h0 * r), self.imgsz))
+                    im = cv2.resize(im, (w, h), interpolation=cv2.INTER_LINEAR)
+            elif not (h0 == w0 == self.imgsz):  # resize by stretching image to square imgsz
+                im = cv2.resize(im, (self.imgsz, self.imgsz), interpolation=cv2.INTER_LINEAR)
+
+            # Add to buffer if training with augmentations
+            if self.augment:
+                self.ims[i], self.im_hw0[i], self.im_hw[i] = im, (h0, w0), im.shape[:2]  # im, hw_original, hw_resized
+                self.buffer.append(i)
+                if 1 < len(self.buffer) >= self.max_buffer_length:  # prevent empty buffer
+                    j = self.buffer.pop(0)
+                    if self.cache != "ram":
+                        self.ims[j], self.im_hw0[j], self.im_hw[j] = None, None, None
+
+            return im, (h0, w0), im.shape[:2]
+
+        return self.ims[i], self.im_hw0[i], self.im_hw[i]
 
