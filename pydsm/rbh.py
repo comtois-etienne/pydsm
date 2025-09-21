@@ -75,7 +75,7 @@ def smooth_mask(mask: np.ndarray) -> np.ndarray:
     return thresholded
 
 
-def get_contour(mask: np.ndarray, edges: int = 8, convex_hull=True, smooth=False, drop_last=True) -> np.ndarray:
+def get_contour(mask: np.ndarray, edges: int | None = 8, convex_hull=True, smooth=False, drop_last=True) -> np.ndarray:
     """
     Get the contour of a binary mask.
 
@@ -93,13 +93,14 @@ def get_contour(mask: np.ndarray, edges: int = 8, convex_hull=True, smooth=False
     contour = max(measure.find_contours(chull), key=len)
     simplified = measure.approximate_polygon(contour, tolerance)
 
-    while len(simplified) > (edges + 1):
-        tolerance += 0.5
-        simplified = measure.approximate_polygon(contour, tolerance)
-
-    while len(simplified) < (edges + 1):
-        tolerance -= 0.1
-        simplified = measure.approximate_polygon(contour, tolerance)
+    if edges is not None:
+        while len(simplified) > (edges + 1):
+            tolerance += 0.5
+            simplified = measure.approximate_polygon(contour, tolerance)
+    
+        while len(simplified) < (edges + 1):
+            tolerance -= 0.1
+            simplified = measure.approximate_polygon(contour, tolerance)
 
     simplified = np.round(simplified, 0).astype(int)
     return simplified[:-1] if drop_last else simplified
