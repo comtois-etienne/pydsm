@@ -313,6 +313,7 @@ def add_z_to_points(points: list, z: int | float) -> np.ndarray:
 def distance_to_point(coords: Points, point: Point, to_int=True):
     """
     Calculate the distance from a point to a set of coordinates.
+    
     :param coords: 2D numpy array of coordinates [(y, x), ...]
     :param point: Point (y, x) to calculate the distance to
     :param to_int: If True, return the distances as integers (default is True)

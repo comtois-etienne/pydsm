@@ -405,6 +405,7 @@ def translation(gdal_file: osgeo.gdal.Dataset, translate: Coordinate) -> osgeo.g
 def correct_dtm(dtm_gdal: osgeo.gdal.Dataset, subsampling_size=500, median_kernel_size=5) -> osgeo.gdal.Dataset:
     """
     Corrects the DTM by filling the gaps and smoothing the surface
+    
     :param dtm_gdal: gdal dataset of the DTM
     :param subsampling_size: size of the subsampling (default: 500)
     :param median_kernel_size: size of the median kernel (default: 5)
@@ -422,6 +423,7 @@ def correct_dtm(dtm_gdal: osgeo.gdal.Dataset, subsampling_size=500, median_kerne
     dtm_smoothed = median_filter(dtm_simple, size=median_kernel_size)
 
     dtm_upsampled = cv2_resize(dtm_smoothed, (shape[1], shape[0]), interpolation=INTER_CUBIC)
+    dtm_upsampled = dtm_upsampled * mask
     dtm_upsampled[~mask] = -9999.0
 
     dtm_corrected = to_gdal_like(dtm_upsampled, dtm_gdal)

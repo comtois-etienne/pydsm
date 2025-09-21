@@ -242,7 +242,7 @@ def save_tiles_dataset(tiles_dir):
     Each sub-tile is saved with a name indicating its position (nw, ne, sw, se).
     
     :param tiles_dir: Directory containing the `orthophoto`, `ndsm`, `labels`, and `points` directories.
-    :return: None (saves files to folder `dataset in `tiles_dir`)
+    :return: None (saves files to folder `dataset` in `tiles_dir`)
     """
     orthophoto_dir = os.path.join(tiles_dir, 'orthophoto')
     ndsm_dir = os.path.join(tiles_dir, 'ndsm')
