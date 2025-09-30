@@ -11,6 +11,7 @@ from cv2 import INTER_CUBIC
 from typing import Any, Optional, Tuple
 import skimage.transform
 from skimage.morphology import disk, binary_dilation
+from skimage.transform import rotate as sk_rotate
 
 
 from .utils import *
@@ -263,6 +264,36 @@ def are_touching(mask_a: np.ndarray, mask_b: np.ndarray) -> bool:
     return np.sum(np.logical_and(mask_a, mask_b)) > 0
 
 
+def is_mask_touching_border(mask: np.ndarray) -> bool:
+    """
+    Check if a binary mask is touching the border of the array.
+
+    :param mask: 2D numpy array (binary mask)
+    :return: True if the mask touches the border, False otherwise
+    """
+    if np.any(mask[0, :]) or np.any(mask[-1, :]):
+        return True
+    if np.any(mask[:, 0]) or np.any(mask[:, -1]):
+        return True
+    return False
+
+
+def rotate(array: np.ndarray, angle: float = None) -> tuple[np.ndarray, float]:
+    """
+    Rotate the input array by the specified angle.
+    
+    :param array: Input array to be rotated.
+    :param angle: Angle in degrees. If None, a random angle between 0 and 360 is chosen.
+    :return: Rotated array and the angle used for rotation.
+    """
+    dtype = array.dtype
+    array = array.astype(np.float32)
+    if angle is None:
+        angle = np.random.uniform(0, 360)
+    rotated = sk_rotate(array, angle, resize=True).astype(dtype)
+    return rotated, angle
+
+
 def rescale(array: np.ndarray, current_spacial_resolution: float | tuple[float, float], new_spacial_resolution: float | tuple[float, float] = 0.02) -> np.ndarray:
     """
     Sub-pixel rescaling of the array.  
@@ -286,7 +317,7 @@ def rescale(array: np.ndarray, current_spacial_resolution: float | tuple[float, 
     # we need to keep the depth ratio (color layers) for the orthophoto
     zoom_ratio = (w_ratio, h_ratio) if array.ndim == 2 else (w_ratio, h_ratio, 1)
 
-    return zoom(array, zoom=zoom_ratio)
+    return zoom(array, zoom=zoom_ratio) #todo does it rescale the colors also?
 
 
 def downsample(array: np.ndarray, factor: int) -> np.ndarray:
@@ -333,8 +364,10 @@ def rescale_linear(array: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
     :param shape: tuple of the new size (y, x) (array.shape)
     :return: np.ndarray of shape `shape`
     """
+    dtype = array.dtype
     array = array.astype(np.float32)
-    return cv2.resize(array, (shape[1], shape[0]), interpolation=cv2.INTER_LINEAR)
+    resized = cv2.resize(array, (shape[1], shape[0]), interpolation=cv2.INTER_LINEAR)
+    return resized.astype(dtype)
 
 
 def crop_resize(array: np.ndarray, bbox: tuple[Coordinate, Coordinate], resolution: int) -> np.ndarray:
