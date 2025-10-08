@@ -156,7 +156,7 @@ def open_tile(tiles_dir: str, tile_name: str, semantic_dict=default_semantic_dic
     :param tiles_dir: str, directory containing the sub-directories `orthophoto`, `ndsm`, `labels` and `points`
     :param tile_name: str, tile name in the sub-directories
     :param as_array: bool, returns the orthophoto and the ndsm as numpy arrays if True, as gdal.Dataset if False
-    :return: dictionary with keys : `orthophoto`, `ndsm`, `instance_labels` and `semantic_labels`
+    :return: Tile containing `orthophoto`, `ndsm`, `instance_labels` and `semantic_labels`
     """
     tile_name = utils.remove_extension(tile_name)
 
@@ -180,8 +180,8 @@ def split_tile(tile: Tile) -> list[Tile]:
     """
     Splits a single tile into 4 identically sized tiles  
 
-    :param tile_dict: tile dict containing orthophoto, ndsm, instance labels, and semantic labels
-    :returns: a list of 4 tiles dict (`top-left`, `top-right`, `bottom-left`, `bottom-right`)
+    :param tile: tile containing orthophoto, ndsm, instance labels, and semantic labels
+    :returns: a list of 4 tiles (`top-left`, `top-right`, `bottom-left`, `bottom-right`)
     """
     h, w = tile.orthophoto.shape[:2]
     h, w = h // 2, w // 2
@@ -202,9 +202,9 @@ def preprocess_tile(tile: Tile, ndsm_clip_height=30.0) -> Tile:
     """
     Preprocess a tile so it can be used for training a model.  
 
-    :param tile_dict: tile dict containing orthophoto, ndsm, instance labels, and semantic labels
+    :param tile: tile containing orthophoto, ndsm, instance labels, and semantic labels
     :param dsm_clip_height: float, height to which the DSM will be clipped.
-    :return: dict containing the processed `{orthophoto, dsm, labels, labels_downsampled, species, centers, centers_downsampled}`.  
+    :return: Tile containing the processed `{orthophoto, dsm, labels, labels_downsampled, species, centers, centers_downsampled}`.  
         - `orthophoto` is normalized to `[0.0, 1.0]` range  
         - `ndsm` is clipped and rescaled to `[0.0, 1.0]` range where `1.0` equals `dsm_clip_height`
         - `instance_labels` are relabeled to have unique values starting from `0` (does not use skimage's label function)  
@@ -220,10 +220,10 @@ def preprocess_tile(tile: Tile, ndsm_clip_height=30.0) -> Tile:
 
 def save_tile(npz_path: str, tile: Tile) -> None:
     """
-    Saves a tile dict to disk
+    Saves a tile to disk
 
     :param npz_path: str, path to save the tile as a compressed numpy array
-    :param tile_dict: dict[str, np.array], tile dict to save
+    :param tile: Tile, tile to save
     :return: None, save to disk
     """
     np.savez_compressed(
@@ -233,4 +233,55 @@ def save_tile(npz_path: str, tile: Tile) -> None:
         instance_labels=tile.instance_labels,
         semantic_labels=tile.semantic_labels,
     )
+
+
+def open_tile_npz(npz_path: str) -> Tile:
+    """
+    Opens a tile that has been saved as a compressed numpy array
+
+    :param npz_path: str, path to the tile
+    :return: Tile from disk
+    """
+    npz = np.load(npz_path, allow_pickle=True)
+    return Tile(npz['orthophoto'], npz['ndsm'], npz['instance_labels'], npz['semantic_labels'])
+
+
+def save_split_tiles(tiles_dir: str, tile_name: str, tiles: list[Tile]):
+    """
+    Saves the tiles into `tiles_dir` using tile_name with their orientation  
+    Tiles in order '(nw)', '(ne)', '(sw)', '(se)'  
+
+    :param tiles_dir: str, directory to save the tiles in
+    :param tile_name: str, the name of the tile (extension will be replaced) 
+    :param tiles: list[Tile], 4 tiles with orientation nw, ne, sw, and se
+    :return: None, saves the tiles to disk
+    """
+    names = ['nw', 'ne', 'sw', 'se']
+    tile_name = utils.remove_extension(tile_name)
+
+    for i, tile in enumerate(tiles):
+        save_path = f'{tile_name} ({names[i]}).npz'
+        save_path = utils.append_file_to_path(tiles_dir, save_path)
+        save_tile(save_path, tile)
+
+
+def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'dataset', semantic_dict=default_semantic_dict()) -> None:
+    """
+    Saves the annotated tiles to npz to be used for training  
+    Tiles are normalized  
+    Each tile is split into 4 'nw', 'ne', 'sw', 'se' sub-tiles  
+    
+    :param tiles_dir: str, directory containing the sub-directories `orthophoto`, `ndsm`, `labels`, and `points`
+    :param save_sub_dir: sub dir to save the tiles in
+    :return: None, saves the tiles into the sub-dir of tiles_dir
+    """
+    names = os.listdir(os.path.join(tiles_dir, 'orthophoto'))
+    save_dir = os.path.join(tiles_dir, save_sub_dir)
+    
+    for name in names:
+        if not name.endswith('.tif'): continue
+        tile = open_tile(tiles_dir, name, semantic_dict)
+        tile = preprocess_tile(tile)
+        tiles = split_tile(tile)
+        save_split_tiles(save_dir, name, tiles)
 
