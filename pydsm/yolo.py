@@ -6,6 +6,8 @@ import math
 import matplotlib.pyplot as plt
 import os
 
+from skimage.measure import label
+
 from pathlib import Path
 from ultralytics.data.dataset import YOLODataset
 from ultralytics.utils import LOGGER
@@ -88,44 +90,57 @@ def to_class_index_line(contour: np.ndarray, class_index: int, size: int) -> str
     return ' '.join([str(class_index)] + contour)
 
 
-def to_class_index_lines(instance_labels: np.ndarray, class_labels: np.ndarray, visualize=False) -> list[str]:
+def to_class_index_lines(instance_labels: np.ndarray, class_labels: np.ndarray | None, *, edges=8, visualize=False) -> list[str]:
     """
     Convert mask instances and their class labels to yolo class index strings
     Each instance is represented by a convex hull contour of 8 sides
     The class index in `class_labels` must start at 1 (0 is background)
     The `class_index` values in `class_labels` are decremented by 1 to match yolo classes with 0 indexing
+    Reference : https://docs.ultralytics.com/datasets/segment/
 
     :param instance_labels: np.ndarray of shape (H, W) with integer instance labels (0 for background)
-    :param class_labels: np.ndarray of shape (H, W) with integer class labels (0 for background)
+    :param class_labels: np.ndarray of shape (H, W) with integer class labels (0 for background) or None if all instances are of the same class
+    :param edges: int, number of edges for the contour approximation of each instance
+    :param visualize: bool, if True, display the instances and their contours
     :return: list of str, each str representing one instance in yolo format 
     """
     unique = sorted(np.unique(instance_labels).tolist())
     unique = unique[1:] if unique[0] == 0 else unique
     instance_labels = instance_labels.copy()
+
+    if class_labels is None:
+        class_labels = (instance_labels > 0).astype(np.uint8)
     class_labels = class_labels.copy()
     size = instance_labels.shape[0]
     instance_labels = np.pad(instance_labels, ((100, 100), (100, 100)), mode='constant', constant_values=0)
 
     class_index_lines = []
+    contours = []
     for val in unique:
         instance = np.where(instance_labels == val, 1, 0).astype(np.uint8)
-        contour = rbh_get_contour(instance, edges=8, convex_hull=True, drop_last=True) - np.array([100, 100])
+        if np.sum(instance) < 100: continue
+
+        is_split = len(np.unique(label(instance)).tolist()) > 2
+        contour = rbh_get_contour(instance, edges=edges, convex_hull=is_split, drop_last=True) - np.array([100, 100])
+
         instance = instance[100:-100, 100:-100]
         class_index = np.max(class_labels * instance)
 
         contour[contour >= size] = size - 1
         class_index_line = to_class_index_line(contour, (class_index - 1), size)
         class_index_lines.append(class_index_line)
+        contours.append(contour)
 
-        if visualize:
-            plt.imshow(instance)
+    if visualize:
+        plt.imshow(instance_labels[100:-100, 100:-100], cmap='tab20', interpolation='nearest')
+        for contour in contours:
             plt.plot(contour[:, 1], contour[:, 0], color='red')
-            plt.show()
+        plt.show()
 
     return class_index_lines
 
 
-def save_to_class_index_file(dir_npz: str, dir_labels: str, visualize=False):
+def save_to_class_index_file(dir_npz: str, dir_labels: str, instance_labels_key='labels', class_labels_key: str | None = 'species', edges_per_instance=8, visualize=False):
     os.makedirs(dir_labels, exist_ok=True)
 
     for filename in os.listdir(dir_npz):
@@ -136,63 +151,15 @@ def save_to_class_index_file(dir_npz: str, dir_labels: str, visualize=False):
         tile_data = np.load(tile_path)
 
         if visualize: print(f'Processing \'{filename}\'')
-        class_index_lines = to_class_index_lines(tile_data['labels'], tile_data['species'], visualize)
+
+        instances = tile_data[instance_labels_key]
+        classes_labels = None if class_labels_key is None else tile_data[class_labels_key]
+        class_index_lines = to_class_index_lines(instances, classes_labels, edges=edges_per_instance, visualize=visualize)
+
         label_filename = filename.replace('.npz', '.txt')
         label_path = os.path.join(dir_labels, label_filename)
 
         with open(label_path, 'w') as f:
             f.write('\n'.join(class_index_lines))
             f.write('\n')
-
-
-class RGBDDataset(YOLODataset):
-    """
-    Override YOLODataset to load RGBD images from .npz files
-    Each .npz file must contain : 'orthophoto' and 'dsm' arrays
-    """
-    def load_image(self, i, rect_mode=True):
-        """Loads 1 image from dataset index 'i', returns (im, resized hw)."""
-        im = self.ims[i] # cached in RAM
-        f = self.im_files[i] # image path
-        fn = self.npy_files[i] # cached npy path
-
-        if im is None:  # not cached in RAM
-            if fn.exists():  # load npy
-                try:
-                    im = np.load(fn)
-                except Exception as e:
-                    LOGGER.warning(f"{self.prefix}WARNING ⚠️ Removing corrupt *.npy image file {fn} due to: {e}")
-                    Path(fn).unlink(missing_ok=True)
-                    im = cv2.imread(f)  # BGR
-            else:  # read image
-                # im = cv2.imread(f)  # BGR (old)
-                data = np.load(f)
-                rgb = data['orthophoto'][:, :, :3]
-                d = data['dsm']
-                bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-                im = nda_to_uint8(np.dstack((bgr, d)))
-            if im is None:
-                raise FileNotFoundError(f"Image Not Found {f}")
-
-            h0, w0 = im.shape[:2]  # orig hw
-            if rect_mode:  # resize long side to imgsz while maintaining aspect ratio
-                r = self.imgsz / max(h0, w0)  # ratio
-                if r != 1:  # if sizes are not equal
-                    w, h = (min(math.ceil(w0 * r), self.imgsz), min(math.ceil(h0 * r), self.imgsz))
-                    im = cv2.resize(im, (w, h), interpolation=cv2.INTER_LINEAR)
-            elif not (h0 == w0 == self.imgsz):  # resize by stretching image to square imgsz
-                im = cv2.resize(im, (self.imgsz, self.imgsz), interpolation=cv2.INTER_LINEAR)
-
-            # Add to buffer if training with augmentations
-            if self.augment:
-                self.ims[i], self.im_hw0[i], self.im_hw[i] = im, (h0, w0), im.shape[:2]  # im, hw_original, hw_resized
-                self.buffer.append(i)
-                if 1 < len(self.buffer) >= self.max_buffer_length:  # prevent empty buffer
-                    j = self.buffer.pop(0)
-                    if self.cache != "ram":
-                        self.ims[j], self.im_hw0[j], self.im_hw[j] = None, None, None
-
-            return im, (h0, w0), im.shape[:2]
-
-        return self.ims[i], self.im_hw0[i], self.im_hw[i]
 
