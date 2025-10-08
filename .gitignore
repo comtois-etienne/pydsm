@@ -2,6 +2,8 @@ notebook.ipynb
 images
 data
 data/*
+runs
+runs/*
 tiles
 tiles/*
 strath
@@ -18,6 +20,8 @@ logs
 *.pkl
 *.pt
 *.html
+*.h5
+*.pth
 
 # Created by https://www.toptal.com/developers/gitignore/api/python,visualstudiocode,pycharm,java,maven,macos,windows
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,visualstudiocode,pycharm,java,maven,macos,windows
