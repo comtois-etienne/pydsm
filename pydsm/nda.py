@@ -328,6 +328,22 @@ def remove_holes(mask: np.ndarray) -> np.ndarray:
     return mask
 
 
+def get_biggest_mask(masks: np.array) -> np.ndarray:
+    """
+    Gives the biggest mask that is not the background (0).  
+    Returns empty mask if no masks are found.  
+
+    :param masks: Input mask array with integer labels.
+    :return: Boolean array where the biggest mask is True and others are False.
+    """
+    masks = label(masks)
+    areas = [np.sum(masks == i) for i in range(1, masks.max() + 1)]
+    if len(areas) == 0:
+        return np.zeros_like(masks, dtype=bool)
+    biggest_mask = np.argmax(areas) + 1
+    return (masks == biggest_mask)
+
+
 def rotate(array: np.ndarray, angle: float) -> np.ndarray:
     """
     Rotate the input array by the specified angle.  
