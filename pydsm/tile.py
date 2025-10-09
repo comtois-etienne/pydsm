@@ -176,6 +176,21 @@ def apply_semantic_codes(instance_labels: np.ndarray, semantics_df: pd.DataFrame
     return nda.replace_value_inplace(instance_labels, v_list, s_list)
 
 
+def remove_holes(instance_labels: np.ndarray) -> np.ndarray:
+    """
+    Remove holes of any size from all instances  
+
+    :param instance_labels: np.ndarray containing all instances
+    :return: the instance_labels with per instance holes removal
+    """
+    new_instance_labels = np.zeros_like(instance_labels)
+    for v in np.unique(instance_labels):
+        mask = (instance_labels == v)
+        mask = nda.remove_holes(mask)
+        new_instance_labels += (mask * v)
+    return new_instance_labels
+
+
 def open_tile(tiles_dir: str, tile_name: str, semantic_dict=default_semantic_dict(), as_array=True) -> Tile:
     """
     Opens all data from the tile (orthophoto, ndsm, instance_labels, semantic_labels)
@@ -192,6 +207,7 @@ def open_tile(tiles_dir: str, tile_name: str, semantic_dict=default_semantic_dic
     
     instances = nda.read_numpy(os.path.join(tiles_dir, 'labels', f'{tile_name}.npz'), npz_format='napari')
     instances = nda.relabel(instances)
+    instances = remove_holes(instances)
 
     points_df = pd.read_csv(os.path.join(tiles_dir, 'points', f'{tile_name}.csv'))
     semantics = apply_semantic_codes(instances, points_df, semantic_dict)
@@ -234,15 +250,11 @@ def preprocess_tile(tile: Tile, ndsm_clip_height=30.0) -> Tile:
     :return: Tile containing the processed `{orthophoto, dsm, labels, labels_downsampled, species, centers, centers_downsampled}`.  
         - `orthophoto` is normalized to `[0.0, 1.0]` range  
         - `ndsm` is clipped and rescaled to `[0.0, 1.0]` range where `1.0` equals `dsm_clip_height`
-        - `instance_labels` are relabeled to have unique values starting from `0` (does not use skimage's label function)  
-        - `semantic_labels` numpy array with the tree species codes `(int)` applied to the labels  
     """
     orthophoto = nda.normalize(tile.orthophoto[..., :3])
     ndsm = tile.ndsm[..., :1] if tile.ndsm.ndim > 2 else tile.ndsm
     ndsm = nda.clip_rescale(ndsm, ndsm_clip_height)
-    instance_labels = nda.relabel(tile.instance_labels)
-
-    return Tile(orthophoto, ndsm, instance_labels, tile.semantic_labels)
+    return Tile(orthophoto, ndsm, tile.instance_labels, tile.semantic_labels)
 
 
 def save_tile(npz_path: str, tile: Tile) -> None:

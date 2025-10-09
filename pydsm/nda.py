@@ -305,6 +305,29 @@ def is_mask_touching_border(mask: np.ndarray) -> bool:
     return False
 
 
+def remove_holes(mask: np.ndarray) -> np.ndarray:
+    """
+    Remove holes of any size from the binary mask.  
+    The holes are merged with the labeled region.  
+    
+    :param mask: np.ndarray, binay mask (containing one instance)
+    :return: np.ndarray, the same binary mask with all holes removed
+    """
+    mask = mask.astype(int)
+    labeled = label(mask, background=-1)
+    mask = mask.astype(bool)
+
+    for v in np.unique(labeled):
+        hole = (labeled == v)
+        if is_mask_touching_border(hole):
+            continue
+        hole_dilated = binary_dilation(hole, disk(1))
+        if are_overlapping(mask, hole_dilated):
+            mask = np.logical_or(mask, hole)
+
+    return mask
+
+
 def rotate(array: np.ndarray, angle: float) -> np.ndarray:
     """
     Rotate the input array by the specified angle.  
