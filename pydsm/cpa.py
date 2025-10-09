@@ -2,25 +2,74 @@
 
 import numpy as np
 from skimage.measure import label
+from skimage.morphology import disk, binary_erosion
+from scipy.ndimage import median_filter
 
 from .nda import rotate as nda_rotate
 from .nda import rescale_linear as nda_rescale_linear
 
+from .tile import Tile
 
-def tight_crop(array) -> np.ndarray:
+
+def is_mask_touching_border(mask: np.ndarray) -> bool:
     """
-    Crop around the non-zero values of the array.
-    0 values are considered as background.
-    
-    :param array: Input array to be cropped.
-    :return: Cropped array.
+    Check if a binary mask is touching the border of the array.
+
+    :param mask: 2D numpy array (binary mask)
+    :return: True if the mask touches the border, False otherwise
+    """
+    if np.any(mask[0, :]) or np.any(mask[-1, :]):
+        return True
+    if np.any(mask[:, 0]) or np.any(mask[:, -1]):
+        return True
+    return False
+
+
+def get_tight_crop_values(array: np.ndarray) -> tuple:
+    """
+    Gets the coordinates to tight crop around the mask in the array  
+
+    :param array: np.ndarray, crop around any non-zero values
+    :return: tuple, (min_x, max_x, min_y, max_y)
     """
     coords = np.argwhere(array != 0)
     minx = coords[:, 0].min()
     maxx = coords[:, 0].max()
     miny = coords[:, 1].min()
     maxy = coords[:, 1].max()
-    return array[minx:maxx+1, miny:maxy+1]
+    return (minx,maxx+1,miny,maxy+1)
+
+
+def extract_instances(tile: Tile, ignore_border=True) -> list[Tile]:
+    """
+    Extract the masked items from the copy_array and copy_ndsm based on the copy_labels.
+    The background label (0) is ignored.
+
+    :param tile_dict: dict [str, np.array] with keys `orthophoto`, `ndsm`, `instance_labels` and `semantic_labels`
+    :param ignore_border: does not return the local tile of instances touching the border if True
+    :return: a list of dict of [str, np.array] with keys `orthophoto`, `ndsm`, `instance_labels` and `semantic_labels`
+    """
+    local_tiles = []
+
+    for v in np.unique(tile.instance_labels):
+        if v == 0: continue  # Skip background
+
+        mask = (tile.instance_labels == v)
+        mask_rgb = np.dstack([mask] * 3)
+
+        if ignore_border and is_mask_touching_border(mask):
+            continue
+
+        min_x, max_x, min_y, max_y = get_tight_crop_values(mask)
+
+        ortho = (tile.orthophoto * mask_rgb)[min_x:max_x, min_y:max_y]
+        ndsm = (tile.ndsm * mask)[min_x:max_x, min_y:max_y]
+        instances = (tile.instance_labels * mask)[min_x:max_x, min_y:max_y]
+        semantics = (tile.semantic_labels * mask)[min_x:max_x, min_y:max_y]
+
+        local_tiles.append(Tile(ortho, ndsm, instances, semantics))
+    
+    return local_tiles
 
 
 def pad_to_tile(array: np.ndarray, *, angle=0.0, zoom=0.0, x=1000, y=1000, tile_size: int = 2000) -> np.ndarray:
@@ -104,6 +153,7 @@ def get_copy_paste_mask(copy_array: np.ndarray, copy_ndsm: np.ndarray, paste_nds
     max_ndsm = np.maximum(copy_ndsm, paste_ndsm)
     mask = (max_ndsm == copy_ndsm) * copy_mask
     mask = get_biggest_mask(mask)
+    mask = median_filter(mask.astype(np.uint8), size=3).astype(bool)
     return mask
 
 
@@ -120,13 +170,14 @@ def copy_paste(copy_array: np.ndarray, copy_ndsm: np.ndarray, paste_array: np.nd
     :param paste_ndsm: the ndsm of the tile where the object will be pasted
     :return: tuple of (new orthophoto array, new ndsm array) after copy-paste
     """
-    copy_mask = get_copy_paste_mask(copy_array, copy_ndsm, paste_ndsm)
+    ndsm_mask = get_copy_paste_mask(copy_array, copy_ndsm, paste_ndsm)
+    array_mask = binary_erosion(ndsm_mask, disk(2))
 
-    copy_array = (copy_array * np.dstack([copy_mask]*3))
-    copy_ndsm = (copy_ndsm * copy_mask)
+    copy_array = (copy_array * np.dstack([array_mask]*3))
+    copy_ndsm = (copy_ndsm * ndsm_mask)
     
-    paste_array = (paste_array * ~np.dstack([copy_mask]*3))
-    paste_ndsm = (paste_ndsm * np.logical_not(copy_mask))
+    paste_array = (paste_array * ~np.dstack([array_mask]*3))
+    paste_ndsm = (paste_ndsm * np.logical_not(ndsm_mask))
 
     return (copy_array + paste_array), (copy_ndsm + paste_ndsm)
 
