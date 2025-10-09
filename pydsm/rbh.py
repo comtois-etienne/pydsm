@@ -27,6 +27,7 @@ from .nda import are_overlapping as nda_are_overlapping
 from .utils import *
 
 
+#todo merge with cpa.get_tight_crop_values
 def crop_bounding(mask: np.ndarray, ndsm: np.ndarray) -> tuple[np.ndarray, np.ndarray, tuple[int, int]]:
     """
     Crop the arrays to the bounding box of the non-zero pixels in mask.
