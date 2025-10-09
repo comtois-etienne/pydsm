@@ -20,32 +20,6 @@ class Tile:
     semantic_labels: np.ndarray
 
 
-def display_tile(tile: Tile, colorbar=False):
-    plt.subplots(1, 4, figsize=(20, 10))
-
-    plt.subplot(1, 4, 1)
-    plt.title('orthophoto')
-    plt.imshow(tile.orthophoto)
-
-    plt.subplot(1, 4, 2)
-    max_v = np.max(tile.ndsm)
-    plt.title(f'ndsm={max_v:.1f}')
-    plt.imshow(tile.ndsm, cmap='terrain')
-
-    plt.subplot(1, 4, 3)
-    unique = len(np.unique(tile.instance_labels))
-    plt.title(f'instance_labels={unique}')
-    plt.imshow(tile.instance_labels, cmap='tab20b', interpolation='nearest')
-
-    plt.subplot(1, 4, 4)
-    unique = len(np.unique(tile.semantic_labels))
-    plt.title(f'semantic_labels={unique}')
-    plt.imshow(tile.semantic_labels, vmin=0, vmax=20, cmap='tab20', interpolation='nearest')
-    plt.colorbar() if colorbar else None
-
-    plt.show()
-
-
 def default_semantic_dict() -> dict:
     return {
         'BACKGROUND': 0,
@@ -112,7 +86,18 @@ def tree_species_dict_v2() -> dict:
     }
 
 
-def get_semantic_code(semantics_dict: dict, code: str) -> int:
+def get_semantic_code(semantics_dict: dict, code: int) -> str:
+    """
+    `Warning` does not check for out of bound errors
+
+    :param semantics_dict: dict[str, int] that maps semantic str to semantic int
+    :param code: int, int value of the semantic str
+    :return: str, semantic str
+    """
+    return list(semantics_dict)[code]
+
+
+def get_semantic_intcode(semantics_dict: dict, code: str) -> int:
     """
     Get the integer value of the given code  
     4 first char are used. If no corresponding value was found, the 2 first char are used  
@@ -131,6 +116,36 @@ def get_semantic_code(semantics_dict: dict, code: str) -> int:
         return semantics_dict[short]
     else:
         return semantics_dict['UNKNOWN']
+
+
+def display_tile(tile: Tile, colorbar=False, semantic_dict=tree_species_dict_v2()):
+    plt.subplots(1, 4, figsize=(20, 10))
+
+    plt.subplot(1, 4, 1)
+    plt.title('orthophoto')
+    plt.imshow(tile.orthophoto)
+
+    plt.subplot(1, 4, 2)
+    max_v = np.max(tile.ndsm)
+    plt.title(f'ndsm={max_v:.1f}')
+    plt.imshow(tile.ndsm, cmap='terrain')
+
+    plt.subplot(1, 4, 3)
+    unique = len(np.unique(tile.instance_labels))
+    plt.title(f'instance_labels={unique}')
+    plt.imshow(tile.instance_labels, cmap='tab20b', interpolation='nearest')
+
+    plt.subplot(1, 4, 4)
+    unique = len(np.unique(tile.semantic_labels))
+    if unique == 2:
+        unique = np.max(tile.semantic_labels)
+        unique = get_semantic_code(semantic_dict, unique)
+
+    plt.title(f'semantic_labels={unique}')
+    plt.imshow(tile.semantic_labels, vmin=0, vmax=20, cmap='tab20', interpolation='nearest')
+    plt.colorbar() if colorbar else None
+
+    plt.show()
 
 
 def apply_semantic_codes(instance_labels: np.ndarray, semantics_df: pd.DataFrame, semantics_dict: dict) -> np.ndarray:
@@ -166,7 +181,7 @@ def apply_semantic_codes(instance_labels: np.ndarray, semantics_df: pd.DataFrame
 
     df['int_code'] = 0
     for code in df['code']:
-        int_code = get_semantic_code(semantics_dict, code)
+        int_code = get_semantic_intcode(semantics_dict, code)
         row_indexer = df['code'] == code
         df.loc[row_indexer, 'int_code'] = int_code
 
