@@ -218,3 +218,25 @@ def copy_paste(copy_tile: Tile, paste_tile: Tile) -> Tile:
 
     return Tile(ortho, ndsm, instances, semantics)
 
+
+def random_copy_paste(copy_local_tile: Tile, paste_tile: Tile, dim_change=0.1) -> Tile:
+    """
+    Copy-paste a single instance to a Tile 
+
+    :param copy_local_tile: Tile, containing a single instance. Size must be smaller than `paste_tile`
+    :param paste_tile: Tile, to paste the `copy_local_tile` onto
+    :param dim_change: float, plus-minus scale value of the pasted instance
+    :return: Tile, with pasted instance
+    """
+    tile_size = paste_tile.ndsm.shape[0]
+    angle = np.random.uniform(0, 360)
+    x = np.random.randint(0, tile_size)
+    y = np.random.randint(0, tile_size)
+    zoom = 1 + np.random.uniform(-dim_change, dim_change)
+
+    copy_local_tile = zoom_local_tile(copy_local_tile, zoom)
+    copy_local_tile = rotate_local_tile(copy_local_tile, angle)
+    copy_tile = pad_local_tile(copy_local_tile, x, y, tile_size)
+
+    return copy_paste(copy_tile, paste_tile)
+
