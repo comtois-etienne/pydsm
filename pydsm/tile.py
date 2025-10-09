@@ -3,6 +3,7 @@ import osgeo
 from osgeo import gdal, ogr, osr
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 import os
 
 
@@ -17,6 +18,29 @@ class Tile:
     ndsm: np.ndarray
     instance_labels: np.ndarray
     semantic_labels: np.ndarray
+
+
+def display_tile(tile: Tile, colorbar=False):
+    plt.subplots(1, 4, figsize=(20, 10))
+
+    plt.subplot(1, 4, 1)
+    plt.title('orthophoto')
+    plt.imshow(tile.orthophoto)
+
+    plt.subplot(1, 4, 2)
+    plt.title('ndsm')
+    plt.imshow(tile.ndsm, cmap='terrain')
+
+    plt.subplot(1, 4, 3)
+    plt.title('instance_labels')
+    plt.imshow(tile.instance_labels, cmap='tab20b', interpolation='nearest')
+
+    plt.subplot(1, 4, 4)
+    plt.title('semantic_labels')
+    plt.imshow(tile.semantic_labels, vmin=0, vmax=20, cmap='tab20', interpolation='nearest')
+    plt.colorbar() if colorbar else None
+
+    plt.show()
 
 
 def default_semantic_dict() -> dict:
