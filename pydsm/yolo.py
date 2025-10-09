@@ -14,6 +14,8 @@ from ultralytics.utils import LOGGER
 
 from .rbh import get_contour as rbh_get_contour
 from .nda import to_uint8 as nda_to_uint8
+from .tile import open_tile_npz as tile_open_tile_npz
+from .tile import Tile
 
 
 coco_classes = {0: 'person', 1: 'bicycle', 2: 'car', 3: 'motorcycle', 4: 'airplane', 5: 'bus', 6: 'train', 7: 'truck', 8: 'boat', 9: 'traffic light', 10: 'fire hydrant', 11: 'stop sign', 12: 'parking meter', 13: 'bench', 14: 'bird', 15: 'cat', 16: 'dog', 17: 'horse', 18: 'sheep', 19: 'cow', 20: 'elephant', 21: 'bear', 22: 'zebra', 23: 'giraffe', 24: 'backpack', 25: 'umbrella', 26: 'handbag', 27: 'tie', 28: 'suitcase', 29: 'frisbee', 30: 'skis', 31: 'snowboard', 32: 'sports ball', 33: 'kite', 34: 'baseball bat', 35: 'baseball glove', 36: 'skateboard', 37: 'surfboard', 38: 'tennis racket', 39: 'bottle', 40: 'wine glass', 41: 'cup', 42: 'fork', 43: 'knife', 44: 'spoon', 45: 'bowl', 46: 'banana', 47: 'apple', 48: 'sandwich', 49: 'orange', 50: 'broccoli', 51: 'carrot', 52: 'hot dog', 53: 'pizza', 54: 'donut', 55: 'cake', 56: 'chair', 57: 'couch', 58: 'potted plant', 59: 'bed', 60: 'dining table', 61: 'toilet', 62: 'tv', 63: 'laptop', 64: 'mouse', 65: 'remote', 66: 'keyboard', 67: 'cell phone', 68: 'microwave', 69: 'oven', 70: 'toaster', 71: 'sink', 72: 'refrigerator', 73: 'book', 74: 'clock', 75: 'vase', 76: 'scissors', 77: 'teddy bear', 78: 'hair drier', 79: 'toothbrush'}
@@ -90,7 +92,7 @@ def to_class_index_line(contour: np.ndarray, class_index: int, size: int) -> str
     return ' '.join([str(class_index)] + contour)
 
 
-def to_class_index_lines(instance_labels: np.ndarray, class_labels: np.ndarray | None, *, edges=8, visualize=False) -> list[str]:
+def to_class_index_lines(instance_labels: np.ndarray, semantic_labels: np.ndarray | None, *, edges=8, visualize=False) -> list[str]:
     """
     Convert mask instances and their class labels to yolo class index strings
     Each instance is represented by a convex hull contour of 8 sides
@@ -108,9 +110,9 @@ def to_class_index_lines(instance_labels: np.ndarray, class_labels: np.ndarray |
     unique = unique[1:] if unique[0] == 0 else unique
     instance_labels = instance_labels.copy()
 
-    if class_labels is None:
-        class_labels = (instance_labels > 0).astype(np.uint8)
-    class_labels = class_labels.copy()
+    if semantic_labels is None:
+        semantic_labels = (instance_labels > 0).astype(np.uint8)
+    semantic_labels = semantic_labels.copy()
     size = instance_labels.shape[0]
     instance_labels = np.pad(instance_labels, ((100, 100), (100, 100)), mode='constant', constant_values=0)
 
@@ -124,7 +126,7 @@ def to_class_index_lines(instance_labels: np.ndarray, class_labels: np.ndarray |
         contour = rbh_get_contour(instance, edges=edges, convex_hull=is_split, drop_last=True) - np.array([100, 100])
 
         instance = instance[100:-100, 100:-100]
-        class_index = np.max(class_labels * instance)
+        class_index = np.max(semantic_labels * instance)
 
         contour[contour >= size] = size - 1
         class_index_line = to_class_index_line(contour, (class_index - 1), size)
@@ -140,7 +142,7 @@ def to_class_index_lines(instance_labels: np.ndarray, class_labels: np.ndarray |
     return class_index_lines
 
 
-def save_to_class_index_file(dir_npz: str, dir_labels: str, instance_labels_key='labels', class_labels_key: str | None = 'species', edges_per_instance=8, visualize=False):
+def save_to_class_index_file(dir_npz: str, dir_labels: str, edges_per_instance=8, visualize=False):
     os.makedirs(dir_labels, exist_ok=True)
 
     for filename in os.listdir(dir_npz):
@@ -148,13 +150,16 @@ def save_to_class_index_file(dir_npz: str, dir_labels: str, instance_labels_key=
             continue
 
         tile_path = os.path.join(dir_npz, filename)
-        tile_data = np.load(tile_path)
+        tile = tile_open_tile_npz(tile_path)
 
         if visualize: print(f'Processing \'{filename}\'')
 
-        instances = tile_data[instance_labels_key]
-        classes_labels = None if class_labels_key is None else tile_data[class_labels_key]
-        class_index_lines = to_class_index_lines(instances, classes_labels, edges=edges_per_instance, visualize=visualize)
+        class_index_lines = to_class_index_lines(
+            tile.instance_labels, 
+            tile.semantic_labels, 
+            edges=edges_per_instance, 
+            visualize=visualize
+        )
 
         label_filename = filename.replace('.npz', '.txt')
         label_path = os.path.join(dir_labels, label_filename)
