@@ -279,9 +279,9 @@ def replace_value_inplace(array: np.ndarray, old_values: list, new_values: list)
     return array
 
 
-def are_touching(mask_a: np.ndarray, mask_b: np.ndarray) -> bool:
+def are_overlapping(mask_a: np.ndarray, mask_b: np.ndarray) -> bool:
     """
-    True if the two masks touch eachother.
+    True if the two masks touch eachother by overlapping each other.
 
     :param mask_a: 2D binary numpy array of the first mask
     :param mask: 2D binary numpy array of the second mask

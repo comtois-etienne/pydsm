@@ -22,7 +22,7 @@ from .geo import get_coordinate_at_pixel as geo_get_coordinate_at_pixel
 
 from .nda import shrink_mask as nda_shrink_mask
 from .nda import normalize as nda_normalize
-from .nda import are_touching as nda_are_touching
+from .nda import are_overlapping as nda_are_overlapping
 
 from .utils import *
 
@@ -544,7 +544,7 @@ def tree_modeling(
 
     for mask_id in unique_ids:
         instance_mask = (instance_masks == mask_id)
-        if nda_are_touching(rejection_region, instance_mask):
+        if nda_are_overlapping(rejection_region, instance_mask):
             print(f'  {mask_id} : skipped for touching the border') if verbose else None
             continue
 
