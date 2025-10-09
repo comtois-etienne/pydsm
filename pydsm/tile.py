@@ -19,6 +19,14 @@ class Tile:
     instance_labels: np.ndarray
     semantic_labels: np.ndarray
 
+    def copy(self) -> 'Tile':
+        return Tile(
+            self.orthophoto.copy(), 
+            self.ndsm.copy(), 
+            self.instance_labels.copy(), 
+            self.semantic_labels.copy()
+        )
+
 
 def default_semantic_dict() -> dict:
     return {
@@ -319,7 +327,7 @@ def save_split_tiles(tiles_dir: str, tile_name: str, tiles: list[Tile]):
         save_tile(save_path, tile)
 
 
-def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'dataset', semantic_dict=default_semantic_dict()) -> None:
+def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'dataset', semantic_dict=default_semantic_dict(), split=True, prepocess=True) -> None:
     """
     Saves the annotated tiles to npz to be used for training  
     Tiles are normalized  
@@ -335,7 +343,12 @@ def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'dataset', semantic_
     for name in names:
         if not name.endswith('.tif'): continue
         tile = open_tile(tiles_dir, name, semantic_dict)
-        tile = preprocess_tile(tile)
-        tiles = split_tile(tile)
-        save_split_tiles(save_dir, name, tiles)
+        tile = preprocess_tile(tile) if prepocess else tile
+        if split:
+            tiles = split_tile(tile)
+            save_split_tiles(save_dir, name, tiles)
+        else:
+            file_name = f'{utils.remove_extension(name)}.npz'
+            npz_path = utils.append_file_to_path(save_dir, file_name)
+            save_tile(npz_path, tile)
 
