@@ -59,6 +59,28 @@ def extract_instances(tile: Tile, ignore_border=True) -> list[Tile]:
     return local_tiles
 
 
+def rotate_local_tile(tile: Tile, angle: float) -> Tile:
+    """
+    Rotate a tile with only one instance.  
+    Resulting tile is bigger or equal in size as the original due to the non-cropping rotation.  
+
+    :param tile: Tile, with one instance
+    :param angle: float, rotation in degree
+    :return: Tile, with clockwise rotation of `angle` degrees. 
+    """
+    ortho = nda_rotate(tile.orthophoto, angle)
+    ndsm = nda_rotate(tile.ndsm, angle)
+    instance_labels = nda_rotate(tile.instance_labels, angle).astype(bool).astype(int)
+    semantic_labels = instance_labels * np.max(tile.semantic_labels)
+
+    return Tile(
+        orthophoto=ortho,
+        ndsm=ndsm,
+        instance_labels=instance_labels,
+        semantic_labels=semantic_labels,
+    )
+
+
 def pad_to_tile(array: np.ndarray, *, angle=0.0, zoom=0.0, x=1000, y=1000, tile_size: int = 2000) -> np.ndarray:
     """
     Pad the input array to the specified tile size.  
