@@ -12,6 +12,7 @@ from typing import Any, Optional, Tuple
 import skimage.transform
 from skimage.morphology import disk, binary_dilation
 from skimage.transform import rotate as sk_rotate
+from skimage.measure import label
 
 
 from .utils import *
@@ -288,6 +289,20 @@ def are_overlapping(mask_a: np.ndarray, mask_b: np.ndarray) -> bool:
     :return: True if the masks touch eachother, False otherwise
     """
     return np.sum(np.logical_and(mask_a, mask_b)) > 0
+
+
+def is_mask_touching_border(mask: np.ndarray) -> bool:
+    """
+    Check if a binary mask is touching the border of the array.
+
+    :param mask: 2D numpy array (binary mask)
+    :return: True if the mask touches the border, False otherwise
+    """
+    if np.any(mask[0, :]) or np.any(mask[-1, :]):
+        return True
+    if np.any(mask[:, 0]) or np.any(mask[:, -1]):
+        return True
+    return False
 
 
 def rotate(array: np.ndarray, angle: float) -> np.ndarray:

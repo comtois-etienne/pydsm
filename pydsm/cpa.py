@@ -7,22 +7,9 @@ from scipy.ndimage import median_filter
 
 from .nda import rotate as nda_rotate
 from .nda import rescale_linear as nda_rescale_linear
+from .nda import is_mask_touching_border as nda_is_mask_touching_border
 
 from .tile import Tile
-
-
-def is_mask_touching_border(mask: np.ndarray) -> bool:
-    """
-    Check if a binary mask is touching the border of the array.
-
-    :param mask: 2D numpy array (binary mask)
-    :return: True if the mask touches the border, False otherwise
-    """
-    if np.any(mask[0, :]) or np.any(mask[-1, :]):
-        return True
-    if np.any(mask[:, 0]) or np.any(mask[:, -1]):
-        return True
-    return False
 
 
 def get_tight_crop_values(array: np.ndarray) -> tuple:
@@ -57,7 +44,7 @@ def extract_instances(tile: Tile, ignore_border=True) -> list[Tile]:
         mask = (tile.instance_labels == v)
         mask_rgb = np.dstack([mask] * 3)
 
-        if ignore_border and is_mask_touching_border(mask):
+        if ignore_border and nda_is_mask_touching_border(mask):
             continue
 
         min_x, max_x, min_y, max_y = get_tight_crop_values(mask)
