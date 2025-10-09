@@ -28,15 +28,18 @@ def display_tile(tile: Tile, colorbar=False):
     plt.imshow(tile.orthophoto)
 
     plt.subplot(1, 4, 2)
-    plt.title('ndsm')
+    max_v = np.max(tile.ndsm)
+    plt.title(f'ndsm={max_v:.1f}')
     plt.imshow(tile.ndsm, cmap='terrain')
 
     plt.subplot(1, 4, 3)
-    plt.title('instance_labels')
+    unique = len(np.unique(tile.instance_labels))
+    plt.title(f'instance_labels={unique}')
     plt.imshow(tile.instance_labels, cmap='tab20b', interpolation='nearest')
 
     plt.subplot(1, 4, 4)
-    plt.title('semantic_labels')
+    unique = len(np.unique(tile.semantic_labels))
+    plt.title(f'semantic_labels={unique}')
     plt.imshow(tile.semantic_labels, vmin=0, vmax=20, cmap='tab20', interpolation='nearest')
     plt.colorbar() if colorbar else None
 
