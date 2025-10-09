@@ -188,6 +188,32 @@ def get_labels_centers(labels: np.ndarray) -> list:
     return centers
 
 
+def get_centers(labels: np.ndarray, downsampling_size=100):
+    """
+    Returns the centers of the instances in the labels array.
+
+    :param labels: np.ndarray with shape (H, W) representing the instance segmentation labels.
+    :param downsampling_size: int, size to which the labels will be downsampled.
+    :return: tuple of two np.ndarrays:
+        - array_centers: binary numpy array with the centers of the instances set to `1.0` (size of `labels`)
+        - array_centers_downsampled: binary numpy array with the centers of the downsampled instances (size `downsampling_size`)
+    """
+    labels_downsampled = rescale_nearest_neighbour(labels, (downsampling_size, downsampling_size))
+    centers = np.array(get_labels_centers(labels_downsampled))
+
+    if centers.size == 0:
+        return np.zeros_like(labels), np.zeros((downsampling_size, downsampling_size))
+
+    array_centers_downsampled = np.zeros_like(labels_downsampled)
+    array_centers_downsampled[centers[:, 0], centers[:, 1]] = 1
+
+    centers = centers * (labels.shape[0] // downsampling_size)
+    array_centers = np.zeros_like(labels)
+    array_centers[centers[:, 0], centers[:, 1]] = 1
+
+    return array_centers, array_centers_downsampled
+
+
 def convert_2D_to_3D(array: np.array, rev=False) -> np.array:
     """
     2D array to 3D array
@@ -262,20 +288,6 @@ def are_touching(mask_a: np.ndarray, mask_b: np.ndarray) -> bool:
     :return: True if the masks touch eachother, False otherwise
     """
     return np.sum(np.logical_and(mask_a, mask_b)) > 0
-
-
-def is_mask_touching_border(mask: np.ndarray) -> bool:
-    """
-    Check if a binary mask is touching the border of the array.
-
-    :param mask: 2D numpy array (binary mask)
-    :return: True if the mask touches the border, False otherwise
-    """
-    if np.any(mask[0, :]) or np.any(mask[-1, :]):
-        return True
-    if np.any(mask[:, 0]) or np.any(mask[:, -1]):
-        return True
-    return False
 
 
 def rotate(array: np.ndarray, angle: float = None) -> tuple[np.ndarray, float]:
