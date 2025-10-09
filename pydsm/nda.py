@@ -290,9 +290,10 @@ def are_touching(mask_a: np.ndarray, mask_b: np.ndarray) -> bool:
     return np.sum(np.logical_and(mask_a, mask_b)) > 0
 
 
-def rotate(array: np.ndarray, angle: float = None) -> tuple[np.ndarray, float]:
+def rotate(array: np.ndarray, angle: float) -> np.ndarray:
     """
-    Rotate the input array by the specified angle.
+    Rotate the input array by the specified angle.  
+    Wrapper around `skimage.transform.rotate` to preserve dtype  
     
     :param array: Input array to be rotated.
     :param angle: Angle in degrees. If None, a random angle between 0 and 360 is chosen.
@@ -300,10 +301,8 @@ def rotate(array: np.ndarray, angle: float = None) -> tuple[np.ndarray, float]:
     """
     dtype = array.dtype
     array = array.astype(np.float32)
-    if angle is None:
-        angle = np.random.uniform(0, 360)
     rotated = sk_rotate(array, angle, resize=True).astype(dtype)
-    return rotated, angle
+    return rotated
 
 
 def rescale(array: np.ndarray, current_spacial_resolution: float | tuple[float, float], new_spacial_resolution: float | tuple[float, float] = 0.02) -> np.ndarray:

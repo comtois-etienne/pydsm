@@ -82,7 +82,7 @@ def pad_to_tile(array: np.ndarray, *, angle=0.0, zoom=0.0, x=1000, y=1000, tile_
     :param y: center y coordinate of the array in the tile
     :return: Padded array.
     """
-    array, _ = nda_rotate(array, angle)
+    array = nda_rotate(array, angle)
     shape = (np.array(array.shape[:2]) * (1 + zoom)).astype(int)
     array = nda_rescale_linear(array, shape)
 
