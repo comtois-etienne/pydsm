@@ -9,6 +9,7 @@ from .nda import rescale_linear as nda_rescale_linear
 from .nda import rescale_nearest_neighbour as nda_rescale_nearest_neighbour
 from .nda import is_mask_touching_border as nda_is_mask_touching_border
 from .nda import get_biggest_mask as nda_get_biggest_mask
+from .nda import remove_holes as nda_remove_holes
 
 from .tile import Tile
 
@@ -179,11 +180,11 @@ def get_copy_paste_tile(copy_tile: Tile, paste_tile: Tile) -> Tile:
     mask = (max_ndsm == copy_tile.ndsm) * copy_tile.instance_labels
     mask = nda_get_biggest_mask(mask)
     mask = median_filter(mask.astype(np.uint8), size=3).astype(bool)
-    semantic = np.max(copy_tile.semantic_labels)
+    mask = nda_remove_holes(mask)
 
     ortho = copy_tile.orthophoto * np.dstack([mask] * 3)
     ndsm = copy_tile.ndsm * mask
-    semantics = mask * semantic
+    semantics = mask * np.max(copy_tile.semantic_labels)
 
     return Tile(ortho, ndsm, mask, semantics)
 
