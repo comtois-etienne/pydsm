@@ -6,6 +6,11 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import os
 
+from scipy.ndimage import median_filter
+from scipy.ndimage import distance_transform_edt
+from cv2 import resize as cv2_resize
+from cv2 import INTER_CUBIC
+
 
 import pydsm.nda as nda
 import pydsm.geo as geo
@@ -278,6 +283,36 @@ def preprocess_tile(tile: Tile, ndsm_clip_height=30.0) -> Tile:
     ndsm = tile.ndsm[..., :1] if tile.ndsm.ndim > 2 else tile.ndsm
     ndsm = nda.clip_rescale(ndsm, ndsm_clip_height)
     return Tile(orthophoto, ndsm, tile.instance_labels, tile.semantic_labels)
+
+
+def correct_ndsm(tile: Tile, subsampling_size=8, median_kernel_size=3) -> Tile:
+    """
+    Correct the ndsm by replacing the aberant values
+
+    :param tile: Tile, with an ndsm to be corrected
+    :param subsampling_size: int, used to apply a median filter on a subsampled ndsm
+    :param median_kernel_size: int, kernel size of the median filter applied before scaling
+    :return: Tile, tile with a corrected (approximation) of the ndsm
+    """
+    instance_mask = tile.instance_labels.astype(bool)
+    ndsm = tile.ndsm
+    shape = ndsm.shape
+    filled_dtm = ndsm.copy()
+
+    mean = np.mean(ndsm[ndsm != 0])
+    mask = (ndsm < (mean / 2))
+    _, idx = distance_transform_edt(mask, return_indices=True)
+    filled_dtm[mask] = ndsm[tuple(idx[:, mask])]
+
+    dtm_simple = filled_dtm[::subsampling_size, ::subsampling_size]
+    dtm_smoothed = median_filter(dtm_simple, size=median_kernel_size)
+
+    dtm_upsampled = cv2_resize(dtm_smoothed, (shape[1], shape[0]), interpolation=INTER_CUBIC)
+    dtm_upsampled = (dtm_upsampled + ndsm) / 2
+    dtm_upsampled = np.maximum(ndsm, dtm_upsampled)
+    dtm_upsampled = dtm_upsampled * instance_mask
+
+    return Tile(tile.orthophoto, dtm_upsampled, tile.instance_labels, tile.semantic_labels)
 
 
 def save_tile(npz_path: str, tile: Tile) -> None:
