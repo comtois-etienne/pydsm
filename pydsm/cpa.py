@@ -10,6 +10,7 @@ from .nda import rescale_nearest_neighbour as nda_rescale_nearest_neighbour
 from .nda import is_mask_touching_border as nda_is_mask_touching_border
 from .nda import get_biggest_mask as nda_get_biggest_mask
 from .nda import remove_holes as nda_remove_holes
+from .nda import is_mask_inside as nda_is_mask_inside
 
 from .tile import Tile
 
@@ -17,16 +18,17 @@ from .tile import Tile
 def get_tight_crop_values(array: np.ndarray) -> tuple:
     """
     Gets the coordinates to tight crop around the mask in the array  
+    Crop with `array[min_x:max_x, min_y:max_y]`  
 
     :param array: np.ndarray, crop around any non-zero values
-    :return: tuple, (min_x, max_x, min_y, max_y)
+    :return: tuple, ( min_x, max_x, min_y, max_y )
     """
     coords = np.argwhere(array != 0)
-    minx = coords[:, 0].min()
-    maxx = coords[:, 0].max()
-    miny = coords[:, 1].min()
-    maxy = coords[:, 1].max()
-    return (minx,maxx+1,miny,maxy+1)
+    min_x = coords[:, 0].min()
+    max_x = coords[:, 0].max()
+    min_y = coords[:, 1].min()
+    max_y = coords[:, 1].max()
+    return ( min_x, max_x+1, min_y, max_y+1 )
 
 
 def extract_instances(tile: Tile, ignore_border=True) -> list[Tile]:
@@ -220,7 +222,7 @@ def copy_paste(copy_tile: Tile, paste_tile: Tile) -> Tile:
     return Tile(ortho, ndsm, instances, semantics)
 
 
-def random_copy_paste(copy_local_tile: Tile, paste_tile: Tile, dim_change=0.1) -> Tile:
+def random_copy_paste(copy_local_tile: Tile, paste_tile: Tile, dim_change=0.1, overlap_ratio=0.3) -> Tile:
     """
     Copy-paste a single instance to a Tile 
 
@@ -239,5 +241,12 @@ def random_copy_paste(copy_local_tile: Tile, paste_tile: Tile, dim_change=0.1) -
     copy_local_tile = rotate_local_tile(copy_local_tile, angle)
     copy_tile = pad_local_tile(copy_local_tile, x, y, tile_size)
 
+    is_inside = nda_is_mask_inside(
+        copy_tile.instance_labels, 
+        paste_tile.instance_labels, 
+        inside_ratio=overlap_ratio
+    )
+
+    if is_inside: return paste_tile
     return copy_paste(copy_tile, paste_tile)
 
