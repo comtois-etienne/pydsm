@@ -291,6 +291,33 @@ def are_overlapping(mask_a: np.ndarray, mask_b: np.ndarray) -> bool:
     return np.sum(np.logical_and(mask_a, mask_b)) > 0
 
 
+def is_mask_inside(mask_a: np.ndarray, mask_b: np.ndarray, downsample_factor=4, inside_ratio=0.8) -> bool:
+    """
+    Verify if any of the two mask is inside the other.  
+    Inside ratio : 0.2 (spread out) -> 0.4 (clusters) -> 0.6 (dense)
+
+    :param mask_a: np.ndarray, binary mask that can be inside mask_b
+    :param mask_b: np.ndarray, binary mask that can be inside mask_a
+    :param downsample_factor: bool, decimation factor to speed-up the calculation (default=4)
+    :param inside_ratio: float, the overlap ratio needed to be considered as inside
+    :return: True if any of the mask is inside the other, False otherwise
+    """
+    a = downsample(mask_a.astype(bool), downsample_factor)
+    b = downsample(mask_b.astype(bool), downsample_factor)
+
+    xor = np.logical_xor(a, b)
+    aor = np.logical_or(a, b)
+
+    # min_x, max_x, min_y, max_y = cpa.get_tight_crop_values(xor)
+    # plt.imshow(xor[min_x:max_x, min_y:max_y], interpolation='nearest')
+    # plt.show()
+
+    min_area = min(np.sum(a), np.sum(b))
+    diff = np.abs(np.sum(aor) - np.sum(xor))
+
+    return diff >= (min_area * inside_ratio)
+
+
 def is_mask_touching_border(mask: np.ndarray) -> bool:
     """
     Check if a binary mask is touching the border of the array.
