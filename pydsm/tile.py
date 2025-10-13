@@ -440,6 +440,23 @@ def open_tile_npz(npz_path: str) -> Tile:
     return Tile(npz['orthophoto'], npz['ndsm'], npz['instance_labels'], npz['semantic_labels'])
 
 
+def get_instance(tiles_dir: str, semantic_code: str, percentile=0.0) -> Tile:
+    """
+    Get an instance of a given semantic class from the tiles directory.
+
+    :param tiles_dir: str, Path to the tiles directory (should contain 'instances' subdirectory)
+    :param semantic_code: str, Semantic code of the desired class (e.g., 'PI' for Pinus)
+    :param percentile: float, Percentile to select the instance (0.0 for first, 0.5 for median, 1.0 for last)
+    :return: Tile, at the specified percentile of the instances of the given semantic class.
+    """
+    tile_files = sorted(os.listdir(os.path.join(tiles_dir, 'instances', semantic_code)))
+    tile_files = [f for f in tile_files if f.endswith('.npz')]
+    index = int(percentile * len(tile_files))
+    tile_file = tile_files[index]
+    tile_path = os.path.join(tiles_dir, 'instances', semantic_code, tile_file)
+    return open_tile_npz(tile_path)
+
+
 def save_split_tiles(tiles_dir: str, tile_name: str, tiles: list[Tile]):
     """
     Saves the tiles into `tiles_dir` using tile_name with their orientation  
