@@ -11,6 +11,7 @@ from .nda import is_mask_touching_border as nda_is_mask_touching_border
 from .nda import get_biggest_mask as nda_get_biggest_mask
 from .nda import remove_holes as nda_remove_holes
 from .nda import is_mask_inside as nda_is_mask_inside
+from .nda import augmentation as nda_augmentation
 
 from .tile import *
 
@@ -80,12 +81,13 @@ def rotate_local_tile(tile: Tile, angle: float) -> Tile:
     return Tile(ortho, ndsm, instance_labels, semantic_labels)
 
 
-def zoom_local_tile(tile: Tile, zoom=1.0):
+def zoom_local_tile(tile: Tile, zoom=1.0) -> Tile:
     """
     Scale up or down a local tile (tile with only one instance)
 
     :param tile: Tile, tile with only one instance to change size
     :param zoom: float, `1.0` for no change max `1.9`, min `0.1`
+    :return: Tile, zoomed in or out tile
     """
     zoom = max(min(1.9, zoom), 0.1)
     shape = (np.array(tile.ndsm.shape[:2]) * zoom).astype(int)
@@ -95,7 +97,19 @@ def zoom_local_tile(tile: Tile, zoom=1.0):
     instances = nda_rescale_nearest_neighbour(tile.instance_labels, shape).astype(bool).astype(int)
     semantics = instances * np.max(tile.semantic_labels)
 
-    return Tile(ortho, ndsm, instances, semantics)
+    return Tile(ortho, ndsm * zoom, instances, semantics)
+
+
+def augmentation_local_tile(tile: Tile):
+    """
+    Brightness augmentation
+
+    :param tile: Tile, tile with only one instance to change size
+    :return: Tile, with gamma, contrast, noise and blur augmentation
+    """
+    ortho = nda_augmentation(tile.orthophoto) * 255
+    ortho = ortho.astype(int) * np.dstack([tile.instance_labels.astype(bool)] * 3)
+    return Tile(ortho, tile.ndsm, tile.instance_labels, tile.semantic_labels)
 
 
 def pad_local_tile(tile: Tile, x=0, y=0, tile_size=2000):
@@ -252,12 +266,7 @@ def random_copy_paste(copy_local_tile: Tile, paste_tile: Tile, dim_change=0.15, 
     copy_local_tile = flip_tile(copy_local_tile, axis=1) if np.random.rand() > 0.5 else copy_local_tile
     copy_local_tile = zoom_local_tile(copy_local_tile, zoom)
     copy_local_tile = rotate_local_tile(copy_local_tile, angle)
-    copy_local_tile = Tile(
-        copy_local_tile.orthophoto,
-        copy_local_tile.ndsm * zoom,
-        copy_local_tile.instance_labels,
-        copy_local_tile.semantic_labels,
-    )
+    copy_local_tile = augmentation_local_tile(copy_local_tile)
     copy_tile = pad_local_tile(copy_local_tile, x, y, tile_size)
 
     is_inside = nda_is_mask_inside(
