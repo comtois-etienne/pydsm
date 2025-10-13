@@ -12,9 +12,7 @@ from .nda import get_biggest_mask as nda_get_biggest_mask
 from .nda import remove_holes as nda_remove_holes
 from .nda import is_mask_inside as nda_is_mask_inside
 
-from .tile import Tile
-from .tile import remove_small_masks
-from .tile import flip_tile
+from .tile import *
 
 
 def get_tight_crop_values(array: np.ndarray) -> tuple:
@@ -232,14 +230,13 @@ def copy_paste(copy_tile: Tile, paste_tile: Tile, remove_cracks=5, remove_masks=
     return remove_small_masks(Tile(ortho, ndsm, instances, semantics), remove_masks)
 
 
-def random_copy_paste(copy_local_tile: Tile, paste_tile: Tile, dim_change=0.1, overlap_ratio=0.3, remove_cracks=5, remove_masks=400) -> Tile:
+def random_copy_paste(copy_local_tile: Tile, paste_tile: Tile, dim_change=0.1, remove_cracks=5, remove_masks=400) -> Tile:
     """
     Copy-paste a single instance to a Tile 
 
     :param copy_local_tile: Tile, containing a single instance. Size must be smaller than `paste_tile`
     :param paste_tile: Tile, to paste the `copy_local_tile` onto
     :param dim_change: float, plus-minus scale value of the pasted instance
-    :param overlap_ratio: float, the maximum overlap between pasted instances
     :param remove_cracks: int, the size of the cracks to be removed
     :param remove_masks: int, the size of the masks to be removed (smaller or equal to)
     :return: Tile, with pasted instance
@@ -249,6 +246,7 @@ def random_copy_paste(copy_local_tile: Tile, paste_tile: Tile, dim_change=0.1, o
     x = np.random.randint(0, tile_size)
     y = np.random.randint(0, tile_size)
     zoom = 1 + np.random.uniform(-dim_change, dim_change)
+    overlap = np.random.uniform(0.1, 0.5)
 
     copy_local_tile = flip_tile(copy_local_tile, axis=0) if np.random.rand() > 0.5 else copy_local_tile
     copy_local_tile = flip_tile(copy_local_tile, axis=1) if np.random.rand() > 0.5 else copy_local_tile
@@ -259,9 +257,52 @@ def random_copy_paste(copy_local_tile: Tile, paste_tile: Tile, dim_change=0.1, o
     is_inside = nda_is_mask_inside(
         copy_tile.instance_labels, 
         paste_tile.instance_labels, 
-        inside_ratio=overlap_ratio
+        inside_ratio=overlap
     )
 
     if is_inside: return paste_tile
     return copy_paste(copy_tile, paste_tile, remove_cracks, remove_masks)
+
+
+def export_instances(tiles_dir: str, tile_name: str) -> None:
+    """
+    Export instances of the tile as standalone tiles containing one instance  
+    Files are saved under `tiles_dir/instances/{code}/`  
+    The tile_name is used with the instance id added to the end  
+    
+    :param tiles_dir: str, path to the tiles directory containing `orthophoto`, `ndsm`, `points`, and `labels`
+    :param tile_name: str, name of the tile to open and extract the instances from
+    :return: None, saves instances as tiles to disk
+    """
+    species_dict = tree_species_dict_v2()
+    copy_tile = open_tile(tiles_dir, tile_name, species_dict)
+    local_tiles = extract_instances(copy_tile, ignore_border=True)
+
+    for local_tile in local_tiles:
+        semantics = np.max(local_tile.semantic_labels)
+        code = get_semantic_code(species_dict, semantics)
+        instance = np.max(local_tile.instance_labels)
+        npz_name = utils.remove_extension(tile_name)
+        npz_name = f'{npz_name} (id={instance}).npz'
+
+        npz_path = os.path.join(tiles_dir, 'instances', code)
+        os.makedirs(npz_path, exist_ok=True)
+
+        npz_path = os.path.join(npz_path, npz_name)
+        save_tile(npz_path, local_tile)
+
+
+def export_all_instances(tiles_dir: str) -> None:
+    """
+    Export all instances of every tiles into the sub-dir `instances` by semantics  
+    This is usefull to create copy-paste tiles for augmentation  
+
+    :param tiles_dir: str, path to the tiles directory
+    :return: None, saves instances as tiles to disk
+    """
+    ortho_dir = os.path.join(tiles_dir, 'orthophoto')
+    for tile_name in os.listdir(ortho_dir):
+        if not tile_name.endswith('.tif'):
+            continue
+        export_instances(tiles_dir, tile_name)
 
