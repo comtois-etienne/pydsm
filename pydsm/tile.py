@@ -1,6 +1,4 @@
 from dataclasses import dataclass
-import osgeo
-from osgeo import gdal, ogr, osr
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -8,9 +6,9 @@ import os
 
 from scipy.ndimage import median_filter
 from scipy.ndimage import distance_transform_edt
+from skimage.measure import label
 from cv2 import resize as cv2_resize
 from cv2 import INTER_CUBIC
-
 
 import pydsm.nda as nda
 import pydsm.geo as geo
@@ -131,7 +129,7 @@ def get_semantic_intcode(semantics_dict: dict, code: str) -> int:
         return semantics_dict['UNKNOWN']
 
 
-def display_tile(tile: Tile, colorbar=False, semantic_dict=tree_species_dict_v2()):
+def display_tile(tile: Tile, colorbar=False, semantic_dict=tree_species_dict_v2(), instance_cmap='tab20b'):
     plt.subplots(1, 4, figsize=(20, 10))
 
     plt.subplot(1, 4, 1)
@@ -146,7 +144,7 @@ def display_tile(tile: Tile, colorbar=False, semantic_dict=tree_species_dict_v2(
     plt.subplot(1, 4, 3)
     unique = len(np.unique(tile.instance_labels))
     plt.title(f'instance_labels={unique}')
-    plt.imshow(tile.instance_labels, cmap='tab20b', interpolation='nearest')
+    plt.imshow(tile.instance_labels, cmap=instance_cmap, interpolation='nearest')
 
     plt.subplot(1, 4, 4)
     unique = len(np.unique(tile.semantic_labels))
@@ -219,6 +217,29 @@ def remove_holes(instance_labels: np.ndarray) -> np.ndarray:
     return new_instance_labels
 
 
+def remove_small_masks(tile: Tile, min_area=400):
+    """
+    Removes all instances with an area lower or equal to `min_area`  
+    The instances are relabeled to find unconnected parts of instances  
+
+    :param tile: Tile, a tile with potentially small or unconnected parts of instances  
+    :param min_area: int, rejects masks with lower or equal area (default=20*20=400)
+    :return: Tile, a tile with modified (or not) instance_labels and semantic_labels
+    """
+    labeled = label(tile.instance_labels)
+    for v in np.unique(labeled):
+        mask = (labeled == v)
+        if np.sum(mask) > min_area:
+            continue
+        tile = Tile(
+            tile.orthophoto,
+            tile.ndsm,
+            tile.instance_labels * ~mask,
+            tile.semantic_labels * ~mask,
+        )
+    return tile
+
+
 def open_tile(tiles_dir: str, tile_name: str, semantic_dict=default_semantic_dict(), as_array=True) -> Tile:
     """
     Opens all data from the tile (orthophoto, ndsm, instance_labels, semantic_labels)
@@ -232,7 +253,6 @@ def open_tile(tiles_dir: str, tile_name: str, semantic_dict=default_semantic_dic
 
     ortho = geo.open_geotiff(os.path.join(tiles_dir, 'orthophoto', f'{tile_name}.tif'))
     ndsm = geo.open_geotiff(os.path.join(tiles_dir, 'ndsm', f'{tile_name}.tif'))
-    
     instances = nda.read_numpy(os.path.join(tiles_dir, 'labels', f'{tile_name}.npz'), npz_format='napari')
     instances = nda.relabel(instances)
     instances = remove_holes(instances)
@@ -269,16 +289,18 @@ def split_tile(tile: Tile) -> list[Tile]:
     return sub_tiles
 
 
-def preprocess_tile(tile: Tile, ndsm_clip_height=30.0) -> Tile:
+def preprocess_tile(tile: Tile, ndsm_clip_height=30.0, min_mask_size=400) -> Tile:
     """
     Preprocess a tile so it can be used for training a model.  
 
     :param tile: tile containing orthophoto, ndsm, instance labels, and semantic labels
     :param dsm_clip_height: float, height to which the DSM will be clipped.
+    :param min_mask_size: int, keep the masks of size greater than (default=400)
     :return: Tile containing the processed `{orthophoto, dsm, labels, labels_downsampled, species, centers, centers_downsampled}`.  
         - `orthophoto` is normalized to `[0.0, 1.0]` range  
         - `ndsm` is clipped and rescaled to `[0.0, 1.0]` range where `1.0` equals `dsm_clip_height`
     """
+    tile = remove_small_masks(tile, min_mask_size)
     orthophoto = nda.normalize(tile.orthophoto[..., :3])
     ndsm = tile.ndsm[..., :1] if tile.ndsm.ndim > 2 else tile.ndsm
     ndsm = nda.clip_rescale(ndsm, ndsm_clip_height)
@@ -378,12 +400,13 @@ def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'dataset', semantic_
     for name in names:
         if not name.endswith('.tif'): continue
         tile = open_tile(tiles_dir, name, semantic_dict)
-        tile = preprocess_tile(tile) if prepocess else tile
         if split:
             tiles = split_tile(tile)
+            tiles = [preprocess_tile(tile) for tile in tiles] if prepocess else tiles
             save_split_tiles(save_dir, name, tiles)
         else:
             file_name = f'{utils.remove_extension(name)}.npz'
             npz_path = utils.append_file_to_path(save_dir, file_name)
+            tile = preprocess_tile(tile) if prepocess else tile
             save_tile(npz_path, tile)
 
