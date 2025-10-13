@@ -129,6 +129,66 @@ def get_semantic_intcode(semantics_dict: dict, code: str) -> int:
         return semantics_dict['UNKNOWN']
 
 
+def get_all_points(tiles_dir: str):
+    """
+    Loads all annotated points from CSV files in the 'points' subdirectory of tiles_dir.  
+    Concatenates them into a single DataFrame.
+
+    :param tiles_dir: Directory containing a 'points' subdirectory with CSV files.
+    :return: DataFrame containing all points from the CSV files.
+    """
+    points_dir = os.path.join(tiles_dir, 'points')
+    
+    all_points = None
+    for name in os.listdir(points_dir):
+        if not name.endswith('.csv'): continue
+        csv = pd.read_csv(os.path.join(points_dir, name))
+        if len(csv) == 0: continue
+
+        if all_points is None:
+            all_points = csv
+        else:
+            all_points = pd.concat([all_points, csv], ignore_index=True)
+
+    return all_points
+
+
+def get_semantic_count(all_points: pd.DataFrame, semantic_dict: dict, semantic_col: str = 'code'):
+    """
+    Return the count of each semantic class in the points DataFrame.  
+    The semantic classes are defined in the semantic_dict.  
+    Class Background (int_code 0) and Unknow (int_code 1) are always added with a count of 0.  
+
+    :param all_points: DataFrame containing the points with a semantic column.
+    :param semantic_dict: Dictionary mapping semantic codes to integer codes.
+    :param semantic_col: Name of the column in all_points that contains the semantic codes.
+    :return: List of counts for each semantic class, ordered by the integer codes.
+    """
+    all_points = all_points[[semantic_col]].copy()
+    all_points['int_code'] = all_points[semantic_col].apply(
+        lambda code: get_semantic_intcode(semantic_dict, code)
+    )
+    occurrences = all_points['int_code'].value_counts().sort_index()
+    # occurrences.index = occurrences.index.map(lambda int_code: tile.get_semantic_code(semantic_dict, int_code))
+    # print(occurrences)
+    return [0, 0] + occurrences.to_list()[1:]
+
+
+def get_semantic_distribution(tiles_dir: str, semantic_dict: dict):
+    """
+    Return the distribution of semantic classes in the points DataFrame.  
+    The semantic classes are defined in the semantic_dict.  
+
+    :param tiles_dir: Directory containing a 'points' subdirectory with CSV files.
+    :param semantic_dict: Dictionary mapping semantic codes to integer codes.
+    :return: Numpy array of the distribution of each semantic class, ordered by the integer codes as indexes.
+    """
+    all_points = get_all_points(tiles_dir)
+    semantic_count = get_semantic_count(all_points, semantic_dict, 'code')
+    semantic_count = np.array(semantic_count) / np.sum(semantic_count)
+    return semantic_count
+
+
 def display_tile(tile: Tile, colorbar=False, semantic_dict=tree_species_dict_v2(), instance_cmap='tab20b', semantic_cmap='tab20'):
     plt.subplots(1, 4, figsize=(20, 10))
 
