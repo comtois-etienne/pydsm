@@ -449,6 +449,7 @@ def get_instance(tiles_dir: str, semantic_code: str, percentile=0.0) -> Tile:
     :param percentile: float, Percentile to select the instance (0.0 for first, 0.5 for median, 1.0 for last)
     :return: Tile, at the specified percentile of the instances of the given semantic class.
     """
+    percentile = max(0.0, min(0.999999, percentile))
     tile_files = sorted(os.listdir(os.path.join(tiles_dir, 'instances', semantic_code)))
     tile_files = [f for f in tile_files if f.endswith('.npz')]
     index = int(percentile * len(tile_files))
