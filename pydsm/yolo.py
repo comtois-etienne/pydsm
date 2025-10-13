@@ -143,6 +143,25 @@ def to_class_index_lines(instance_labels: np.ndarray, semantic_labels: np.ndarra
 
 
 def save_to_class_index_file(dir_npz: str, dir_labels: str, edges_per_instance=8, visualize=False):
+    """
+    Convert all .npz tile files in `dir_npz` to .txt label files in YOLO format in `dir_labels`
+    dataset structure:
+    tiles/dataset/  
+        train/  
+            images/ -> npz tiles  
+
+            labels/ -> txt labels  
+        /val  
+            images/  
+            
+            labels/  
+    
+    :param dir_npz: str, path to the directory containing the .npz tile files
+    :param dir_labels: str, path to the directory where the .txt label files will be saved
+    :param edges_per_instance: int, number of edges for the contour approximation of each instance
+    :param visualize: bool, if True, display the tile name being processed
+    :return: None, saves .txt files in YOLO format in dir_labels
+    """
     os.makedirs(dir_labels, exist_ok=True)
 
     for filename in os.listdir(dir_npz):
