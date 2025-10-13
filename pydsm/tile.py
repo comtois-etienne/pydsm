@@ -240,6 +240,21 @@ def remove_small_masks(tile: Tile, min_area=400):
     return tile
 
 
+def flip_tile(tile: Tile, axis=0):
+    """
+    Flip on axis 1 or 2
+
+    :param tile: Tile, tile to be flipped
+    :param axis: int, flip axis
+    """
+    return Tile(
+        np.flip(tile.orthophoto, axis=axis),
+        np.flip(tile.ndsm, axis=axis),
+        np.flip(tile.instance_labels, axis=axis),
+        np.flip(tile.semantic_labels, axis=axis),
+    )
+
+
 def open_tile(tiles_dir: str, tile_name: str, semantic_dict=default_semantic_dict(), as_array=True) -> Tile:
     """
     Opens all data from the tile (orthophoto, ndsm, instance_labels, semantic_labels)

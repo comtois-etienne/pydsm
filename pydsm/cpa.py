@@ -14,6 +14,7 @@ from .nda import is_mask_inside as nda_is_mask_inside
 
 from .tile import Tile
 from .tile import remove_small_masks
+from .tile import flip_tile
 
 
 def get_tight_crop_values(array: np.ndarray) -> tuple:
@@ -249,6 +250,8 @@ def random_copy_paste(copy_local_tile: Tile, paste_tile: Tile, dim_change=0.1, o
     y = np.random.randint(0, tile_size)
     zoom = 1 + np.random.uniform(-dim_change, dim_change)
 
+    copy_local_tile = flip_tile(copy_local_tile, axis=0) if np.random.rand() > 0.5 else copy_local_tile
+    copy_local_tile = flip_tile(copy_local_tile, axis=1) if np.random.rand() > 0.5 else copy_local_tile
     copy_local_tile = zoom_local_tile(copy_local_tile, zoom)
     copy_local_tile = rotate_local_tile(copy_local_tile, angle)
     copy_tile = pad_local_tile(copy_local_tile, x, y, tile_size)
