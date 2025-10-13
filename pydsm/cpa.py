@@ -230,7 +230,7 @@ def copy_paste(copy_tile: Tile, paste_tile: Tile, remove_cracks=5, remove_masks=
     return remove_small_masks(Tile(ortho, ndsm, instances, semantics), remove_masks)
 
 
-def random_copy_paste(copy_local_tile: Tile, paste_tile: Tile, dim_change=0.1, remove_cracks=5, remove_masks=400) -> Tile:
+def random_copy_paste(copy_local_tile: Tile, paste_tile: Tile, dim_change=0.15, remove_cracks=5, remove_masks=400) -> Tile:
     """
     Copy-paste a single instance to a Tile 
 
@@ -252,6 +252,12 @@ def random_copy_paste(copy_local_tile: Tile, paste_tile: Tile, dim_change=0.1, r
     copy_local_tile = flip_tile(copy_local_tile, axis=1) if np.random.rand() > 0.5 else copy_local_tile
     copy_local_tile = zoom_local_tile(copy_local_tile, zoom)
     copy_local_tile = rotate_local_tile(copy_local_tile, angle)
+    copy_local_tile = Tile(
+        copy_local_tile.orthophoto,
+        copy_local_tile.ndsm * zoom,
+        copy_local_tile.instance_labels,
+        copy_local_tile.semantic_labels,
+    )
     copy_tile = pad_local_tile(copy_local_tile, x, y, tile_size)
 
     is_inside = nda_is_mask_inside(
