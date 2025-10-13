@@ -14,6 +14,10 @@ from skimage.morphology import disk, binary_dilation
 from skimage.transform import rotate as sk_rotate
 from skimage.measure import label
 
+from skimage.util import random_noise
+from scipy import ndimage
+from skimage import exposure
+
 
 from .utils import *
 
@@ -130,6 +134,49 @@ def to_uint8(array: np.ndarray) -> np.ndarray:
     """
     norm = normalize(array)
     return (norm * 255).astype(np.uint8)
+
+
+def augmentation(array: np.ndarray) -> np.ndarray:
+    """
+    Contrast, gamma, noise and blur augmentation
+
+    :param array: np.ndarray, rgb array to apply augmentation to
+    :return: np.ndarray, augmented rgb array converted as float [0..1]
+    """
+    array = normalize(array.astype(float))
+    contrast_adjustment = np.random.rand() > 0.5
+    if contrast_adjustment:
+        # print("Adjusting contrast")
+        lower = np.random.uniform(0.2, 10.0)
+        upper = np.random.uniform(90.0, 99.8)
+        v_min, v_max = np.percentile(array, (lower, upper))
+        array = exposure.rescale_intensity(array, in_range=(v_min, v_max))
+        array = np.clip(array, 0.0, 1.0)
+
+    gamma_adjustment = np.random.rand() > 0.5
+    if gamma_adjustment:
+        # print("Adjusting gamma")
+        gamma = np.random.uniform(0.70, 0.98)
+        gain = np.random.uniform(0.70, 0.98)
+        array = exposure.adjust_gamma(array, gamma, gain)
+
+    add_noise = np.random.rand() > 0.5
+    if add_noise:
+        # print("Adding noise")
+        var = np.random.uniform(0.001, 0.01)
+        array = random_noise(array, mode='gaussian', var=var)
+        array = np.clip(array, 0.0, 1.0)
+
+    add_blur = np.random.rand() > 0.5
+    if add_blur:
+        # print("Adding blur")
+        sigma = np.random.uniform(0.5, 1.5)
+        for i in range(array.shape[2]):
+            l = ndimage.gaussian_filter(array[:, :, i], sigma=sigma)
+            l = np.clip(l, 0.0, 1.0)
+            array[:, :, i] = l
+
+    return array
 
 
 def relabel(labels: np.ndarray) -> np.ndarray:

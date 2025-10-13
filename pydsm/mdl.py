@@ -77,72 +77,6 @@ def _load_tiles_rgbd(data, size: int = None) -> np.ndarray:
     return rgbd
 
 
-def rgbd_rotation_augmentation(rgbd, classes):
-    rotation_times = np.random.randint(0, 4)
-    # print(f"Rotating {rotation_times} times")
-    rgbd = np.rot90(rgbd, k=rotation_times, axes=(0, 1))
-    classes = np.rot90(classes, k=rotation_times, axes=(0, 1))
-
-    flip_horizontal = np.random.rand() > 0.5
-    if flip_horizontal:
-        # print("Flipping horizontally")
-        rgbd = np.flip(rgbd, axis=1)
-        classes = np.flip(classes, axis=1)
-
-    flip_vertical = np.random.rand() > 0.5
-    if flip_vertical:
-        # print("Flipping vertically")
-        rgbd = np.flip(rgbd, axis=0)
-        classes = np.flip(classes, axis=0)
-
-    return rgbd, classes
-
-
-def rgbd_transformation_augmentation(rgbd, classes):
-    ndsm_adjustment = np.random.rand() > 0.5
-    if ndsm_adjustment:
-        # print("Adjusting NDSM")
-        ndsm = rgbd[:, :, 3]
-        ndsm = ndsm * (1 + np.random.uniform(-0.1, 0.1))
-        rgbd[:, :, 3] = np.clip(ndsm, 0.0, 1.0)
-
-    contrast_adjustment = np.random.rand() > 0.25
-    if contrast_adjustment:
-        # print("Adjusting contrast")
-        lower = np.random.uniform(0.2, 10.0)
-        upper = np.random.uniform(90.0, 99.8)
-        rgb = rgbd[:, :, :3]
-        v_min, v_max = np.percentile(rgb, (lower, upper))
-        rgb = exposure.rescale_intensity(rgb, in_range=(v_min, v_max))
-        rgb = np.clip(rgb, 0.0, 1.0)
-        rgbd[:, :, :3] = rgb
-
-    gamma_adjustment = np.random.rand() > 0.25
-    if gamma_adjustment:
-        # print("Adjusting gamma")
-        gamma = np.random.uniform(0.70, 0.98)
-        gain = np.random.uniform(0.70, 0.98)
-        rgbd[:, :, :3] = exposure.adjust_gamma(rgbd[:, :, :3], gamma, gain)
-
-    add_noise = np.random.rand() > 0.25
-    if add_noise:
-        # print("Adding noise")
-        var = np.random.uniform(0.001, 0.01)
-        rgbd = random_noise(rgbd, mode='gaussian', var=var)
-        rgbd = np.clip(rgbd, 0.0, 1.0)
-
-    add_blur = np.random.rand() > 0.25
-    if add_blur:
-        # print("Adding blur")
-        sigma = np.random.uniform(0.5, 1.5)
-        for i in range(rgbd.shape[2]):
-            l = ndimage.gaussian_filter(rgbd[:, :, i], sigma=sigma)
-            l = np.clip(l, 0.0, 1.0)
-            rgbd[:, :, i] = l
-
-    return rgbd, classes
-
-
 def tf_decode_item(item: tf.Tensor) -> int:
     if isinstance(item, tf.Tensor):
         return item.numpy().item()
@@ -155,7 +89,7 @@ def tf_decode_str(item: tf.Tensor) -> str:
     return item
 
 
-def load_tiles_data(path, n_classes, rgbd_size, classes_size, augmentation) -> tuple[np.ndarray, np.ndarray]:
+def load_tiles_data(path, n_classes, rgbd_size, classes_size) -> tuple[np.ndarray, np.ndarray]:
     """
     Loads the RGB-D data and classes from a .npz file.
 
@@ -177,13 +111,10 @@ def load_tiles_data(path, n_classes, rgbd_size, classes_size, augmentation) -> t
     rgbd = _load_tiles_rgbd(data, size=rgbd_size)
     classes = _load_tiles_classes(data, n_classes, size=classes_size)
 
-    if augmentation > 0: rgbd, classes = rgbd_rotation_augmentation(rgbd, classes)
-    if augmentation > 1: rgbd, classes = rgbd_transformation_augmentation(rgbd, classes)
-
     return rgbd, classes
 
 
-def init_tf_load_rgbd_tile(n_classes=18, rgbd_size=1024, classes_size=64, augmentation=2) -> Callable:
+def init_tf_load_rgbd_tile(n_classes=18, rgbd_size=1024, classes_size=64) -> Callable:
     """
     Returns a TensorFlow function for loading RGB-D data and classes from a .npz file.
 
@@ -199,7 +130,7 @@ def init_tf_load_rgbd_tile(n_classes=18, rgbd_size=1024, classes_size=64, augmen
         """
         rgbd, classes = tf.py_function(
             func=load_tiles_data,
-            inp=[path, n_classes, rgbd_size, classes_size, augmentation],
+            inp=[path, n_classes, rgbd_size, classes_size],
             Tout=(tf.float32, tf.float32)
         )
         rgbd.set_shape((rgbd_size, rgbd_size, 4))
@@ -209,7 +140,7 @@ def init_tf_load_rgbd_tile(n_classes=18, rgbd_size=1024, classes_size=64, augmen
     return tf_load_tile_npz
 
 
-def init_tf_load_rgb_tile(n_classes=18, rgb_size=1024, classes_size=64, augmentation=2) -> Callable:
+def init_tf_load_rgb_tile(n_classes=18, rgb_size=1024, classes_size=64) -> Callable:
     """
     Returns a TensorFlow function for loading RGB data and classes from a .npz file.
 
@@ -225,7 +156,7 @@ def init_tf_load_rgb_tile(n_classes=18, rgb_size=1024, classes_size=64, augmenta
         """
         rgbd, classes = tf.py_function(
             func=load_tiles_data,
-            inp=[path, n_classes, rgb_size, classes_size, augmentation],
+            inp=[path, n_classes, rgb_size, classes_size],
             Tout=(tf.float32, tf.float32)
         )
         rgb = rgbd[:, :, :3]
