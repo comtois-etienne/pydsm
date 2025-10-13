@@ -174,19 +174,36 @@ def get_semantic_count(all_points: pd.DataFrame, semantic_dict: dict, semantic_c
     return [0, 0] + occurrences.to_list()[1:]
 
 
-def get_semantic_distribution(tiles_dir: str, semantic_dict: dict):
+def get_semantic_distribution(tiles_dir: str, semantic_dict: dict) -> list:
     """
     Return the distribution of semantic classes in the points DataFrame.  
     The semantic classes are defined in the semantic_dict.  
 
-    :param tiles_dir: Directory containing a 'points' subdirectory with CSV files.
-    :param semantic_dict: Dictionary mapping semantic codes to integer codes.
-    :return: Numpy array of the distribution of each semantic class, ordered by the integer codes as indexes.
+    :param tiles_dir: str, directory containing a 'points' subdirectory with CSV files.
+    :param semantic_dict: dict, mapping semantic codes to integer codes.
+    :return: list, of the distribution of each semantic class, ordered by the integer codes as indexes.
     """
     all_points = get_all_points(tiles_dir)
     semantic_count = get_semantic_count(all_points, semantic_dict, 'code')
     semantic_count = np.array(semantic_count) / np.sum(semantic_count)
-    return semantic_count
+    return semantic_count.tolist()
+
+
+def get_augmentation_distribution(distribution: list) -> list:
+    """
+    Gives the inverse of the distribution, normalized to sum to 1.  
+    This can be used to select instances to augment in order to rebalance the dataset.
+    Zero values are kept to zero.
+
+    :param distribution: list, of the distribution of each semantic class, ordered by the integer codes as indexes.
+    :return: list, of the inverse distribution, normalized to sum to 1.
+    """
+    distribution = np.array(distribution)
+    max_val = np.max(distribution) * 2
+    inverse = np.full_like(distribution, max_val)
+    inverse[distribution == 0.0] = 0.0
+    inverse -= distribution
+    return inverse / np.sum(inverse)
 
 
 def display_tile(tile: Tile, colorbar=False, semantic_dict=tree_species_dict_v2(), instance_cmap='tab20b', semantic_cmap='tab20'):
