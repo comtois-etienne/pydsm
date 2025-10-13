@@ -1,7 +1,7 @@
 # copy paste augmentation
 
 import numpy as np
-from skimage.morphology import disk, binary_erosion
+from skimage.morphology import disk, binary_erosion, binary_dilation
 from scipy.ndimage import median_filter
 
 from .nda import rotate as nda_rotate
@@ -13,6 +13,7 @@ from .nda import remove_holes as nda_remove_holes
 from .nda import is_mask_inside as nda_is_mask_inside
 
 from .tile import Tile
+from .tile import remove_small_masks
 
 
 def get_tight_crop_values(array: np.ndarray) -> tuple:
@@ -167,19 +168,21 @@ def pad_local_tile(tile: Tile, x=0, y=0, tile_size=2000):
     return Tile(ortho, ndsm, instances, semantics)
 
 
-def get_copy_paste_tile(copy_tile: Tile, paste_tile: Tile) -> Tile:
+def get_copy_paste_tile(copy_tile: Tile, paste_tile: Tile, remove_cracks=5) -> Tile:
     """
-    Get the mask of the visible part of the object in `copy_ndsm`  
+    Get the mask of the visible part of the ndsm in copy_tile  
     The resulting mask might be empty if the object is hidden under another  
-    All 3 input arrays must have the same shape (except for depth of `copy_array`)
+    The 2 tiles must have the same shape
 
-    :param copy_array: the image (orthophoto) of the object
-    :param copy_ndsm: the masked ndsm of the object
-    :param paste_ndsm: the ndsm of the tile where the object will be pasted (unmasked ndsm)
-    :return: boolean mask of the visible part of the object in `copy_ndsm`
+    :param copy_tile: Tile, a tile with only one instance. same shape as paste_tile  
+    :param paste_ndsm: Tile, a tile with or without multiple instances.  
+    :param remove_cracks: int, the crack size in the masks to remove (caused by the intersection of the ndsm)  
+    :return: Tile, containing the visible part of copy_tile when intersected with paste_tile
     """
     max_ndsm = np.maximum(copy_tile.ndsm, paste_tile.ndsm)
     mask = (max_ndsm == copy_tile.ndsm) * copy_tile.instance_labels
+    if remove_cracks:
+        mask = binary_dilation(mask, disk(remove_cracks)) * copy_tile.instance_labels
     mask = nda_get_biggest_mask(mask)
     mask = median_filter(mask.astype(np.uint8), size=3).astype(bool)
     mask = nda_remove_holes(mask)
@@ -191,44 +194,53 @@ def get_copy_paste_tile(copy_tile: Tile, paste_tile: Tile) -> Tile:
     return Tile(ortho, ndsm, mask, semantics)
 
 
-def copy_paste(copy_tile: Tile, paste_tile: Tile) -> Tile:
+def copy_paste(copy_tile: Tile, paste_tile: Tile, remove_cracks=5, remove_masks=400) -> Tile:
     """
     Copy-paste augmentation of RGBD tiles with instance and semantic segmentation  
     Both tiles have to be the same shape. 
 
     :param copy_tile: Tile, containing one instance with one semantic label
     :param paste_tile: Tile, can contain many instances with multiple semantic labels
+    :param remove_cracks: int, the crack size in the masks to remove
+    :param remove_masks: int, the size of the masks to be removed (smaller or equal to)
     :return: Tile, copy-pasted tile 
     """
-    copy_tile = get_copy_paste_tile(copy_tile, paste_tile)
+    copy_tile = get_copy_paste_tile(copy_tile, paste_tile, remove_cracks)
     ndsm_mask = copy_tile.instance_labels.astype(bool)
     array_mask = binary_erosion(ndsm_mask, disk(2))
     
+    # orthophoto
     copy_ortho = (copy_tile.orthophoto * np.dstack([array_mask]*3))
     paste_ortho = (paste_tile.orthophoto * ~np.dstack([array_mask]*3))
     ortho = (copy_ortho + paste_ortho)
     
+    # ndsm
     copy_ndsm = (copy_tile.ndsm * ndsm_mask)
     paste_ndsm = (paste_tile.ndsm * np.logical_not(ndsm_mask))
     ndsm = (copy_ndsm + paste_ndsm)
 
+    # instances
     instance_val = np.max(paste_tile.instance_labels) + 1
     instances = paste_tile.instance_labels * ~ndsm_mask
     instances += (ndsm_mask * instance_val)
 
+    # semantics
     semantics = paste_tile.semantic_labels * ~ndsm_mask
     semantics += copy_tile.semantic_labels
 
-    return Tile(ortho, ndsm, instances, semantics)
+    return remove_small_masks(Tile(ortho, ndsm, instances, semantics), remove_masks)
 
 
-def random_copy_paste(copy_local_tile: Tile, paste_tile: Tile, dim_change=0.1, overlap_ratio=0.3) -> Tile:
+def random_copy_paste(copy_local_tile: Tile, paste_tile: Tile, dim_change=0.1, overlap_ratio=0.3, remove_cracks=5, remove_masks=400) -> Tile:
     """
     Copy-paste a single instance to a Tile 
 
     :param copy_local_tile: Tile, containing a single instance. Size must be smaller than `paste_tile`
     :param paste_tile: Tile, to paste the `copy_local_tile` onto
     :param dim_change: float, plus-minus scale value of the pasted instance
+    :param overlap_ratio: float, the maximum overlap between pasted instances
+    :param remove_cracks: int, the size of the cracks to be removed
+    :param remove_masks: int, the size of the masks to be removed (smaller or equal to)
     :return: Tile, with pasted instance
     """
     tile_size = paste_tile.ndsm.shape[0]
@@ -248,5 +260,5 @@ def random_copy_paste(copy_local_tile: Tile, paste_tile: Tile, dim_change=0.1, o
     )
 
     if is_inside: return paste_tile
-    return copy_paste(copy_tile, paste_tile)
+    return copy_paste(copy_tile, paste_tile, remove_cracks, remove_masks)
 
