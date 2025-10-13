@@ -246,7 +246,7 @@ def random_copy_paste(copy_local_tile: Tile, paste_tile: Tile, dim_change=0.15, 
     x = np.random.randint(0, tile_size)
     y = np.random.randint(0, tile_size)
     zoom = 1 + np.random.uniform(-dim_change, dim_change)
-    overlap = np.random.uniform(0.1, 0.5)
+    overlap = np.random.uniform(0.0, 0.6)
 
     copy_local_tile = flip_tile(copy_local_tile, axis=0) if np.random.rand() > 0.5 else copy_local_tile
     copy_local_tile = flip_tile(copy_local_tile, axis=1) if np.random.rand() > 0.5 else copy_local_tile
