@@ -129,7 +129,7 @@ def get_semantic_intcode(semantics_dict: dict, code: str) -> int:
         return semantics_dict['UNKNOWN']
 
 
-def display_tile(tile: Tile, colorbar=False, semantic_dict=tree_species_dict_v2(), instance_cmap='tab20b'):
+def display_tile(tile: Tile, colorbar=False, semantic_dict=tree_species_dict_v2(), instance_cmap='tab20b', semantic_cmap='tab20'):
     plt.subplots(1, 4, figsize=(20, 10))
 
     plt.subplot(1, 4, 1)
@@ -153,7 +153,7 @@ def display_tile(tile: Tile, colorbar=False, semantic_dict=tree_species_dict_v2(
         unique = get_semantic_code(semantic_dict, unique)
 
     plt.title(f'semantic_labels={unique}')
-    plt.imshow(tile.semantic_labels, vmin=0, vmax=20, cmap='tab20', interpolation='nearest')
+    plt.imshow(tile.semantic_labels, vmin=0, vmax=20, cmap=semantic_cmap, interpolation='nearest')
     plt.colorbar() if colorbar else None
 
     plt.show()
