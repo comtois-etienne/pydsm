@@ -381,6 +381,30 @@ def split_tile(tile: Tile) -> list[Tile]:
     return sub_tiles
 
 
+def normalize_ndsm(tile: Tile, clip_height=30.0) -> Tile:
+    """
+    Normalize the ndsm to [0.0, 1.0] range where 1.0 equals `clip_height`
+
+    :param tile: Tile, with an ndsm to be normalized
+    :param clip_height: float, height to which the DSM will be clipped.
+    :return: Tile, tile with a normalized ndsm
+    """
+    ndsm = tile.ndsm[..., :1] if tile.ndsm.ndim > 2 else tile.ndsm
+    ndsm = nda.clip_rescale(ndsm, clip_height)
+    return Tile(tile.orthophoto, ndsm, tile.instance_labels, tile.semantic_labels)
+
+
+def normalize_orthophoto(tile: Tile) -> Tile:
+    """
+    Normalize the orthophoto to [0.0, 1.0] range
+
+    :param tile: Tile, with an orthophoto to be normalized
+    :return: Tile, tile with a normalized orthophoto
+    """
+    orthophoto = nda.normalize(tile.orthophoto[..., :3])
+    return Tile(orthophoto, tile.ndsm, tile.instance_labels, tile.semantic_labels)
+
+
 def preprocess_tile(tile: Tile, ndsm_clip_height=30.0, min_mask_size=400) -> Tile:
     """
     Preprocess a tile so it can be used for training a model.  
@@ -393,10 +417,9 @@ def preprocess_tile(tile: Tile, ndsm_clip_height=30.0, min_mask_size=400) -> Til
         - `ndsm` is clipped and rescaled to `[0.0, 1.0]` range where `1.0` equals `dsm_clip_height`
     """
     tile = remove_small_masks(tile, min_mask_size)
-    orthophoto = nda.normalize(tile.orthophoto[..., :3])
-    ndsm = tile.ndsm[..., :1] if tile.ndsm.ndim > 2 else tile.ndsm
-    ndsm = nda.clip_rescale(ndsm, ndsm_clip_height)
-    return Tile(orthophoto, ndsm, tile.instance_labels, tile.semantic_labels)
+    tile = normalize_orthophoto(tile)
+    tile = normalize_ndsm(tile, ndsm_clip_height) if ndsm_clip_height > 0.0 else tile
+    return tile
 
 
 def correct_ndsm(tile: Tile, subsampling_size=8, median_kernel_size=3) -> Tile:
@@ -475,6 +498,26 @@ def get_instance(tiles_dir: str, semantic_code: str, percentile=0.0) -> Tile:
     return open_tile_npz(tile_path)
 
 
+def get_random_instances(tiles_dir: str, semantic_dict: dict, distribution: list, size=1) -> list[Tile] | Tile:
+    """
+    Get a random instance from the tiles directory based on the given distribution.  
+    The distribution dictactes the probability of selecting each semantic class.  
+
+    :param tiles_dir: str, Path to the tiles directory (should contain 'instances' subdirectory)
+    :param semantic_dict: dict, mapping semantic codes to integer codes.
+    :param distribution: list, of the distribution of each semantic class, ordered by the integer
+    :return: Tile | list[Tile], a random instance from the tiles directory based on the given distribution.
+    """
+    semantics = list(semantic_dict)
+    codes = np.random.choice(semantics, size=size, p=distribution)
+    instances = []
+    for code in codes:
+        percentile = np.random.uniform(0.0, 1.0)
+        instance = get_instance(tiles_dir, code, percentile)
+        instances.append(instance)
+    return instances if size > 1 else instances[0]
+
+
 def save_split_tiles(tiles_dir: str, tile_name: str, tiles: list[Tile]):
     """
     Saves the tiles into `tiles_dir` using tile_name with their orientation  
@@ -494,7 +537,7 @@ def save_split_tiles(tiles_dir: str, tile_name: str, tiles: list[Tile]):
         save_tile(save_path, tile)
 
 
-def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'dataset', semantic_dict=default_semantic_dict(), split=True, prepocess=True) -> None:
+def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'dataset', semantic_dict=default_semantic_dict(), split=True, normalize=True, min_mask_size=400) -> None:
     """
     Saves the annotated tiles to npz to be used for training  
     Tiles are normalized  
@@ -506,17 +549,68 @@ def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'dataset', semantic_
     """
     names = os.listdir(os.path.join(tiles_dir, 'orthophoto'))
     save_dir = os.path.join(tiles_dir, save_sub_dir)
+    os.makedirs(save_dir, exist_ok=True)
     
     for name in names:
         if not name.endswith('.tif'): continue
         tile = open_tile(tiles_dir, name, semantic_dict)
         if split:
             tiles = split_tile(tile)
-            tiles = [preprocess_tile(tile) for tile in tiles] if prepocess else tiles
+            tiles = [remove_small_masks(tile, min_mask_size) for tile in tiles]
+            tiles = [normalize_ndsm(tile) if normalize else tile for tile in tiles]
+            tiles = [normalize_orthophoto(tile) if normalize else tile for tile in tiles]
             save_split_tiles(save_dir, name, tiles)
         else:
             file_name = f'{utils.remove_extension(name)}.npz'
             npz_path = utils.append_file_to_path(save_dir, file_name)
-            tile = preprocess_tile(tile) if prepocess else tile
+            tile = remove_small_masks(tile, min_mask_size)
+            tile = normalize_ndsm(tile) if normalize else tile
+            tile = normalize_orthophoto(tile) if normalize else tile
             save_tile(npz_path, tile)
+
+
+def create_split_tile_dataset(tiles_dir: str, sub_dir: str, save_dir: str = 'dataset', normalize=True, min_mask_size=400):
+    """
+    Split all npz tiles from `tiles_dir/sub_dir` and saves them into `tiles_dir/save_dir`  
+
+    :param tiles_dir: str, directory where the tiles are saved
+    :param sub_dir: str, sub-directory where the tiles are saved
+    :param save_dir: str, sub-directory where the split tiles will be saved
+    :param normalize: bool, whether to normalize the nDSM and orthophoto
+    :param min_mask_size: int, minimum size of the masks to keep
+    :return: None, saves the split tiles into `tiles_dir/save_dir`
+    """
+    names = os.listdir(os.path.join(tiles_dir, sub_dir))
+    save_dir = os.path.join(tiles_dir, save_dir)
+    os.makedirs(save_dir, exist_ok=True)
+    
+    for name in names:
+        if not name.endswith('.npz'): continue
+        t = open_tile_npz(os.path.join(tiles_dir, sub_dir, name))
+        tiles = split_tile(t)
+        tiles = [remove_small_masks(t, min_mask_size) for t in tiles]
+        tiles = [normalize_ndsm(t) if normalize else t for t in tiles]
+        tiles = [normalize_orthophoto(t) if normalize else t for t in tiles]
+        save_split_tiles(save_dir, name, tiles)
+
+
+def select_tiles(tiles_dir: str, sub_dir: str = 'dataset', min_instances: int = 0, max_instances: int = 100) -> list[str]:
+    """
+    Return the name of the tiles that have between min_instances and max_instances instances.
+
+    :param tiles_dir: str, path to the directory containing the tiles
+    :param sub_dir: str, sub-directory where the tiles are saved
+    :param min_instances: int, minimum number of instances
+    :param max_instances: int, maximum number of instances
+    :return: list[str], names of the selected tiles
+    """
+    tile_names = os.listdir(os.path.join(tiles_dir, sub_dir))
+    selected_tiles = []
+    for tile_name in tile_names:
+        if not tile_name.endswith('.npz'): continue
+        t = open_tile_npz(os.path.join(tiles_dir, sub_dir, tile_name))
+        n_instances = np.max(t.instance_labels)
+        if n_instances >= min_instances and n_instances <= max_instances:
+            selected_tiles.append(tile_name)
+    return selected_tiles
 
