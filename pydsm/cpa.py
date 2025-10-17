@@ -12,6 +12,7 @@ from .nda import get_biggest_mask as nda_get_biggest_mask
 from .nda import remove_holes as nda_remove_holes
 from .nda import is_mask_inside as nda_is_mask_inside
 from .nda import augmentation as nda_augmentation
+from .utils import get_uuid
 
 from .tile import *
 
@@ -244,7 +245,7 @@ def copy_paste(copy_tile: Tile, paste_tile: Tile, remove_cracks=5, remove_masks=
     return remove_small_masks(Tile(ortho, ndsm, instances, semantics), remove_masks)
 
 
-def random_copy_paste(copy_local_tile: Tile, paste_tile: Tile, dim_change=0.15, remove_cracks=5, remove_masks=400) -> Tile:
+def random_copy_paste(copy_local_tile: Tile, paste_tile: Tile, dim_change=0.2, remove_cracks=5, remove_masks=400, augmentation=False) -> Tile:
     """
     Copy-paste a single instance to a Tile 
 
@@ -266,7 +267,7 @@ def random_copy_paste(copy_local_tile: Tile, paste_tile: Tile, dim_change=0.15, 
     copy_local_tile = flip_tile(copy_local_tile, axis=1) if np.random.rand() > 0.5 else copy_local_tile
     copy_local_tile = zoom_local_tile(copy_local_tile, zoom)
     copy_local_tile = rotate_local_tile(copy_local_tile, angle)
-    copy_local_tile = augmentation_local_tile(copy_local_tile)
+    copy_local_tile = augmentation_local_tile(copy_local_tile) if augmentation else copy_local_tile
     copy_tile = pad_local_tile(copy_local_tile, x, y, tile_size)
 
     is_inside = nda_is_mask_inside(
@@ -320,4 +321,67 @@ def export_all_instances(tiles_dir: str) -> None:
         if not tile_name.endswith('.tif'):
             continue
         export_instances(tiles_dir, tile_name)
+
+
+def create_random_tile(paste_tile: Tile, instances: list[Tile], dim_change=0.2, remove_cracks=5, remove_masks=400, augmentation=False) -> Tile:
+    """
+    Copy paste augmentation on a single tile.  
+    Randomly copy pastes the given instances on the given tile.  
+
+    :param paste_tile: Tile, tile to augment
+    :param instances: list[Tile], instances to copy paste (local tiles with a single tree)
+    :param dim_change: float, maximum dimension change (scaling) for the instances (plus or minus)
+    :param remove_cracks: int, maximum size of cracks to remove in the paste tile (in pixels)
+    :param remove_masks: int, minimum size of masks to keep in the paste tile (in square pixels)
+    :param augmentation: bool, whether to apply random augmentations (rotation, flip, contrast, gamma, noise) to the instances
+    :return: Tile, augmented tile
+    """
+    paste = paste_tile
+    paste = remove_small_masks(paste, min_area=remove_masks)
+
+    for instance in instances:
+        paste = random_copy_paste(
+            instance, 
+            paste, 
+            dim_change, 
+            remove_cracks, 
+            augmentation
+        )
+
+    return paste
+
+
+def create_random_tiles(tiles_dir: str, copy_sub_dir='full_tiles', save_sub_dir='augmented_tiles', min_instance=10, max_instance=40, tile_count=2, display=False) -> None:
+    """
+    Create augmented tiles by randomly copy pasting instances from other tiles.  
+    # todo move to cmd
+
+    :param tiles_dir: str, directory where the tiles are saved (must contain `instances`)
+    :param copy_sub_dir: str, sub-directory where the tiles (.npz) to copy from are saved
+    :param save_sub_dir: str, sub-directory where the augmented tiles will be saved
+    :param min_instance: int, minimum number of instances to copy paste per tile
+    :param max_instance: int, maximum number of instances to copy paste per tile
+    :param tile_count: int, number of augmented tiles to create
+    :param display: bool, whether to display the augmented tiles
+    :return: None, saves the augmented tiles in `tiles_dir/save_sub_dir`
+    """
+    os.makedirs(os.path.join(tiles_dir, save_sub_dir), exist_ok=True)
+    semantic_dict = tree_species_dict_v2()
+    paste_tiles = select_tiles(tiles_dir, sub_dir=copy_sub_dir, min_instances=0, max_instances=10)
+    distribution = [0.0, 0.0, 0.034, 0.033, 0.061, 0.05, 0.051, 0.055, 0.057, 0.055, 0.057, 0.058, 0.059, 0.058, 0.06, 0.062, 0.062, 0.062, 0.063, 0.063]
+
+    for _ in range(tile_count):
+        instances_per_tile = np.random.randint(min_instance, max_instance)
+        name = np.random.choice(paste_tiles)
+
+        paste_tile = open_tile_npz(os.path.join(tiles_dir, copy_sub_dir, name))
+        instances = get_random_instances(tiles_dir, semantic_dict, distribution, size=instances_per_tile)
+        paste_tile = create_random_tile(paste_tile, instances, augmentation = True)
+
+        npz_name = name.replace('.npz', f' ({get_uuid(8)}).npz')
+        npz_path = os.path.join(tiles_dir, save_sub_dir, npz_name)
+        print(f'Saving {npz_name}')
+        if display: display_tile(paste_tile, colorbar=False)
+
+        save_tile(npz_path, paste_tile)
 
