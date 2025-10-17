@@ -144,7 +144,7 @@ def augmentation(array: np.ndarray) -> np.ndarray:
     :return: np.ndarray, augmented rgb array converted as float [0..1]
     """
     array = normalize(array.astype(float))
-    contrast_adjustment = np.random.rand() > 0.5
+    contrast_adjustment = np.random.rand() > 0.25
     if contrast_adjustment:
         # print("Adjusting contrast")
         lower = np.random.uniform(0.2, 10.0)
@@ -153,21 +153,21 @@ def augmentation(array: np.ndarray) -> np.ndarray:
         array = exposure.rescale_intensity(array, in_range=(v_min, v_max))
         array = np.clip(array, 0.0, 1.0)
 
-    gamma_adjustment = np.random.rand() > 0.5
+    gamma_adjustment = np.random.rand() > 0.25
     if gamma_adjustment:
         # print("Adjusting gamma")
         gamma = np.random.uniform(0.70, 0.98)
         gain = np.random.uniform(0.70, 0.98)
         array = exposure.adjust_gamma(array, gamma, gain)
 
-    add_noise = np.random.rand() > 0.5
+    add_noise = np.random.rand() > 0.25
     if add_noise:
         # print("Adding noise")
         var = np.random.uniform(0.001, 0.01)
         array = random_noise(array, mode='gaussian', var=var)
         array = np.clip(array, 0.0, 1.0)
 
-    add_blur = np.random.rand() > 0.5
+    add_blur = np.random.rand() > 0.25
     if add_blur:
         # print("Adding blur")
         sigma = np.random.uniform(0.5, 1.5)
@@ -351,6 +351,8 @@ def is_mask_inside(mask_a: np.ndarray, mask_b: np.ndarray, downsample_factor=4, 
     """
     a = downsample(mask_a.astype(bool), downsample_factor)
     b = downsample(mask_b.astype(bool), downsample_factor)
+
+    if np.sum(a) == 0 or np.sum(b) == 0: return False
 
     xor = np.logical_xor(a, b)
     aor = np.logical_or(a, b)
