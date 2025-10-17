@@ -29,6 +29,11 @@ class Tile:
             self.instance_labels.copy(), 
             self.semantic_labels.copy()
         )
+    
+    def rgbd(self, norm = False) -> np.ndarray:
+        rgb = nda.to_uint8(self.orthophoto, norm=norm)
+        d = nda.to_uint8(self.ndsm, norm=norm)
+        return np.dstack((rgb, d))
 
 
 def default_semantic_dict() -> dict:
@@ -65,7 +70,7 @@ def tree_species_dict_v1() -> dict:
         'OS': 17,
         'AL': 17,
         'CA': 17,
-        'SY': 18,
+        # 'SY': 18,
     }
 
 
