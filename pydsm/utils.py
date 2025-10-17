@@ -1,6 +1,8 @@
 import numpy as np
 from osgeo import gdal
 import json
+import time
+import uuid
 import os
 
 
@@ -190,6 +192,20 @@ def remove_extension(filepath: str) -> str:
     if ext == '':
         return filepath
     return filepath[:-len(ext)-1]
+
+
+def get_datetime():
+    return time.strftime("%Y-%m-%d %Hh%Mm%Ss", time.localtime())
+
+
+def get_uuid(length: int = 8) -> UUIDv4:
+    """
+    Generate a random UUIDv4 string of the specified length.
+
+    :param length: Length of the UUIDv4 string (default is 8)
+    :return: UUIDv4 string
+    """
+    return str(uuid.uuid4())[:length]
 
 
 ########## EPSG FUNCTIONS ##########
