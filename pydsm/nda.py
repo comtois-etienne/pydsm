@@ -126,14 +126,14 @@ def clip_rescale(array: np.ndarray, clip_height: 30.0):
     return array
 
 
-def to_uint8(array: np.ndarray) -> np.ndarray:
+def to_uint8(array: np.ndarray, norm=True) -> np.ndarray:
     """
     Convert the array to an 8bit integer array.
 
     :param arr: np.ndarray of shape (n, m, k).
     """
-    norm = normalize(array)
-    return (norm * 255).astype(np.uint8)
+    array = normalize(array) if norm else array
+    return (array * 255).astype(np.uint8)
 
 
 def augmentation(array: np.ndarray) -> np.ndarray:
