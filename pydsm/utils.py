@@ -4,6 +4,8 @@ import json
 import time
 import uuid
 import os
+import shutil
+import random
 
 
 ########## TYPES ##########
@@ -364,4 +366,33 @@ def get_capture_airspeed(diagonal_fov, image_ratio, hagl, time_delay=2.0, minimu
     overlap_distance = vertical_lenght * (1 - minimum_overlap)
     capture_airspeed = overlap_distance / time_delay
     return capture_airspeed
+
+
+########## DATASET ##########
+
+def split_dataset(source_dir: str, target_dir: str, train_ratio: float = 0.8, file_extension: str = '.npz') -> None:
+    """
+    Split a dataset of tiles into training and validation sets.
+
+    :param source_dir: Directory containing the original tile files.
+    :param target_dir: Directory where the split datasets will be saved ('train' and 'val' subdirectories).
+    :param train_ratio: Proportion of tiles to include in the training set (default is 0.8).
+    :return: None, copies files to target directories.
+    """
+    train_dir = os.path.join(target_dir, 'train')
+    val_dir = os.path.join(target_dir, 'val')
+    os.makedirs(train_dir, exist_ok=True)
+    os.makedirs(val_dir, exist_ok=True)
+
+    tile_files = [f for f in os.listdir(source_dir) if f.endswith(file_extension)]
+    random.shuffle(tile_files)
+
+    split_index = int(len(tile_files) * train_ratio)
+    train_files = tile_files[:split_index]
+    val_files = tile_files[split_index:]
+
+    for f in train_files:
+        shutil.copy(os.path.join(source_dir, f), os.path.join(train_dir, f))
+    for f in val_files:
+        shutil.copy(os.path.join(source_dir, f), os.path.join(val_dir, f))
 
