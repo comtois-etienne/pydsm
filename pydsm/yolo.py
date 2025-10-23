@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import matplotlib.patches as patches
 import pandas as pd
 import numpy as np
@@ -74,25 +75,41 @@ class ObjectDetector:
         return objs[objs['class'] == cls]
 
 
-def to_class_index_line(contour: np.ndarray, class_index: int, size: int) -> str:
-    """
-    convert a contour to a yolo class index string
-    example: '1 0.5 0.5 0.1 0.1 0.3 0.3' (<class-index> <x1> <y1> <x2> <y2> ... <xn>)
+@dataclass
+class IndexLine:
+    class_index: int # int, representing the predetermined object class index
+    contour: np.ndarray # [[y1, x1], [y2, x2], ..., [yn, xn]]
+    size: int # size of the image (assuming square image)
 
-    :param contour: np.ndarray [[y1, x1], [y2, x2], ..., [yn, xn]] of one instance
-    :param class_index: int, representing the predetermined object class index
-    :param size: int, size of the image (assuming square image)
-    :return: str, of the instance in yolo format
-    """
-    size = float(size - 1)
-    contour = contour[:, ::-1]  # switch to (x, y)
-    contour = contour.flatten().tolist()
-    contour = [c / size for c in contour]
-    contour = [f'{c:.3f}' for c in contour]
-    return ' '.join([str(class_index)] + contour)
+    def to_line(self) -> str:
+        """
+        convert a contour to a yolo class index string
+        example: '1 0.5 0.5 0.1 0.1 0.3 0.3' (<class-index> <x1> <y1> <x2> <y2> ... <xn>)
+
+        :param size: int, size of the image (assuming square image)
+        :return: str, of the instance in yolo format
+        """
+        size = float(self.size - 1)
+        contour = self.contour[:, ::-1]  # switch to (x, y)
+        contour = contour.flatten().tolist()
+        contour = [c / size for c in contour]
+        contour = [f'{c:.3f}' for c in contour]
+        return ' '.join([str(self.class_index)] + contour)
+    
+    def remap(self, remap_dict: dict) -> 'IndexLine':
+        """
+        remap the class_index using remap_dict
+
+        :param remap_dict: dict, mapping old class_index to new class_index (-1 to remove)
+        :return: IndexLine, with remapped class_index
+        """
+        new_class_index = remap_dict[self.class_index]
+        if new_class_index == -1:
+            return None
+        return IndexLine(new_class_index, self.contour, self.size)
 
 
-def to_class_index_lines(instance_labels: np.ndarray, semantic_labels: np.ndarray | None, *, edges=8, visualize=False) -> list[str]:
+def to_index_lines(instance_labels: np.ndarray, semantic_labels: np.ndarray | None, *, edges=8, visualize=False) -> list[IndexLine]:
     """
     Convert mask instances and their class labels to yolo class index strings
     Each instance is represented by a convex hull contour of 8 sides
@@ -116,7 +133,7 @@ def to_class_index_lines(instance_labels: np.ndarray, semantic_labels: np.ndarra
     size = instance_labels.shape[0]
     instance_labels = np.pad(instance_labels, ((100, 100), (100, 100)), mode='constant', constant_values=0)
 
-    class_index_lines = []
+    index_lines = []
     contours = []
     for val in unique:
         instance = np.where(instance_labels == val, 1, 0).astype(np.uint8)
@@ -129,9 +146,9 @@ def to_class_index_lines(instance_labels: np.ndarray, semantic_labels: np.ndarra
         class_index = np.max(semantic_labels * instance)
 
         contour[contour >= size] = size - 1
-        class_index_line = to_class_index_line(contour, (class_index - 1), size)
-        class_index_lines.append(class_index_line)
-        contours.append(contour)
+        index_line = IndexLine((class_index - 1), contour, size)
+        index_lines.append(index_line)
+        contours.append(contour) # for visualization
 
     if visualize:
         plt.imshow(instance_labels[100:-100, 100:-100], cmap='tab20', interpolation='nearest')
@@ -139,10 +156,10 @@ def to_class_index_lines(instance_labels: np.ndarray, semantic_labels: np.ndarra
             plt.plot(contour[:, 1], contour[:, 0], color='red')
         plt.show()
 
-    return class_index_lines
+    return index_lines
 
 
-def save_to_class_index_file(dir_npz: str, dir_labels: str, edges_per_instance=32, visualize=False):
+def save_to_class_index_file(dir_npz: str, dir_labels: str, edges_per_instance=32, remap_dict=None, instance=False, visualize=False):
     """
     Convert all .npz tile files in `dir_npz` to .txt label files in YOLO format in `dir_labels`
     dataset structure:
@@ -159,6 +176,8 @@ def save_to_class_index_file(dir_npz: str, dir_labels: str, edges_per_instance=3
     :param dir_npz: str, path to the directory containing the .npz tile files
     :param dir_labels: str, path to the directory where the .txt label files will be saved
     :param edges_per_instance: int, number of edges for the contour approximation of each instance
+    :param ignore_class: list of int, class indices to ignore (not saved in the .txt files)
+    :param instance: bool, if True, use instance labels only (all instances have the same class)
     :param visualize: bool, if True, display the tile name being processed
     :return: None, saves .txt files in YOLO format in dir_labels
     """
@@ -173,17 +192,25 @@ def save_to_class_index_file(dir_npz: str, dir_labels: str, edges_per_instance=3
 
         if visualize: print(f'Processing \'{filename}\'')
 
-        class_index_lines = to_class_index_lines(
+        index_lines = to_index_lines(
             tile.instance_labels, 
-            tile.semantic_labels, 
+            None if instance else tile.semantic_labels, 
             edges=edges_per_instance, 
             visualize=visualize
         )
 
+        if remap_dict is not None:
+            index_lines_remapped = []
+            for line in index_lines:
+                remapped_line = line.remap(remap_dict)
+                index_lines_remapped.append(remapped_line) if remapped_line is not None else None
+            index_lines = index_lines_remapped
+
         label_filename = filename.replace('.npz', '.txt')
         label_path = os.path.join(dir_labels, label_filename)
 
+        index_lines_str = [line.to_line() for line in index_lines]
         with open(label_path, 'w') as f:
-            f.write('\n'.join(class_index_lines))
+            f.write('\n'.join(index_lines_str))
             f.write('\n')
 
