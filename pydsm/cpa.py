@@ -208,7 +208,7 @@ def get_copy_paste_tile(copy_tile: Tile, paste_tile: Tile, remove_cracks=5) -> T
     return Tile(ortho, ndsm, mask, semantics)
 
 
-def copy_paste(copy_tile: Tile, paste_tile: Tile, remove_cracks=5, remove_masks=400) -> Tile:
+def copy_paste(copy_tile: Tile, paste_tile: Tile, remove_cracks=5, remove_masks=400, min_area_ratio=0.4) -> Tile:
     """
     Copy-paste augmentation of RGBD tiles with instance and semantic segmentation  
     Both tiles have to be the same shape. 
@@ -217,13 +217,22 @@ def copy_paste(copy_tile: Tile, paste_tile: Tile, remove_cracks=5, remove_masks=
     :param paste_tile: Tile, can contain many instances with multiple semantic labels
     :param remove_cracks: int, the crack size in the masks to remove
     :param remove_masks: int, the size of the masks to be removed (smaller or equal to)
+    :param min_area_ratio: float, the smallest size (compared to original) that the tile can be copied - will be ignored if smaller
     :return: Tile, copy-pasted tile 
     """
+    area_before = np.sum(copy_tile.instance_labels.astype(bool))
+
     copy_tile = get_copy_paste_tile(copy_tile, paste_tile, remove_cracks)
     ndsm_mask = copy_tile.instance_labels.astype(bool)
     array_mask = binary_erosion(ndsm_mask, disk(2))
+
+    area_after = np.sum(ndsm_mask)
+    area_ratio = (area_after / area_before)
+
+    # no paste if too small
+    if area_ratio < min_area_ratio: return paste_tile
     
-    # orthophoto
+    # orthophotox
     copy_ortho = (copy_tile.orthophoto * np.dstack([array_mask]*3))
     paste_ortho = (paste_tile.orthophoto * ~np.dstack([array_mask]*3))
     ortho = (copy_ortho + paste_ortho)
@@ -351,7 +360,7 @@ def create_random_tile(paste_tile: Tile, instances: list[Tile], dim_change=0.2, 
     return paste
 
 
-def create_random_tiles(tiles_dir: str, copy_sub_dir='full_tiles', save_sub_dir='augmented_tiles', min_instance=10, max_instance=40, tile_count=2, display=False) -> None:
+def create_random_tiles(tiles_dir: str, copy_sub_dir='regular_tiles', save_sub_dir='augmented_tiles', min_instance=10, max_instance=40, tile_count=2, display=False) -> None:
     """
     Create augmented tiles by randomly copy pasting instances from other tiles.  
     # todo move to cmd
