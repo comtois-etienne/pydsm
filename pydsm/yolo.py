@@ -159,7 +159,7 @@ def to_index_lines(instance_labels: np.ndarray, semantic_labels: np.ndarray | No
     return index_lines
 
 
-def save_to_class_index_file(dir_npz: str, dir_labels: str, edges_per_instance=32, remap_dict=None, instance=False, visualize=False):
+def save_indexlines(dir_npz: str, dir_labels: str, edges_per_instance=32, remap_dict=None, instance=False, visualize=False):
     """
     Convert all .npz tile files in `dir_npz` to .txt label files in YOLO format in `dir_labels`
     dataset structure:
@@ -213,4 +213,24 @@ def save_to_class_index_file(dir_npz: str, dir_labels: str, edges_per_instance=3
         with open(label_path, 'w') as f:
             f.write('\n'.join(index_lines_str))
             f.write('\n')
+
+
+def save_one_indexlines(dir_npz: str, dir_labels: str, class_index=1, class_count=100, edges_per_instance=32, visualize=False):
+    """
+    Export only one class (other: 0 - selected_class: 1) to yolo format file.  
+    See `save_to_class_index_file`  
+    
+    :param dir_npz: str, path to the directory containing the .npz tile files
+    :param dir_labels: str, path to the directory where the .txt label files will be saved
+    :param class_index: index of the class to export (0 is BG)
+    :param class_count: the number of classes (excluding BG)
+    :param edges_per_instance: int, number of edges for the contour approximation of each instance
+    :param visualize: bool, if True, display the tile name being processed
+    :return: None, saves .txt files in YOLO format in dir_labels
+    """
+    source_class = np.array(list(range(class_count)))
+    target_class = np.array([0] * len(source_class))
+    target_class[(class_index - 1)] = 1
+    remap_dict = dict(zip(source_class, target_class))
+    save_indexlines(dir_npz, dir_labels, edges_per_instance, remap_dict, visualize=visualize)
 
