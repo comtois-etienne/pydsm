@@ -22,7 +22,23 @@ from skimage import exposure
 from .utils import *
 
 
-# IO
+"""
+This file contains functions to manipulate numpy arrays (nda).  
+
+In order :
+- IO
+- Scaling
+- Normalisation
+- Transformations
+- Binary Masks
+- Instance Segmentation Masks
+- Visualisation
+"""
+
+
+
+########### IO ###########
+
 
 def write_numpy(npz_path: str, *, data: Optional[Any]=None, metadata: Optional[Any]=None) -> None:
     """
@@ -97,7 +113,158 @@ def read_numpy_metadata(npz_path: str) -> Tuple[Any, type]:
     return npz['metadata'][0], npz['types'][0]['metadata']
 
 
-# Functions
+def to_gdal(array: np.ndarray, epsg: int, origin: tuple, pixel_size: Scale = 1.0) -> gdal.Dataset:
+    """
+    Converts a NumPy array to a GDAL dataset.
+    
+    :param nda: NumPy array (2D or 3D)
+    :param epsg: EPSG code of the coordinate system
+    :param origin: Origin of the coordinate system (x, y) (top left corner of the array)
+    :param pixel_size: Size of each pixel in meters per pixel (assumes square pixels)
+    :return: GDAL dataset
+    """
+    # Get dimensions
+    height, width = array.shape[:2]
+    gdal_dtype = DTYPE_TO_GDAL[array.dtype.type]
+    bands = array.shape[2] if array.ndim == 3 else 1
+
+    # Create an in-memory GDAL dataset
+    driver = gdal.GetDriverByName("MEM")
+    dataset = driver.Create('', width, height, bands, gdal_dtype)
+    
+    # Set the geotransform
+    origin_x, origin_y = origin[:2]
+    geotransform = (origin_x, pixel_size, 0, origin_y, 0, -pixel_size)
+    dataset.SetGeoTransform(geotransform)
+    
+    # Set the projection
+    srs = osr.SpatialReference()
+    srs.ImportFromEPSG(epsg)
+    dataset.SetProjection(srs.ExportToWkt())
+    
+    # Write array data to bands
+    for i in range(bands):
+        band_data = array[:, :, i] if bands > 1 else array
+        dataset.GetRasterBand(i + 1).WriteArray(band_data)
+    
+    # Flush cache to ensure data is written
+    dataset.FlushCache()
+    return dataset
+
+
+def save_to_wavefront(array: np.ndarray, file_path: str, origin=(0.0, 0.0), pixel_size=(1.0, 1.0)):
+    """
+    `Warning` works at small scale, but not at large scale  
+    Converts a 2D array containing height values to a Wavefront .obj file.  
+
+    :param array: 2D array of the dsm
+    :param file_path: path to save the obj file
+    :param origin: origin of the coordinate system
+    :param pixel_size: size of each pixel (distance between each pixel)
+    """
+    # mirror the image if the pixel size is negative
+    if pixel_size[0] < 0:
+        array = np.flip(array, axis=1)
+    if pixel_size[1] < 0:
+        array = np.flip(array, axis=0)
+
+    h, w = array.shape
+    obj_lines = []
+
+    x = np.arange(w) * abs(pixel_size[0]) + origin[0]
+    y = np.arange(h) * abs(pixel_size[1]) + origin[1] # todo try without abs
+    xx, yy = np.meshgrid(x, y)
+
+    zz = array.flatten()
+    vertices = np.column_stack((xx.flatten(), yy.flatten(), zz))
+    obj_lines.extend(f"v {x:.3f} {y:.3f} {z:.3f}" for x, y, z in vertices)
+
+    # Create faces using indices
+    for i in range(h - 1):
+        for j in range(w - 1):
+            # Calculate the 1D indices of the vertices
+            v1 = i * w + j + 1
+            v2 = v1 + 1
+            v3 = v1 + w
+            v4 = v3 + 1
+            # Add two triangular faces for the quad
+            obj_lines.append(f"f {v1} {v2} {v4}")
+            obj_lines.append(f"f {v1} {v4} {v3}")
+
+    with open(file_path, "w") as f:
+        f.write("\n".join(obj_lines))
+
+
+########### SCALING ###########
+
+
+def downsample(array: np.ndarray, factor: int) -> np.ndarray:
+    """
+    Downsample the array 1 pixel is kept every factor pixels.  
+    Decimation method.  
+    Slower than `rescale_nearest_neighbour`. 
+
+    :param arr: np.ndarray of shape (n, m)
+    :param factor: int, factor to downsample the array
+    :return: np.ndarray of shape (n // factor, m // factor)
+    """
+    return array[::factor, ::factor]
+
+
+def upscale_nearest_neighbour(array: np.ndarray, factor: int) -> np.ndarray:
+    """
+    Upscale an array using nearest neighbour interpolation
+
+    :param array: np.ndarray of shape (n, m).
+    :param factor: int, factor to upscale the array.
+    :return: np.ndarray of shape (n * factor, m * factor)
+    """
+    return np.repeat(np.repeat(array, factor, axis=0), factor, axis=1)
+
+
+def rescale_nearest_neighbour(array: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
+    """
+    Upscale or downscale an array using nearest neighbour interpolation.  
+    About twice faster than `downsample` for the same result.  
+
+    :param array: np.ndarray of shape (n, m).
+    :param shape: tuple of the new size (y, x) (array.shape)
+    :return: np.ndarray of shape (y, x)
+    """
+    return cv2.resize(array, (shape[1], shape[0]), interpolation=cv2.INTER_NEAREST)
+
+
+def rescale_linear(array: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
+    """
+    Upscale or downscale an array using bilinear interpolation.
+
+    :param array: np.ndarray of shape (n, m).
+    :param shape: tuple of the new size (y, x) (array.shape)
+    :return: np.ndarray of shape `shape`
+    """
+    dtype = array.dtype
+    array = array.astype(np.float32)
+    resized = cv2.resize(array, (shape[1], shape[0]), interpolation=cv2.INTER_LINEAR)
+    return resized.astype(dtype)
+
+
+def crop_resize(array: np.ndarray, bbox: tuple[Coordinate, Coordinate], resolution: int) -> np.ndarray:
+    """
+    Crop and resize a numpy array to a given bounding box and resolution.
+    
+    :param array: numpy array to crop and resize
+    :param bbox: bounding box as a tuple of top left (y,x) and bottom right (y,x) pixel coordinates
+    :param resolution: desired resolution in pixels
+    :return: cropped and resized numpy array
+    """
+    top_left, bottom_right = bbox
+    tile = array[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
+    tile = cv2_resize(tile, (resolution, resolution), interpolation=INTER_CUBIC)
+    return tile
+
+
+########### NORMALISATION ###########
+
 
 def normalize(array: np.ndarray) -> np.ndarray:
     """
@@ -131,9 +298,118 @@ def to_uint8(array: np.ndarray, norm=True) -> np.ndarray:
     Convert the array to an 8bit integer array.
 
     :param arr: np.ndarray of shape (n, m, k).
+    :param norm: bool, if True, the array is normalized before conversion.
     """
     array = normalize(array) if norm else array
     return (array * 255).astype(np.uint8)
+
+
+def nda_round(array: np.ndarray, decimals: int=2) -> np.ndarray:
+    """
+    Round the array to the specified number of decimals if the array is a float.  
+    Round to the lower integer if the array is an integer.
+    
+    :param arr: np.ndarray of shape (n, m, k).
+    :param decimals: int, number of decimals or lower int bound
+    """
+    assert decimals >= 0, "decimals must be a positive integer"
+    if array.dtype == np.uint8:
+        if decimals == 0:
+            return array
+        else :
+            x = array // decimals
+            return x.astype(int) * decimals
+    else :
+        x = np.round(array, decimals)
+        return x.astype(int) if decimals == 0 else x
+
+
+def round_to_mm(array: np.ndarray, dtype=np.float32) -> np.ndarray:
+    """
+    Converts from meters to meters with a precision of millimeters.  
+    ~ assuming the tallest building on earth is (830m) on top of mount everest (8848m)  
+    ~ 9,679,000mm -> fits in 32 signed bits (to keep negative values)  
+    
+    :param nda: np.ndarray of shape (n, m).
+    :param dtype: data type of the output array (default np.float32).
+    :return: np.ndarray of shape (n, m) with values in meters.
+    """
+    return np.round(array, 3).astype(dtype)
+
+
+def convert_2D_to_3D(array: np.array, rev=False) -> np.array:
+    """
+    2D array to 3D array
+
+    :param img: 2D image
+    :param rev: reverse the image so the color is applied to the black pixels
+    :return: 3D image
+    """
+    if rev: array = 1.0 - array
+    array = np.stack([array] * 3, axis=2)
+    return array
+
+
+########### TRANSFORMATIONS ###########
+
+
+def rotate(array: np.ndarray, angle: float) -> np.ndarray:
+    """
+    Rotate the input array by the specified angle.  
+    Wrapper around `skimage.transform.rotate` to preserve dtype  
+    
+    :param array: Input array to be rotated.
+    :param angle: Angle in degrees. If None, a random angle between 0 and 360 is chosen.
+    :return: Rotated array and the angle used for rotation.
+    """
+    dtype = array.dtype
+    array = array.astype(np.float32)
+    rotated = sk_rotate(array, angle, resize=True).astype(dtype)
+    return rotated
+
+
+def rescale(array: np.ndarray, current_spacial_resolution: float | tuple[float, float], new_spacial_resolution: float | tuple[float, float] = 0.02) -> np.ndarray:
+    """
+    Sub-pixel rescaling of the array.  
+    Google maps has a max pan-shapened resolution of ~15cm/px (0.15m/px)  
+    Bigger value for spacial resolution means a smaller value for the new resolution.  
+    
+    :param arr: np.ndarray of shape (n, m).
+    :param current_spacial_resolution: float, resolution of the array. (width, height) in (m/px)
+    :param new_spacial_resolution: float, new resolution of the array. (width, height) in (m/px)
+    :return: np.ndarray with the new resolution
+    """
+    if not isinstance(new_spacial_resolution, tuple):
+        new_spacial_resolution = (new_spacial_resolution, new_spacial_resolution)
+
+    if not isinstance(current_spacial_resolution, tuple):
+        current_spacial_resolution = (current_spacial_resolution, current_spacial_resolution)
+
+    w_ratio = abs(current_spacial_resolution[0] / new_spacial_resolution[0])
+    h_ratio = abs(current_spacial_resolution[1] / new_spacial_resolution[1])
+
+    # we need to keep the depth ratio (color layers) for the orthophoto
+    zoom_ratio = (w_ratio, h_ratio) if array.ndim == 2 else (w_ratio, h_ratio, 1)
+
+    return zoom(array, zoom=zoom_ratio) # todo does it also rescale the colors ???
+
+
+def split_four(array: np.ndarray) -> np.ndarray:
+    """
+    Splits a single array into 4 identically sized tiles  
+
+    :param array: array
+    :returns: a list of 4 np.array (`top-left`, `top-right`, `bottom-left`, `bottom-right`)
+    """
+    h, w = array.shape[:2]
+    h, w = h // 2, w // 2
+
+    sub_arrays = []
+    for i in range(2):
+        for j in range(2):
+            sub_arrays.append(array[i * h:(i + 1) * h, j * w:(j + 1) * w])
+
+    return sub_arrays
 
 
 def augmentation(array: np.ndarray) -> np.ndarray:
@@ -179,152 +455,21 @@ def augmentation(array: np.ndarray) -> np.ndarray:
     return array
 
 
-def relabel(labels: np.ndarray) -> np.ndarray:
+########### BINARY MASKS ###########
+
+
+def get_mask(array: np.ndarray, min_mask_size = 0.02) -> np.ndarray:
     """
-    Relabels the input array by replacing each unique value with its index in the sorted unique values.  
-    This does not use the label() function from skimage.  
-    Two elements with the same value will be replaced by the same index.  
-    This removes gaps in the labels and ensures that the labels are contiguous.  
-    Does not relabel 0 if it exists or not as it is used as a background label.  
-    
-    :param array: Input numpy array with labels to be relabeled.
-    :return: numpy array with relabeled values.
+    Returns the mask as the smallest value of the dataset if the mask is bigger than the minimum size.
+
+    :param nda: 2D array
+    :param min_mask_size: minimum size of the mask in percentage of the total size (default 2%)
+    :return: mask of the dataset if the mask is bigger than the minimum size (to avoid non-existing masks)
     """
-    array = labels.copy()
-    unique_values = np.unique(array)
-
-    if unique_values[0] == 0:
-        unique_values = unique_values[1:]
-
-    for i, value in enumerate(unique_values):
-        array[array == value] = (i + 1)
-
-    return array
-
-
-def get_labels_centers(labels: np.ndarray) -> list:
-    """
-    Get the centers of instances in a segmentation mask.  
-    The center point is garanteed to be inside the instance mask.  
-    Selects the median x value on the median y value. (y median values are selected first - then x on that y value)  
-    The background value `0` is ignored.  
-    Can be done with a downsampled version of the labels.  
-
-    :param labels: Segmentation mask with instance labels.
-    :return: List of (y, x) coordinates for each instance center.
-    """
-    def median(list):
-        """
-        `np.median` is not used as it returns the average of the two middle values when the list has an even number of elements
-        """
-        array = np.sort(list)
-        return array[len(array) // 2]
-
-    unique_labels = np.unique(labels)
-    unique_labels = unique_labels[unique_labels != 0]
-    centers = []
-
-    for label in unique_labels:
-        instance_mask = (labels == label)
-        y, x = np.where(instance_mask)
-        y_median = int(median(y))
-        y_indexes = np.where(y == y_median)
-        x_values = x[y_indexes]
-        x_median = int(median(x_values))
-        centers.append((y_median, x_median))
-
-    return centers
-
-
-def get_centers(labels: np.ndarray, downsampling_size=100):
-    """
-    Returns the centers of the instances in the labels array.
-
-    :param labels: np.ndarray with shape (H, W) representing the instance segmentation labels.
-    :param downsampling_size: int, size to which the labels will be downsampled.
-    :return: tuple of two np.ndarrays:
-        - array_centers: binary numpy array with the centers of the instances set to `1.0` (size of `labels`)
-        - array_centers_downsampled: binary numpy array with the centers of the downsampled instances (size `downsampling_size`)
-    """
-    labels_downsampled = rescale_nearest_neighbour(labels, (downsampling_size, downsampling_size))
-    centers = np.array(get_labels_centers(labels_downsampled))
-
-    if centers.size == 0:
-        return np.zeros_like(labels), np.zeros((downsampling_size, downsampling_size))
-
-    array_centers_downsampled = np.zeros_like(labels_downsampled)
-    array_centers_downsampled[centers[:, 0], centers[:, 1]] = 1
-
-    centers = centers * (labels.shape[0] // downsampling_size)
-    array_centers = np.zeros_like(labels)
-    array_centers[centers[:, 0], centers[:, 1]] = 1
-
-    return array_centers, array_centers_downsampled
-
-
-def convert_2D_to_3D(array: np.array, rev=False) -> np.array:
-    """
-    2D array to 3D array
-
-    :param img: 2D image
-    :param rev: reverse the image so the color is applied to the black pixels
-    :return: 3D image
-    """
-    if rev: array = 1.0 - array
-    array = np.stack([array] * 3, axis=2)
-    return array
-
-
-def nda_round(array: np.ndarray, decimals: int=2) -> np.ndarray:
-    """
-    Round the array to the specified number of decimals if the array is a float.  
-    Round to the lower integer if the array is an integer.
-    
-    :param arr: np.ndarray of shape (n, m, k).
-    :param decimals: int, number of decimals or lower int bound
-    """
-    assert decimals >= 0, "decimals must be a positive integer"
-    if array.dtype == np.uint8:
-        if decimals == 0:
-            return array
-        else :
-            x = array // decimals
-            return x.astype(int) * decimals
-    else :
-        x = np.round(array, decimals)
-        return x.astype(int) if decimals == 0 else x
-
-
-def replace_value_inplace(array: np.ndarray, old_values: list, new_values: list) -> None:
-    """
-    Replaces the specified values in the array `old_values` with their corresponding values in `new_values`
-
-    :param array: numpy array, dtype should be integer
-    :param old_values: list of values to be replaced (length must match new_values)
-    :param new_values: list of new values to replace old values with (length must match old_values)
-    :raises ValueError: if lengths of old_values and new_values do not match
-    """
-    array = array.copy()
-    old_values = np.array(old_values)
-    new_values = np.array(new_values)
-
-    if len(old_values) == 0 or len(new_values) == 0:
-        return array
-
-    max_val = max(old_values.max(), new_values.max())
-    old_values += (max_val + 1)
-    array += (max_val + 1)
-
-    if len(old_values) != len(new_values):
-        raise ValueError("Length of old_values and new_values must match.")
-    
-    for old, new in zip(old_values, new_values):
-        array[array == old] = new
-
-    array[array == (max_val + 1)] = 0
-    array[array > max_val] -= (max_val + 1)
-
-    return array
+    mask_value = np.min(array)
+    if np.count_nonzero(array == mask_value) > int(array.size * min_mask_size):
+        return array == mask_value
+    return np.zeros_like(array, dtype=bool)
 
 
 def are_overlapping(mask_a: np.ndarray, mask_b: np.ndarray) -> bool:
@@ -332,7 +477,7 @@ def are_overlapping(mask_a: np.ndarray, mask_b: np.ndarray) -> bool:
     True if the two masks touch eachother by overlapping each other.
 
     :param mask_a: 2D binary numpy array of the first mask
-    :param mask: 2D binary numpy array of the second mask
+    :param mask_b: 2D binary numpy array of the second mask
     :return: True if the masks touch eachother, False otherwise
     """
     return np.sum(np.logical_and(mask_a, mask_b)) > 0
@@ -420,213 +565,6 @@ def get_biggest_mask(masks: np.array) -> np.ndarray:
     return (masks == biggest_mask)
 
 
-def rotate(array: np.ndarray, angle: float) -> np.ndarray:
-    """
-    Rotate the input array by the specified angle.  
-    Wrapper around `skimage.transform.rotate` to preserve dtype  
-    
-    :param array: Input array to be rotated.
-    :param angle: Angle in degrees. If None, a random angle between 0 and 360 is chosen.
-    :return: Rotated array and the angle used for rotation.
-    """
-    dtype = array.dtype
-    array = array.astype(np.float32)
-    rotated = sk_rotate(array, angle, resize=True).astype(dtype)
-    return rotated
-
-
-def rescale(array: np.ndarray, current_spacial_resolution: float | tuple[float, float], new_spacial_resolution: float | tuple[float, float] = 0.02) -> np.ndarray:
-    """
-    Sub-pixel rescaling of the array.  
-    Google maps has a max pan-shapened resolution of ~15cm/px (0.15m/px)  
-    Bigger value for spacial resolution means a smaller value for the new resolution.  
-    
-    :param arr: np.ndarray of shape (n, m).
-    :param current_spacial_resolution: float, resolution of the array. (width, height) in (m/px)
-    :param new_spacial_resolution: float, new resolution of the array. (width, height) in (m/px)
-    :return: np.ndarray with the new resolution
-    """
-    if not isinstance(new_spacial_resolution, tuple):
-        new_spacial_resolution = (new_spacial_resolution, new_spacial_resolution)
-
-    if not isinstance(current_spacial_resolution, tuple):
-        current_spacial_resolution = (current_spacial_resolution, current_spacial_resolution)
-
-    w_ratio = abs(current_spacial_resolution[0] / new_spacial_resolution[0])
-    h_ratio = abs(current_spacial_resolution[1] / new_spacial_resolution[1])
-
-    # we need to keep the depth ratio (color layers) for the orthophoto
-    zoom_ratio = (w_ratio, h_ratio) if array.ndim == 2 else (w_ratio, h_ratio, 1)
-
-    return zoom(array, zoom=zoom_ratio) #todo does it rescale the colors also?
-
-
-def downsample(array: np.ndarray, factor: int) -> np.ndarray:
-    """
-    Downsample the array 1 pixel is kept every factor pixels.  
-    Decimation method.  
-    Slower than `rescale_nearest_neighbour`. 
-
-    :param arr: np.ndarray of shape (n, m)
-    :param factor: int, factor to downsample the array
-    :return: np.ndarray of shape (n // factor, m // factor)
-    """
-    return array[::factor, ::factor]
-
-
-def upscale_nearest_neighbour(array: np.ndarray, factor: int) -> np.ndarray:
-    """
-    Upscale an array using nearest neighbour interpolation
-
-    :param array: np.ndarray of shape (n, m).
-    :param factor: int, factor to upscale the array.
-    :return: np.ndarray of shape (n * factor, m * factor)
-    """
-    return np.repeat(np.repeat(array, factor, axis=0), factor, axis=1)
-
-
-def rescale_nearest_neighbour(array: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
-    """
-    Upscale or downscale an array using nearest neighbour interpolation.  
-    About twice faster than `downsample` for the same result.  
-
-    :param array: np.ndarray of shape (n, m).
-    :param shape: tuple of the new size (y, x) (array.shape)
-    :return: np.ndarray of shape (y, x)
-    """
-    return cv2.resize(array, (shape[1], shape[0]), interpolation=cv2.INTER_NEAREST)
-
-
-def rescale_linear(array: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
-    """
-    Upscale or downscale an array using bilinear interpolation.
-
-    :param array: np.ndarray of shape (n, m).
-    :param shape: tuple of the new size (y, x) (array.shape)
-    :return: np.ndarray of shape `shape`
-    """
-    dtype = array.dtype
-    array = array.astype(np.float32)
-    resized = cv2.resize(array, (shape[1], shape[0]), interpolation=cv2.INTER_LINEAR)
-    return resized.astype(dtype)
-
-
-def crop_resize(array: np.ndarray, bbox: tuple[Coordinate, Coordinate], resolution: int) -> np.ndarray:
-    """
-    Crop and resize a numpy array to a given bounding box and resolution.
-    
-    :param array: numpy array to crop and resize
-    :param bbox: bounding box as a tuple of top left (y,x) and bottom right (y,x) pixel coordinates
-    :param resolution: desired resolution in pixels
-    :return: cropped and resized numpy array
-    """
-    top_left, bottom_right = bbox
-    tile = array[top_left[0]:bottom_right[0], top_left[1]:bottom_right[1]]
-    tile = cv2_resize(tile, (resolution, resolution), interpolation=INTER_CUBIC)
-    return tile
-
-
-def to_cmap(array: np.ndarray, cmap: str='viridis', nrm=True) -> np.ndarray:
-    """
-    Applies the colormap to the array.
-    
-    :param array: np.ndarray of shape (n, m, 1).
-    :param cmap: str, name of the matplotlib colormap.
-    :param nrm: bool, if True, the array is normalized.
-    """
-    cmap = mpl.colormaps[cmap]
-    array = normalize(array) if nrm else array
-    array = plt.cm.get_cmap(cmap)(array)
-    return array[:, :, :3]
-
-
-def dsm_extract_mask(array: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Extracts the mask from the DSM and replaces the mask values with the minimum value of the DSM.
-
-    :param array: np.ndarray of shape (n, m).
-    :return: tuple of the array and the mask : np.ndarray of shape (n, m).
-    """
-    dsm_mask_val = np.min(array)
-    mask = array != dsm_mask_val
-    mask = mask.astype(np.float64)
-
-    array = array.astype(np.float64)
-    min_val = np.min(array[array != dsm_mask_val])
-    array[array == dsm_mask_val] = min_val
-
-    return array, mask
-
-
-def dsm_to_cmap(array: np.ndarray, cmap: str='viridis') -> np.ndarray:
-    """
-    The 1 layer image is converted to a color image using a colormap.  
-    We assume linear values in float. The smallest value is used as a mask.
-    
-    :param dsm: np.ndarray of shape (n, m).
-    :param cmap: str, name of the matplotlib colormap.
-    :return: np.ndarray of shape (n, m, 4) with the last channel as a transparency mask.
-    """
-    array, mask = dsm_extract_mask(array)
-    array = to_cmap(array, cmap)
-    array = np.dstack((array, mask))
-    array = (array * 255).astype(np.uint8)
-    return array
-
-
-def to_gdal(array: np.ndarray, epsg: int, origin: tuple, pixel_size: Scale = 1.0) -> gdal.Dataset:
-    """
-    Converts a NumPy array to a GDAL dataset.
-    
-    :param nda: NumPy array (2D or 3D)
-    :param epsg: EPSG code of the coordinate system
-    :param origin: Origin of the coordinate system (x, y) (top left corner of the array)
-    :param pixel_size: Size of each pixel in meters per pixel (assumes square pixels)
-    :return: GDAL dataset
-    """
-    # Get dimensions
-    height, width = array.shape[:2]
-    gdal_dtype = DTYPE_TO_GDAL[array.dtype.type]
-    bands = array.shape[2] if array.ndim == 3 else 1
-
-    # Create an in-memory GDAL dataset
-    driver = gdal.GetDriverByName("MEM")
-    dataset = driver.Create('', width, height, bands, gdal_dtype)
-    
-    # Set the geotransform
-    origin_x, origin_y = origin[:2]
-    geotransform = (origin_x, pixel_size, 0, origin_y, 0, -pixel_size)
-    dataset.SetGeoTransform(geotransform)
-    
-    # Set the projection
-    srs = osr.SpatialReference()
-    srs.ImportFromEPSG(epsg)
-    dataset.SetProjection(srs.ExportToWkt())
-    
-    # Write array data to bands
-    for i in range(bands):
-        band_data = array[:, :, i] if bands > 1 else array
-        dataset.GetRasterBand(i + 1).WriteArray(band_data)
-    
-    # Flush cache to ensure data is written
-    dataset.FlushCache()
-    return dataset
-
-
-def get_mask(array: np.ndarray, min_mask_size = 0.02) -> np.ndarray:
-    """
-    Returns the mask as the smallest value of the dataset if the mask is bigger than the minimum size.
-
-    :param nda: 2D array
-    :param min_mask_size: minimum size of the mask in percentage of the total size (default 2%)
-    :return: mask of the dataset if the mask is bigger than the minimum size (to avoid non-existing masks)
-    """
-    mask_value = np.min(array)
-    if np.count_nonzero(array == mask_value) > int(array.size * min_mask_size):
-        return array == mask_value
-    return np.zeros_like(array, dtype=bool)
-
-
 def remove_mask_values(array: np.ndarray, min_value_ratio=0.02) -> np.ndarray:
     """
     Removes the lowest value of the array and replaces it with NaN  
@@ -659,7 +597,7 @@ def shrink_mask(mask: np.ndarray, shrink_factor: float = 0.1) -> np.ndarray:
     return mask_padded
 
 
-def get_border_coords(mask, decimation=512):
+def get_border_coords(mask: np.ndarray, decimation=512):
     """
     Get the coordinates of the border of the mask.
 
@@ -684,17 +622,191 @@ def get_border_coords(mask, decimation=512):
     return coords
 
 
-def round_to_mm(array: np.ndarray, dtype=np.float32) -> np.ndarray:
+def dsm_extract_mask(array: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """
-    Converts from meters to meters with a precision of millimeters.  
-    ~ assuming the tallest building on earth is (830m) on top of mount everest (8848m)  
-    ~ 9,679,000mm -> fits in 32 signed bits (to keep negative values)  
+    Extracts the mask from the DSM and replaces the mask values with the minimum value of the DSM.
+
+    :param array: np.ndarray of shape (n, m).
+    :return: tuple of the array and the mask : np.ndarray of shape (n, m).
+    """
+    dsm_mask_val = np.min(array)
+    mask = array != dsm_mask_val
+    mask = mask.astype(np.float64)
+
+    array = array.astype(np.float64)
+    min_val = np.min(array[array != dsm_mask_val])
+    array[array == dsm_mask_val] = min_val
+
+    return array, mask
+
+
+########### INSTANCE SEGMENTATION MASKS ###########
+
+
+def relabel(instances: np.ndarray) -> np.ndarray:
+    """
+    Relabels the input array by replacing each unique value with its index in the sorted unique values.  
+    This does not use the label() function from skimage.  
+    Two elements with the same value will be replaced by the same index.  
+    This removes gaps in the labels and ensures that the labels are contiguous.  
+    Does not relabel 0 if it exists or not as it is used as a background label.  
     
-    :param nda: np.ndarray of shape (n, m).
-    :param dtype: data type of the output array (default np.float32).
-    :return: np.ndarray of shape (n, m) with values in meters.
+    :param instances: Input numpy array with labels to be relabeled.
+    :return: numpy array with relabeled values.
     """
-    return np.round(array, 3).astype(dtype)
+    array = instances.copy()
+    unique_values = np.unique(array)
+
+    if unique_values[0] == 0:
+        unique_values = unique_values[1:]
+
+    for i, value in enumerate(unique_values):
+        array[array == value] = (i + 1)
+
+    return array
+
+
+def get_labels_centers(instances: np.ndarray) -> list:
+    """
+    Get the centers of instances in a segmentation mask.  
+    The center point is garanteed to be inside the instance mask.  
+    Selects the median x value on the median y value. (y median values are selected first - then x on that y value)  
+    The background value `0` is ignored.  
+    Can be done with a downsampled version of the labels.  
+
+    :param instances: Segmentation mask with instance labels.
+    :return: List of (y, x) coordinates for each instance center.
+    """
+    def median(list):
+        """
+        `np.median` is not used as it returns the average of the two middle values when the list has an even number of elements
+        """
+        array = np.sort(list)
+        return array[len(array) // 2]
+
+    unique_labels = np.unique(instances)
+    unique_labels = unique_labels[unique_labels != 0]
+    centers = []
+
+    for label in unique_labels:
+        instance_mask = (instances == label)
+        y, x = np.where(instance_mask)
+        y_median = int(median(y))
+        y_indexes = np.where(y == y_median)
+        x_values = x[y_indexes]
+        x_median = int(median(x_values))
+        centers.append((y_median, x_median))
+
+    return centers
+
+
+def get_centers(instances: np.ndarray, downsampling_size=100):
+    """
+    Returns the centers of the instances in the labels array.
+
+    :param instances: np.ndarray with shape (H, W) representing the instance segmentation labels.
+    :param downsampling_size: int, size to which the labels will be downsampled.
+    :return: tuple of two np.ndarrays:
+        - array_centers: binary numpy array with the centers of the instances set to `1.0` (size of `labels`)
+        - array_centers_downsampled: binary numpy array with the centers of the downsampled instances (size `downsampling_size`)
+    """
+    labels_downsampled = rescale_nearest_neighbour(instances, (downsampling_size, downsampling_size))
+    centers = np.array(get_labels_centers(labels_downsampled))
+
+    if centers.size == 0:
+        return np.zeros_like(instances), np.zeros((downsampling_size, downsampling_size))
+
+    array_centers_downsampled = np.zeros_like(labels_downsampled)
+    array_centers_downsampled[centers[:, 0], centers[:, 1]] = 1
+
+    centers = centers * (instances.shape[0] // downsampling_size)
+    array_centers = np.zeros_like(instances)
+    array_centers[centers[:, 0], centers[:, 1]] = 1
+
+    return array_centers, array_centers_downsampled
+
+
+def replace_value_inplace(instances: np.ndarray, old_values: list, new_values: list) -> None:
+    """
+    Replaces the specified values in the array `old_values` with their corresponding values in `new_values`
+
+    :param array: numpy array, dtype should be integer
+    :param old_values: list of values to be replaced (length must match new_values)
+    :param new_values: list of new values to replace old values with (length must match old_values)
+    :raises ValueError: if lengths of old_values and new_values do not match
+    """
+    array = instances.copy()
+    old_values = np.array(old_values)
+    new_values = np.array(new_values)
+
+    if len(old_values) == 0 or len(new_values) == 0:
+        return array
+
+    max_val = max(old_values.max(), new_values.max())
+    old_values += (max_val + 1)
+    array += (max_val + 1)
+
+    if len(old_values) != len(new_values):
+        raise ValueError("Length of old_values and new_values must match.")
+    
+    for old, new in zip(old_values, new_values):
+        array[array == old] = new
+
+    array[array == (max_val + 1)] = 0
+    array[array > max_val] -= (max_val + 1)
+
+    return array
+
+
+def remove_small_masks(instances: np.ndarray, min_area=400):
+    """
+    Removes all instances with an area lower or equal to `min_area`
+    The instances are relabeled to find unconnected parts of instances
+
+    :param instances: np.ndarray, array with instances to be filtered
+    :param min_area: int, rejects masks with lower or equal area (default=20*20=400)
+    :return: np.ndarray, array with small masks removed
+    """
+    labeled = label(instances)
+    for v in np.unique(labeled):
+        mask = (labeled == v)
+        if np.sum(mask) > min_area:
+            continue
+        instances = instances * ~mask
+    return instances
+
+
+########### VISUALISATION ###########
+
+
+def to_cmap(array: np.ndarray, cmap: str='viridis', nrm=True) -> np.ndarray:
+    """
+    Applies the colormap to the array.
+    
+    :param array: np.ndarray of shape (n, m, 1).
+    :param cmap: str, name of the matplotlib colormap.
+    :param nrm: bool, if True, the array is normalized.
+    """
+    cmap = mpl.colormaps[cmap]
+    array = normalize(array) if nrm else array
+    array = plt.cm.get_cmap(cmap)(array)
+    return array[:, :, :3]
+
+
+def dsm_to_cmap(array: np.ndarray, cmap: str='viridis') -> np.ndarray:
+    """
+    The 1 layer image is converted to a color image using a colormap.  
+    We assume linear values in float. The smallest value is used as a mask.
+    
+    :param dsm: np.ndarray of shape (n, m).
+    :param cmap: str, name of the matplotlib colormap.
+    :return: np.ndarray of shape (n, m, 4) with the last channel as a transparency mask.
+    """
+    array, mask = dsm_extract_mask(array)
+    array = to_cmap(array, cmap)
+    array = np.dstack((array, mask))
+    array = (array * 255).astype(np.uint8)
+    return array
 
 
 def overlay_values(array: np.ndarray, factor=64, font_size: float = 1.0, round_value=1, cmap: str = 'viridis', font_path='BAHNSCHRIFT.TTF') -> np.ndarray:
@@ -760,94 +872,6 @@ def random_dtm(size: int=512, skip=1) -> np.ndarray:
         # array = array + sub_a / (e**2)
 
     return normalize(array)
-
-
-def save_to_wavefront(array: np.ndarray, file_path: str, origin=(0.0, 0.0), pixel_size=(1.0, 1.0)):
-    """
-    `Warning` works at small scale, but not at large scale  
-    Converts a 2D array containing height values to a Wavefront .obj file.  
-
-    :param array: 2D array of the dsm
-    :param file_path: path to save the obj file
-    :param origin: origin of the coordinate system
-    :param pixel_size: size of each pixel (distance between each pixel)
-    """
-    # mirror the image if the pixel size is negative
-    if pixel_size[0] < 0:
-        array = np.flip(array, axis=1)
-    if pixel_size[1] < 0:
-        array = np.flip(array, axis=0)
-
-    h, w = array.shape
-    obj_lines = []
-
-    x = np.arange(w) * abs(pixel_size[0]) + origin[0]
-    y = np.arange(h) * abs(pixel_size[1]) + origin[1] # todo try without abs
-    xx, yy = np.meshgrid(x, y)
-
-    zz = array.flatten()
-    vertices = np.column_stack((xx.flatten(), yy.flatten(), zz))
-    obj_lines.extend(f"v {x:.3f} {y:.3f} {z:.3f}" for x, y, z in vertices)
-
-    # Create faces using indices
-    for i in range(h - 1):
-        for j in range(w - 1):
-            # Calculate the 1D indices of the vertices
-            v1 = i * w + j + 1
-            v2 = v1 + 1
-            v3 = v1 + w
-            v4 = v3 + 1
-            # Add two triangular faces for the quad
-            obj_lines.append(f"f {v1} {v2} {v4}")
-            obj_lines.append(f"f {v1} {v4} {v3}")
-
-    with open(file_path, "w") as f:
-        f.write("\n".join(obj_lines))
-
-
-def __gaussian_blur_from_boxes(array: np.ndarray, boxes: pd.DataFrame, sigma: float = 5.0) -> np.ndarray:
-    """
-    :param ndarray: 3D array of the image
-    :param boxes: DataFrame with the bounding boxes (xmin, ymin, xmax, ymax)
-    :param sigma: sigma of the Gaussian filter
-    :return: 3D array of the image with blurred bounding boxes
-    """
-    from skimage.filters import gaussian
-
-    array = normalize(array)
-    mask = np.zeros_like(array, dtype=np.float64)
-    means = array.copy()
-    for _, obj in boxes.iterrows():
-        xmin, ymin, xmax, ymax = obj[['xmin', 'ymin', 'xmax', 'ymax']]
-        mean = np.mean(array[ymin:ymax, xmin:xmax], axis=(0, 1))
-        mask[ymin:ymax, xmin:xmax] = 1
-        means[ymin:ymax, xmin:xmax] = mean
-
-    blurred = gaussian(array, sigma=sigma)
-    mask = gaussian(mask, sigma=sigma)
-
-    new_array = array * (1 - mask) + blurred * mask
-    new_array = (new_array + means) / 2
-
-    return new_array
-
-
-def anonymise_with_yolov8n(array: np.ndarray) -> np.ndarray:
-    """
-    Blur the bounding boxes humans in the image using a Gaussian filter.
-    
-    :param ndarray: 3D array of the image
-    :return: 3D array of the image with blurred bounding boxes
-    """
-    from ultralytics import YOLO
-    from pydsm.yolo import ObjectDetector
-
-    yolo_v8 = YOLO('yolov8n.pt')
-    detector = ObjectDetector(yolo_v8)
-    size = (max(array.shape) + 32) // 32 * 32
-    detector.detect(array, imgsz=size)
-    boxes = detector.get_objs_by_name('person', 0.2)
-    return __gaussian_blur_from_boxes(array, boxes)
 
 
 class SubimageGenerator:
