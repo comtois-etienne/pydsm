@@ -14,11 +14,13 @@ from ultralytics.data.dataset import YOLODataset
 from ultralytics.utils import LOGGER
 
 from .rbh import get_contour as rbh_get_contour
+from .nda import normalize as nda_normalize
 import pydsm.utils as utils
 import pydsm.tile as tile
 
 
-### START of MONKEY PATCHING of cv2.imread and PIL.Image.open for .npz tiles support ###
+########### YOLO Segmentation Monkey Patching ###########
+
 
 """
 Optional, for viewing images during training
@@ -70,7 +72,8 @@ IMG_FORMATS.add("npz")
 cv2.imread = fake_cv2_imread
 Image.open = fake_pil_open
 
-### END of MONKEY PATCHING of cv2.imread and PIL.Image.open for .npz tiles support ###
+
+########### YOLO for anonymisation ###########
 
 
 coco_classes = {0: 'person', 1: 'bicycle', 2: 'car', 3: 'motorcycle', 4: 'airplane', 5: 'bus', 6: 'train', 7: 'truck', 8: 'boat', 9: 'traffic light', 10: 'fire hydrant', 11: 'stop sign', 12: 'parking meter', 13: 'bench', 14: 'bird', 15: 'cat', 16: 'dog', 17: 'horse', 18: 'sheep', 19: 'cow', 20: 'elephant', 21: 'bear', 22: 'zebra', 23: 'giraffe', 24: 'backpack', 25: 'umbrella', 26: 'handbag', 27: 'tie', 28: 'suitcase', 29: 'frisbee', 30: 'skis', 31: 'snowboard', 32: 'sports ball', 33: 'kite', 34: 'baseball bat', 35: 'baseball glove', 36: 'skateboard', 37: 'surfboard', 38: 'tennis racket', 39: 'bottle', 40: 'wine glass', 41: 'cup', 42: 'fork', 43: 'knife', 44: 'spoon', 45: 'bowl', 46: 'banana', 47: 'apple', 48: 'sandwich', 49: 'orange', 50: 'broccoli', 51: 'carrot', 52: 'hot dog', 53: 'pizza', 54: 'donut', 55: 'cake', 56: 'chair', 57: 'couch', 58: 'potted plant', 59: 'bed', 60: 'dining table', 61: 'toilet', 62: 'tv', 63: 'laptop', 64: 'mouse', 65: 'remote', 66: 'keyboard', 67: 'cell phone', 68: 'microwave', 69: 'oven', 70: 'toaster', 71: 'sink', 72: 'refrigerator', 73: 'book', 74: 'clock', 75: 'vase', 76: 'scissors', 77: 'teddy bear', 78: 'hair drier', 79: 'toothbrush'}
@@ -127,6 +130,54 @@ class ObjectDetector:
     def get_objs_by_class(self, cls, score=0.5):
         objs = self.get_objs(score)
         return objs[objs['class'] == cls]
+
+
+def __gaussian_blur_from_boxes(array: np.ndarray, boxes: pd.DataFrame, sigma: float = 5.0) -> np.ndarray:
+    """
+    :param ndarray: 3D array of the image
+    :param boxes: DataFrame with the bounding boxes (xmin, ymin, xmax, ymax)
+    :param sigma: sigma of the Gaussian filter
+    :return: 3D array of the image with blurred bounding boxes
+    """
+    from skimage.filters import gaussian
+
+    array = nda_normalize(array)
+    mask = np.zeros_like(array, dtype=np.float64)
+    means = array.copy()
+    for _, obj in boxes.iterrows():
+        xmin, ymin, xmax, ymax = obj[['xmin', 'ymin', 'xmax', 'ymax']]
+        mean = np.mean(array[ymin:ymax, xmin:xmax], axis=(0, 1))
+        mask[ymin:ymax, xmin:xmax] = 1
+        means[ymin:ymax, xmin:xmax] = mean
+
+    blurred = gaussian(array, sigma=sigma)
+    mask = gaussian(mask, sigma=sigma)
+
+    new_array = array * (1 - mask) + blurred * mask
+    new_array = (new_array + means) / 2
+
+    return new_array
+
+
+def anonymise_with_yolo(array: np.ndarray, model_name='yolov8n.pt') -> np.ndarray:
+    """
+    Blur the bounding boxes humans in the image using a Gaussian filter.
+    
+    :param ndarray: 3D array of the image
+    :return: 3D array of the image with blurred bounding boxes
+    """
+    from ultralytics import YOLO
+    from pydsm.yolo import ObjectDetector
+
+    model = YOLO(model_name)
+    detector = ObjectDetector(model)
+    size = (max(array.shape) + 32) // 32 * 32
+    detector.detect(array, imgsz=size)
+    boxes = detector.get_objs_by_name('person', 0.2)
+    return __gaussian_blur_from_boxes(array, boxes)
+
+
+########### YOLO segmentation ###########
 
 
 @dataclass
