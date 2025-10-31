@@ -10,7 +10,7 @@ from cv2 import resize as cv2_resize
 from cv2 import INTER_CUBIC
 from typing import Any, Optional, Tuple
 import skimage.transform
-from skimage.morphology import disk, binary_dilation
+from skimage.morphology import disk, binary_dilation, binary_closing, binary_opening
 from skimage.transform import rotate as sk_rotate
 from skimage.measure import label
 
@@ -813,6 +813,33 @@ def remove_small_masks(instances: np.ndarray, min_area=400):
             continue
         instances = instances * ~mask
     return instances
+
+
+def clean_mask_instances(instances: np.ndarray, min_area=400, remove_cracks=5) -> np.ndarray:
+    """
+    Simplifies the shape of the instance masks - removes cracks and aberations  
+    Masks index should be from least confident=1 to most confident=n.  
+    Some masks might be removed if too small or considered as aberant (thin lines)  
+
+    :param instances: np.ndarray, uint instance segmentation masks
+    :param min_area: int, minimum area (in pixels) for keeping an instance mask. Default is 400
+    :param remove_cracks: int, the crack size and small lines in the masks to be removed
+    :return: np.ndarray, the instance segmentation masks without aberations
+    """
+    instances = remove_small_masks(instances, min_area=min_area)
+    new_instances = np.zeros_like(instances)
+    k = disk(remove_cracks)
+
+    for i in np.unique(instances):
+        if i == 0: continue
+        mask = (instances == i)
+        mask = binary_opening(mask, k)
+        mask = get_biggest_mask(mask)
+        mask = binary_closing(mask, k)
+        mask = remove_holes(mask)
+        new_instances[mask] = i
+
+    return relabel(new_instances)
 
 
 ########### VISUALISATION ###########
