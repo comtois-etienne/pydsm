@@ -300,7 +300,7 @@ def export_instances(tiles_dir: str, tile_name: str) -> None:
     :return: None, saves instances as tiles to disk
     """
     species_dict = tree_species_dict_v2()
-    copy_tile = open_tile(tiles_dir, tile_name, species_dict)
+    copy_tile = open_as_tile(tiles_dir, tile_name, species_dict)
     local_tiles = extract_instances(copy_tile, ignore_border=True)
 
     for local_tile in local_tiles:
