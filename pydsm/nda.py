@@ -36,7 +36,6 @@ In order :
 """
 
 
-
 ########### IO ###########
 
 
@@ -638,6 +637,46 @@ def dsm_extract_mask(array: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     array[array == dsm_mask_val] = min_val
 
     return array, mask
+
+
+def iou(mask_a: np.ndarray, mask_b: np.ndarray) -> float:
+    """
+    Compute the Intersection over Union (IoU) between two binary masks.
+
+    :param mask_a: np.ndarray, first binary mask
+    :param mask_b: np.ndarray, second binary mask
+    :return: float, IoU value
+    """
+    intersection = np.logical_and(mask_a, mask_b).sum()
+    union = np.logical_or(mask_a, mask_b).sum()
+    if union == 0:
+        return 0.0
+    return intersection / union
+
+
+def nms(masks: list[np.ndarray], confidences: list[float] = None, iou_threshold: float = 0.5) -> list[np.ndarray]:
+    """
+    Perform Non-Maximum Suppression (NMS) on a list of binary masks based on their IoU.
+
+    :param masks: list of np.ndarray, list of binary masks
+    :param confidences: list of float, list of confidence scores corresponding to each mask
+    :param iou_threshold: float, IoU threshold for suppression
+    :return: list of np.ndarray, list of masks after NMS (from most to least confident)
+    """
+    if confidences is not None:
+        ordered_indices = np.argsort(confidences)[::-1] # high to low
+        masks = [masks[i] for i in ordered_indices]
+        confidences = [confidences[i] for i in ordered_indices]
+
+    kept_masks = []
+
+    while len(masks) > 0:
+        mask = masks.pop(0)
+        kept_masks.append(mask)
+        ious = [iou(mask, m) for m in masks]
+        masks = [m for i, m in enumerate(masks) if ious[i] < iou_threshold]
+
+    return kept_masks
 
 
 ########### INSTANCE SEGMENTATION MASKS ###########
