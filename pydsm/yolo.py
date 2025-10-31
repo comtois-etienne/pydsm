@@ -14,9 +14,63 @@ from ultralytics.data.dataset import YOLODataset
 from ultralytics.utils import LOGGER
 
 from .rbh import get_contour as rbh_get_contour
-from .nda import to_uint8 as nda_to_uint8
-from .tile import open_tile_npz as tile_open_tile_npz
-from .tile import Tile
+import pydsm.utils as utils
+import pydsm.tile as tile
+
+
+### START of MONKEY PATCHING of cv2.imread and PIL.Image.open for .npz tiles support ###
+
+"""
+Optional, for viewing images during training
+in ultralytics.utils.plotting.py
+change original line in function `plot_images` :
+`mosaic[y : y + h, x : x + w, :] = images[i].transpose(1, 2, 0) # Original`
+
+to this line :
+`mosaic[y : y + h, x : x + w, :] = images[i][[3,2,1]].transpose(1, 2, 0) # Modified`
+"""
+
+from ultralytics.data.base import IMG_FORMATS
+from ultralytics import YOLO # ensure YOLO is imported before monkey patching
+from PIL import Image
+import cv2
+
+
+if cv2.__dict__.get('original_imread', None) is None:
+    print("Monkey Patching cv2.imread to add .npz tiles support for RGBD YOLO")
+    cv2.original_imread = cv2.imread
+
+if Image.__dict__.get('original_open', None) is None:
+    print("Monkey Patching PIL.Image.open to add .npz tiles support for RGBD YOLO")
+    Image.original_open = Image.open
+
+
+def fake_cv2_imread(file_path):
+    # print('Called fake_imread')
+    if utils.get_extension(file_path) == 'npz':
+        t = tile.open_tile_npz(file_path)
+        return t.rgbd(norm=False)
+    else:
+        return cv2.original_imread(file_path)
+
+
+def fake_pil_open(file_path):
+    # print('Called fake_open')
+    if utils.get_extension(file_path) == 'npz':
+        t = tile.open_tile_npz(file_path)
+        rgbd = t.rgbd(norm=False)
+        pil_im = Image.fromarray(rgbd, mode='RGBA')
+        pil_im.format = 'NPZ'
+        return pil_im
+    else:
+        return Image.original_open(file_path)
+
+
+IMG_FORMATS.add("npz")
+cv2.imread = fake_cv2_imread
+Image.open = fake_pil_open
+
+### END of MONKEY PATCHING of cv2.imread and PIL.Image.open for .npz tiles support ###
 
 
 coco_classes = {0: 'person', 1: 'bicycle', 2: 'car', 3: 'motorcycle', 4: 'airplane', 5: 'bus', 6: 'train', 7: 'truck', 8: 'boat', 9: 'traffic light', 10: 'fire hydrant', 11: 'stop sign', 12: 'parking meter', 13: 'bench', 14: 'bird', 15: 'cat', 16: 'dog', 17: 'horse', 18: 'sheep', 19: 'cow', 20: 'elephant', 21: 'bear', 22: 'zebra', 23: 'giraffe', 24: 'backpack', 25: 'umbrella', 26: 'handbag', 27: 'tie', 28: 'suitcase', 29: 'frisbee', 30: 'skis', 31: 'snowboard', 32: 'sports ball', 33: 'kite', 34: 'baseball bat', 35: 'baseball glove', 36: 'skateboard', 37: 'surfboard', 38: 'tennis racket', 39: 'bottle', 40: 'wine glass', 41: 'cup', 42: 'fork', 43: 'knife', 44: 'spoon', 45: 'bowl', 46: 'banana', 47: 'apple', 48: 'sandwich', 49: 'orange', 50: 'broccoli', 51: 'carrot', 52: 'hot dog', 53: 'pizza', 54: 'donut', 55: 'cake', 56: 'chair', 57: 'couch', 58: 'potted plant', 59: 'bed', 60: 'dining table', 61: 'toilet', 62: 'tv', 63: 'laptop', 64: 'mouse', 65: 'remote', 66: 'keyboard', 67: 'cell phone', 68: 'microwave', 69: 'oven', 70: 'toaster', 71: 'sink', 72: 'refrigerator', 73: 'book', 74: 'clock', 75: 'vase', 76: 'scissors', 77: 'teddy bear', 78: 'hair drier', 79: 'toothbrush'}
@@ -188,7 +242,7 @@ def save_indexlines(dir_npz: str, dir_labels: str, edges_per_instance=32, remap_
             continue
 
         tile_path = os.path.join(dir_npz, filename)
-        tile = tile_open_tile_npz(tile_path)
+        tile = tile.open_tile_npz(tile_path)
 
         if visualize: print(f'Processing \'{filename}\'')
 
