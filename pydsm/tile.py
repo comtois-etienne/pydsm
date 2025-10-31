@@ -324,7 +324,7 @@ def remove_small_masks(tile: Tile, min_area=400):
 
 def flip_tile(tile: Tile, axis=0):
     """
-    Flip on axis 1 or 2
+    Flip on axis 1 or 2 (0=vertical, 1=horizontal)
 
     :param tile: Tile, tile to be flipped
     :param axis: int, flip axis
@@ -337,7 +337,16 @@ def flip_tile(tile: Tile, axis=0):
     )
 
 
-def open_tile(tiles_dir: str, tile_name: str, semantic_dict=default_semantic_dict(), as_array=True) -> Tile:
+def open_as_tile(
+        tiles_dir: str, 
+        tile_name: str, 
+        semantic_dict=default_semantic_dict(), 
+        as_array=True, 
+        orthophoto_subdir = 'orthophoto', 
+        ndsm_subdir = 'ndsm', 
+        instances_subdir = 'labels', 
+        points_subdir = 'points'
+    ) -> Tile:
     """
     Opens all data from the tile (orthophoto, ndsm, instance_labels, semantic_labels)
 
@@ -348,14 +357,26 @@ def open_tile(tiles_dir: str, tile_name: str, semantic_dict=default_semantic_dic
     """
     tile_name = utils.remove_extension(tile_name)
 
-    ortho = geo.open_geotiff(os.path.join(tiles_dir, 'orthophoto', f'{tile_name}.tif'))
-    ndsm = geo.open_geotiff(os.path.join(tiles_dir, 'ndsm', f'{tile_name}.tif'))
-    instances = nda.read_numpy(os.path.join(tiles_dir, 'labels', f'{tile_name}.npz'), npz_format='napari')
-    instances = nda.relabel(instances)
-    instances = remove_holes(instances)
+    ortho_path = os.path.join(tiles_dir, orthophoto_subdir, f'{tile_name}.tif')
+    ortho = geo.open_geotiff(ortho_path)
 
-    points_df = pd.read_csv(os.path.join(tiles_dir, 'points', f'{tile_name}.csv'))
-    semantics = apply_semantic_codes(instances, points_df, semantic_dict)
+    ndsm_path = os.path.join(tiles_dir, ndsm_subdir, f'{tile_name}.tif')
+    ndsm = geo.open_geotiff(ndsm_path)
+
+    instances_path = os.path.join(tiles_dir, instances_subdir, f'{tile_name}.npz')
+    if not os.path.exists(instances_path):
+        instances = np.zeros(geo.get_shape(ortho), dtype=np.uint16)
+    else:
+        instances = nda.read_numpy(instances_path, npz_format='napari')
+        instances = nda.relabel(instances)
+        instances = remove_holes(instances)
+
+    points_path = os.path.join(tiles_dir, points_subdir, f'{tile_name}.csv')
+    if not os.path.exists(points_path):
+        semantics = np.zeros_like(instances, dtype=np.uint8)
+    else:
+        points_df = pd.read_csv(points_path)
+        semantics = apply_semantic_codes(instances, points_df, semantic_dict)
 
     if as_array:
         ortho = geo.to_ndarray(ortho)[..., :3]
@@ -371,19 +392,16 @@ def split_tile(tile: Tile) -> list[Tile]:
     :param tile: tile containing orthophoto, ndsm, instance labels, and semantic labels
     :returns: a list of 4 tiles (`top-left`, `top-right`, `bottom-left`, `bottom-right`)
     """
-    h, w = tile.orthophoto.shape[:2]
-    h, w = h // 2, w // 2
+    orthos = nda.split_four(tile.orthophoto)
+    ndsms = nda.split_four(tile.ndsm)
+    instances = nda.split_four(tile.instance_labels)
+    semantics = nda.split_four(tile.semantic_labels)
 
-    sub_tiles = []
-    for i in range(2):
-        for j in range(2):
-            ortho = tile.orthophoto[i * h:(i + 1) * h, j * w:(j + 1) * w]
-            ndsm = tile.ndsm[i * h:(i + 1) * h, j * w:(j + 1) * w]
-            instances = tile.instance_labels[i * h:(i + 1) * h, j * w:(j + 1) * w]
-            semantics = tile.semantic_labels[i * h:(i + 1) * h, j * w:(j + 1) * w]
-            sub_tiles.append(Tile(ortho, ndsm, instances, semantics))
+    tiles = []
+    for i in range(4):
+        tiles.append(Tile(orthos[i], ndsms[i], instances[i], semantics[i]))
 
-    return sub_tiles
+    return tiles
 
 
 def normalize_ndsm(tile: Tile, clip_height=30.0) -> Tile:
@@ -558,7 +576,7 @@ def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'dataset', semantic_
     
     for name in names:
         if not name.endswith('.tif'): continue
-        tile = open_tile(tiles_dir, name, semantic_dict)
+        tile = open_as_tile(tiles_dir, name, semantic_dict)
         if split:
             tiles = split_tile(tile)
             tiles = [remove_small_masks(tile, min_mask_size) for tile in tiles]
