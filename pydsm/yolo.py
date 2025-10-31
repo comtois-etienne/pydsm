@@ -14,14 +14,13 @@ from ultralytics.data.dataset import YOLODataset
 from ultralytics.utils import LOGGER
 
 from .rbh import get_contour as rbh_get_contour
-from .nda import normalize as nda_normalize
 import pydsm.utils as utils
+import pydsm.geo as geo
+import pydsm.nda as nda
 import pydsm.tile as tile
 
 
-########### YOLO Segmentation Monkey Patching ###########
-
-
+########### RGBD Monkey Patching ###########
 """
 Optional, for viewing images during training
 in ultralytics.utils.plotting.py
@@ -73,7 +72,7 @@ cv2.imread = fake_cv2_imread
 Image.open = fake_pil_open
 
 
-########### YOLO for anonymisation ###########
+########### Anonymisation ###########
 
 
 coco_classes = {0: 'person', 1: 'bicycle', 2: 'car', 3: 'motorcycle', 4: 'airplane', 5: 'bus', 6: 'train', 7: 'truck', 8: 'boat', 9: 'traffic light', 10: 'fire hydrant', 11: 'stop sign', 12: 'parking meter', 13: 'bench', 14: 'bird', 15: 'cat', 16: 'dog', 17: 'horse', 18: 'sheep', 19: 'cow', 20: 'elephant', 21: 'bear', 22: 'zebra', 23: 'giraffe', 24: 'backpack', 25: 'umbrella', 26: 'handbag', 27: 'tie', 28: 'suitcase', 29: 'frisbee', 30: 'skis', 31: 'snowboard', 32: 'sports ball', 33: 'kite', 34: 'baseball bat', 35: 'baseball glove', 36: 'skateboard', 37: 'surfboard', 38: 'tennis racket', 39: 'bottle', 40: 'wine glass', 41: 'cup', 42: 'fork', 43: 'knife', 44: 'spoon', 45: 'bowl', 46: 'banana', 47: 'apple', 48: 'sandwich', 49: 'orange', 50: 'broccoli', 51: 'carrot', 52: 'hot dog', 53: 'pizza', 54: 'donut', 55: 'cake', 56: 'chair', 57: 'couch', 58: 'potted plant', 59: 'bed', 60: 'dining table', 61: 'toilet', 62: 'tv', 63: 'laptop', 64: 'mouse', 65: 'remote', 66: 'keyboard', 67: 'cell phone', 68: 'microwave', 69: 'oven', 70: 'toaster', 71: 'sink', 72: 'refrigerator', 73: 'book', 74: 'clock', 75: 'vase', 76: 'scissors', 77: 'teddy bear', 78: 'hair drier', 79: 'toothbrush'}
@@ -141,7 +140,7 @@ def __gaussian_blur_from_boxes(array: np.ndarray, boxes: pd.DataFrame, sigma: fl
     """
     from skimage.filters import gaussian
 
-    array = nda_normalize(array)
+    array = nda.normalize(array)
     mask = np.zeros_like(array, dtype=np.float64)
     means = array.copy()
     for _, obj in boxes.iterrows():
@@ -177,7 +176,7 @@ def anonymise_with_yolo(array: np.ndarray, model_name='yolov8n.pt') -> np.ndarra
     return __gaussian_blur_from_boxes(array, boxes)
 
 
-########### YOLO segmentation ###########
+########### Segmentation Training Dataset ###########
 
 
 @dataclass
@@ -338,4 +337,98 @@ def save_one_indexlines(dir_npz: str, dir_labels: str, class_index=1, class_coun
     target_class[(class_index - 1)] = 1
     remap_dict = dict(zip(source_class, target_class))
     save_indexlines(dir_npz, dir_labels, edges_per_instance, remap_dict, visualize=visualize)
+
+
+########### Segmentation Prediction ###########
+
+
+def load_rgbd(orthophoto_path: str, ndsm_path: str, clip_height : float = 30.0) -> np.ndarray:
+    """
+    Load and normalize the rgbd image from an orthophoto (geoTIFF) and ndsm (geoTIFF)  
+    The rgb part is normalized and converted to uint8  
+    the d part has its values above the `clip_height` clipped and then scaled to uint8
+    - where `0` equals to 0.0 meters 
+    - and `255` equals to 'clip_height' in meters
+    Refer to the model specifications for the clip_height
+
+    :param orthophoto_path: str, path to the orthophoto (geoTIFF)
+    :param ndsm_path: str, path to the ndsm (geoTIFF)
+    :param clip_height: float, ceiling of the ndsm on which the model has been trained on
+    :return: np.ndarray, rgbd array with dtype uint8 for the YOLO model prediction
+    """
+    rgb = geo.to_ndarray(geo.open_geotiff(orthophoto_path))[..., :3]
+    rgb = nda.to_uint8(rgb, norm=True)
+
+    d = geo.to_ndarray(geo.open_geotiff(ndsm_path))
+    d = nda.clip_rescale(d, clip_height)
+    d = nda.to_uint8(d, norm=False)
+
+    return np.dstack((rgb, d))
+
+
+def load_as_tile(tiles_dir: str, tile_name: str, clip_height : float = 30.0, orthophoto_subdir = 'orthophoto', ndsm_subdir = 'ndsm') -> np.ndarray:
+    """
+    Load and normalize the rgbd image from an orthophoto (geoTIFF) and ndsm (geoTIFF).  
+    see `load_rgbd` for more detailed informations  
+
+    :param tiles_dir: str, directory containing the sub-directories `orthophoto`, `ndsm`
+    :param tile_name: str, tile name in the sub-directories
+    :param clip_height: float, ceiling of the ndsm on which the model has been trained on
+    :return: np.ndarray, rgbd array with dtype uint8 for the YOLO model prediction
+    """
+    tile_name = utils.remove_extension(tile_name)
+    ortho_path = os.path.join(tiles_dir, orthophoto_subdir, f'{tile_name}.tif')
+    ndsm_path = os.path.join(tiles_dir, ndsm_subdir, f'{tile_name}.tif')
+    return load_rgbd(ortho_path, ndsm_path, clip_height)
+
+
+def predict_instances(rgbd_model_path: str, rgbd_image: np.ndarray, confidence: float = 0.3, iou_threshold=0.5, min_area=400, remove_cracks=5) -> np.ndarray:
+    """
+    Predict the instance segmentation masks in one RGB-D image using a YOLO model.  
+    The values in `rgbd_image` are of dtype uint8 :  
+    - The rgb part is normalized (using min max).  
+    - The d part is clipped at 30.0 meters and then scaled to [0.255].  
+        - where `0` equals to 0.0 meters 
+        - and `255` equals to 30.0 meters (default training value)
+
+    Non-maximum-suppression is used to keep the best masks  
+
+    :param rgbd_model_path: str, path to the YOLO model trained on RGB-D images
+    :param rgbd_image: np.ndarray (dtype=unint8), input RGB-D image as a numpy array of shape (H, W, 4) (RGBD)
+    :param confidence: float, confidence threshold for predictions. Default is 0.5
+    :param min_area: int, minimum area (in pixels) for keeping an instance mask. Default is 400
+    :return: np.ndarray, instance segmentation mask of shape (H, W) with integer labels for each instance
+    """
+    orig_shape = rgbd_image.shape[:2]
+    model = YOLO(rgbd_model_path)
+    results = model.predict(source=rgbd_image, conf=confidence, verbose=False)
+
+    if results[0].masks is None:
+        return np.zeros(orig_shape, dtype=np.uint8)
+    
+    masks = results[0].masks.data.cpu().numpy()
+    confs = results[0].boxes.conf.cpu().numpy()
+    # classes = results[0].boxes.cls.cpu().numpy()
+
+    masks = [nda.get_biggest_mask(mask) for mask in masks]
+    masks = [nda.remove_holes(mask) for mask in masks]
+    masks = nda.nms(masks, confs, iou_threshold)[::-1]  # from least to most confident
+
+    out_shape = masks[0].shape[:2]
+    instances = np.zeros(out_shape, dtype=np.uint16)
+
+    for i, mask in enumerate(masks):
+        instances[mask > 0] = i + 1
+
+    if out_shape != orig_shape:
+        instances = nda.rescale_nearest_neighbour(instances, orig_shape)
+
+    return nda.clean_mask_instances(instances, min_area, remove_cracks)
+
+
+def predict_images_instances(rgbd_model_path: str, rgbd_images: list[np.ndarray]):
+    predictions = []
+    for rgbd in rgbd_images:
+        predictions.append(predict_instances(rgbd_model_path, rgbd))
+    return predictions
 
