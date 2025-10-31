@@ -511,16 +511,26 @@ def is_mask_inside(mask_a: np.ndarray, mask_b: np.ndarray, downsample_factor=4, 
     return diff >= (min_area * inside_ratio)
 
 
-def is_mask_touching_border(mask: np.ndarray) -> bool:
+def is_mask_touching_border(mask: np.ndarray, border_width=1, top=True, bottom=True, left=True, right=True) -> bool:
     """
-    Check if a binary mask is touching the border of the array.
+    Check if a binary mask is touching the borders of the array.
 
     :param mask: 2D numpy array (binary mask)
-    :return: True if the mask touches the border, False otherwise
+    :param border_width: int, width of the border to check (default: 1)
+    :param top: bool, check top border (default: True)
+    :param bottom: bool, check bottom border (default: True)
+    :param left: bool, check left border (default: True)
+    :param right: bool, check right border (default: True)
+    :return: True if the mask touches any of the selected borders, False otherwise
     """
-    if np.any(mask[0, :]) or np.any(mask[-1, :]):
+    end = (1 + border_width)
+    if top and np.any(mask[0:border_width, :]):
         return True
-    if np.any(mask[:, 0]) or np.any(mask[:, -1]):
+    if bottom and np.any(mask[-end:-1, :]):
+        return True
+    if left and np.any(mask[:, 0:border_width]):
+        return True
+    if right and np.any(mask[:, -end:-1]):
         return True
     return False
 
