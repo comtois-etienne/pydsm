@@ -382,7 +382,7 @@ def load_as_tile(tiles_dir: str, tile_name: str, clip_height : float = 30.0, ort
     return load_rgbd(ortho_path, ndsm_path, clip_height)
 
 
-def predict_instances(rgbd_model_path: str, rgbd_image: np.ndarray, confidence: float = 0.3, iou_threshold=0.5, min_area=400, remove_cracks=5) -> np.ndarray:
+def predict_instances(rgbd_model_path: str, rgbd_image: np.ndarray, confidence: float = 0.2, iou_threshold=0.5, min_area=400, remove_cracks=5) -> np.ndarray:
     """
     Predict the instance segmentation masks in one RGB-D image using a YOLO model.  
     The values in `rgbd_image` are of dtype uint8 :  
@@ -397,7 +397,7 @@ def predict_instances(rgbd_model_path: str, rgbd_image: np.ndarray, confidence: 
     :param rgbd_image: np.ndarray (dtype=unint8), input RGB-D image as a numpy array of shape (H, W, 4) (RGBD)
     :param confidence: float, confidence threshold for predictions. Default is 0.5
     :param min_area: int, minimum area (in pixels) for keeping an instance mask. Default is 400
-    :return: np.ndarray, instance segmentation mask of shape (H, W) with integer labels for each instance
+    :return: np.ndarray, instance segmentation mask of shape (H, W) with integer labels for each instance (from least to most confident)
     """
     orig_shape = rgbd_image.shape[:2]
     model = YOLO(rgbd_model_path)
@@ -423,12 +423,44 @@ def predict_instances(rgbd_model_path: str, rgbd_image: np.ndarray, confidence: 
     if out_shape != orig_shape:
         instances = nda.rescale_nearest_neighbour(instances, orig_shape)
 
-    return nda.clean_mask_instances(instances, min_area, remove_cracks)
+    instances = nda.clean_mask_instances(instances, min_area, remove_cracks)
+    return instances
 
 
-def predict_images_instances(rgbd_model_path: str, rgbd_images: list[np.ndarray]):
+def predict_images_instances(rgbd_model_path: str, rgbd_images: list[np.ndarray], confidence: float = 0.2, iou_threshold=0.5):
     predictions = []
     for rgbd in rgbd_images:
-        predictions.append(predict_instances(rgbd_model_path, rgbd))
+        predictions.append(predict_instances(rgbd_model_path, rgbd, confidence, iou_threshold))
     return predictions
+
+
+def predict_tile(model_name: str, tiles_dir: str, tile_name: str, *, prediction_subdir = 'labels_yolo', orthophoto_subdir = 'orthophoto', ndsm_subdir = 'ndsm', verbose=False):
+    """
+    Predict a rgbd tile (orthophoto + ndsm) using a YOLO segmentation model and save the predicted instances as a numpy file.  
+    Split the tile into four quadrants for prediction and then combine the predicted quadrants into one tile.  
+
+    :param model_name: YOLO instance segmentation model name (path to .pt file)
+    :param tiles_dir: Directory containing the tiles
+    :param tile_name: Name of the tile to predict
+    :param prediction_subdir: Subdirectory to save the predicted labels (default: 'labels_yolo')
+    :param orthophoto_subdir: Subdirectory containing the orthophotos (default: 'orthophoto')
+    :param ndsm_subdir: Subdirectory containing the ndsms (default: 'ndsm')
+    :param verbose: If True, display the predicted labels using matplotlib
+    :return: None, saves the predicted labels as a numpy file (napari format)
+    """
+    rgbd = load_as_tile(tiles_dir, tile_name, orthophoto_subdir=orthophoto_subdir, ndsm_subdir=ndsm_subdir)
+    rgbds = nda.split_four(rgbd)
+    pred = predict_images_instances(model_name, rgbds, confidence=0.2, iou_threshold=0.5)
+    labels = nda.combine_four_instances(pred)
+
+    label_path = os.path.join(tiles_dir, prediction_subdir)
+    label_name = f'{utils.remove_extension(tile_name)}.npz'
+    os.makedirs(label_path, exist_ok=True)
+
+    if verbose:
+        plt.imshow(labels, cmap='tab20', interpolation='nearest')
+        plt.title(label_name)
+        plt.show()
+
+    nda.write_numpy_napari(os.path.join(label_path, label_name), labels)
 
