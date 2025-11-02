@@ -893,7 +893,7 @@ def stack_horizontal(left: np.ndarray, right: np.ndarray) -> np.ndarray:
     return relabel(stacked)
 
 
-def get_border_touching_instances(instances: np.ndarray, top=True, bottom=True, left=True, right=True) -> np.ndarray:
+def get_border_touching_instances(instances: np.ndarray, *, tolerance=10, top=True, bottom=True, left=True, right=True) -> np.ndarray:
     """
     Split the instances into two masks: border-touching and non-border-touching (inside) instances.
 
@@ -910,7 +910,7 @@ def get_border_touching_instances(instances: np.ndarray, top=True, bottom=True, 
     for v in np.unique(instances):
         if v == 0: continue
         mask = (instances == v)
-        if is_mask_touching_border(mask, 7, top, bottom, left, right):
+        if is_mask_touching_border(mask, tolerance, top, bottom, left, right):
             border_instances += (mask * v)
         else:
             inside_instances += (mask * v)
@@ -973,8 +973,8 @@ def _combine_instances(first: np.ndarray, second: np.ndarray, vertical_direction
     v = vertical_direction
     stack_func = stack_vertical if vertical_direction else stack_horizontal
 
-    first_b, first_i = get_border_touching_instances(first, top=False, bottom=v, left=False, right=(not v))
-    second_b, second_i = get_border_touching_instances(second, top=v, bottom=False, left=(not v), right=False)
+    first_b, first_i = get_border_touching_instances(first, pixel_tolerance, top=False, bottom=v, left=False, right=(not v))
+    second_b, second_i = get_border_touching_instances(second, pixel_tolerance, top=v, bottom=False, left=(not v), right=False)
 
     zeroes = np.zeros_like(first)
     instances = stack_func(first_i, second_i)
