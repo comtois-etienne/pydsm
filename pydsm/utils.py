@@ -6,6 +6,7 @@ import uuid
 import os
 import shutil
 import random
+import math
 
 
 ########## TYPES ##########
@@ -340,6 +341,42 @@ def distance_to_point(coords: Points, point: Point, to_int=True):
     coords = np.array(coords)
     distances = np.sqrt((coords[:, 0] - point[0])**2 + (coords[:, 1] - point[1])**2)
     return distances.astype(int) if to_int else distances
+
+
+def circle_arc_lenght(area_a: int, area_b: int, iterations=100) -> int:
+    """
+    Returns the length of the arc that divides a circle into two segments of given areas.  
+    We assume that the sum of the two areas is the area of the circle.  
+    For example, if both areas are equal, the function returns the length of the diameter.  
+
+    :param area_a: area of the first segment
+    :param area_b: area of the second segment
+    :param iterations: number of iterations to increase precision
+    :return: length of the arc dividing the circle into two segments of the given areas
+    """
+    def seg_area(d, R):
+        """
+        :param d: distance from circle center to chord
+        :param R: radius of the circle
+        :return: area of the segment
+        """
+        return R * R * math.acos(d / R) - d * math.sqrt(R * R - d * d)
+
+    area = area_a + area_b
+    R = math.sqrt(area / math.pi)
+    min_seg = min(area_a, area_b)
+
+    d_low, d_high = 0, R
+    for _ in range(iterations):
+        d_mid = 0.5 * (d_low + d_high)
+        if seg_area(d_mid, R) > min_seg:
+            d_low = d_mid
+        else:
+            d_high = d_mid
+
+    d = 0.5 * (d_low + d_high)
+
+    return int(round(2 * math.sqrt(R * R - d * d), 0))
 
 
 ########## DRONE SURVEY FUNCTIONS ##########
