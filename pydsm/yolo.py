@@ -434,7 +434,7 @@ def predict_images_instances(rgbd_model_path: str, rgbd_images: list[np.ndarray]
     return predictions
 
 
-def predict_tile(model_name: str, tiles_dir: str, tile_name: str, *, prediction_subdir = 'labels_yolo', orthophoto_subdir = 'orthophoto', ndsm_subdir = 'ndsm', verbose=False):
+def predict_tile_labels(model_name: str, tiles_dir: str, tile_name: str, *, prediction_subdir = 'labels_yolo', orthophoto_subdir = 'orthophoto', ndsm_subdir = 'ndsm', verbose=False):
     """
     Predict a rgbd tile (orthophoto + ndsm) using a YOLO segmentation model and save the predicted instances as a numpy file.  
     Split the tile into four quadrants for prediction and then combine the predicted quadrants into one tile.  
@@ -458,9 +458,38 @@ def predict_tile(model_name: str, tiles_dir: str, tile_name: str, *, prediction_
     os.makedirs(label_path, exist_ok=True)
 
     if verbose:
-        plt.imshow(labels, cmap='tab20', interpolation='nearest')
-        plt.title(label_name)
-        plt.show()
+        z = np.zeros_like(labels, dtype=np.uint8)
+        t = tile.Tile(rgbd[..., :3], rgbd[..., 3], labels, z)
+        print(label_name)
+        tile.display_tile(t)
 
     nda.write_numpy_napari(os.path.join(label_path, label_name), labels)
+
+
+def predict_tiles_labels(model_name: str, tiles_dir: str, *, prediction_subdir = 'labels_yolo', orthophoto_subdir = 'orthophoto', ndsm_subdir = 'ndsm', verbose=False):
+    """
+    Predict labels from the `orthophoto_subdir` using yolo segmentation model.
+
+    :param model_name: name of the yolo model (path to the .pt file)
+    :param tiles_dir: directory containing the tiles
+    :param prediction_subdir: subdirectory to save the predicted labels
+    :param orthophoto_subdir: subdirectory containing the orthophotos (RGB)
+    :param ndsm_subdir: subdirectory containing the ndsms (Depth channel)
+    :param verbose: whether display the predicted masks
+    :return: None, saves the predicted masks as .npz files in the prediction_subdir
+    """
+    ortho_dir = os.path.join(tiles_dir, orthophoto_subdir)
+    tile_names = os.listdir(ortho_dir)
+    tile_names = [tn for tn in tile_names if tn.endswith('.tif')]
+
+    for tile_name in tile_names:
+        predict_tile_labels(
+            model_name, 
+            tiles_dir, 
+            tile_name, 
+            prediction_subdir=prediction_subdir, 
+            orthophoto_subdir=orthophoto_subdir, 
+            ndsm_subdir=ndsm_subdir,
+            verbose=verbose
+        )
 
