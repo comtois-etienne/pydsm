@@ -973,8 +973,8 @@ def _combine_instances(first: np.ndarray, second: np.ndarray, vertical_direction
     v = vertical_direction
     stack_func = stack_vertical if vertical_direction else stack_horizontal
 
-    first_b, first_i = get_border_touching_instances(first, pixel_tolerance, top=False, bottom=v, left=False, right=(not v))
-    second_b, second_i = get_border_touching_instances(second, pixel_tolerance, top=v, bottom=False, left=(not v), right=False)
+    first_b, first_i = get_border_touching_instances(first, tolerance=pixel_tolerance, top=False, bottom=v, left=False, right=(not v))
+    second_b, second_i = get_border_touching_instances(second, tolerance=pixel_tolerance, top=v, bottom=False, left=(not v), right=False)
 
     zeroes = np.zeros_like(first)
     instances = stack_func(first_i, second_i)
