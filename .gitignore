@@ -1,7 +1,7 @@
 notebook.ipynb
 images
-data
-data/*
+obj
+obj/*
 runs
 runs/*
 tiles
