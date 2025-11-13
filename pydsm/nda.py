@@ -279,7 +279,7 @@ def normalize(array: np.ndarray) -> np.ndarray:
     return array
 
 
-def clip_rescale(array: np.ndarray, clip_height: 30.0):
+def clip_rescale(array: np.ndarray, clip_height: float) -> np.ndarray:
     """
     Clips out all the values above clip_height and rescales the values from `[(min_value / clip_height), 1.0]` where `1.0` equals `clip_height`
 
@@ -878,6 +878,24 @@ def clean_mask_instances(instances: np.ndarray, min_area=400, remove_cracks=5) -
         new_instances[mask] = i
 
     return relabel(new_instances)
+
+
+def remove_instances_below(instances: np.ndarray, depth: np.ndarray, min_depth: float) -> np.ndarray:
+    """
+    Remove instances in the instance segmentation mask `instances` that have a maximum depth below `min_depth` in the depth map `depth`.  
+
+    :param instances: np.ndarray, instance segmentation mask of shape (H, W) with integer labels for each instance
+    :param depth: np.ndarray, depth map of shape (H, W) with depth values in meters (ndsm)
+    :param min_depth: float, minimum depth threshold in meters
+    :return: np.ndarray, cleaned instance segmentation mask
+    """
+    cleaned_labels = instances.copy()
+    for v in np.unique(instances):
+        if v == 0: continue
+        d = depth * (instances == v)
+        if np.max(d) < min_depth:
+            cleaned_labels[cleaned_labels == v] = 0
+    return cleaned_labels
 
 
 def stack_vertical(top: np.ndarray, bottom: np.ndarray) -> np.ndarray:
