@@ -433,3 +433,37 @@ def split_dataset(source_dir: str, target_dir: str, train_ratio: float = 0.8, fi
     for f in val_files:
         shutil.copy(os.path.join(source_dir, f), os.path.join(val_dir, f))
 
+
+def split_dataset_safe(source_dir: str, target_dir: str, train_ratio: float = 0.8, name_len=17, file_extension: str = '.npz') -> None:
+    """
+    Split a dataset of tiles into training and validation sets.  
+    This function ensure proper dataset separation by copying together the files starting with the same characters.  
+
+    :param source_dir: Directory containing the original tile files.
+    :param target_dir: Directory where the split datasets will be saved ('train' and 'val' subdirectories).
+    :param train_ratio: Proportion of tiles to include in the training set (default is 0.8).
+    :param name_len: int, all tiles begining with the same `name_len` char are transfered in the same sub-dir
+    :return: None, copies files to target directories.
+    """
+    train_dir = os.path.join(target_dir, 'train')
+    val_dir = os.path.join(target_dir, 'val')
+    os.makedirs(train_dir, exist_ok=True)
+    os.makedirs(val_dir, exist_ok=True)
+
+    tile_files = [f for f in os.listdir(source_dir) if f.endswith(file_extension)]
+    tile_names = [f[:name_len] for f in tile_files]
+    tile_names = np.unique(tile_names).tolist()
+    random.shuffle(tile_names)
+
+    split_index = int(len(tile_names) * train_ratio)
+    train_names = tile_names[:split_index]
+    val_names = tile_names[split_index:]
+
+    train_files = [f for f in tile_files if any(f.startswith(p) for p in train_names)]
+    val_files = [f for f in tile_files if any(f.startswith(p) for p in val_names)]
+
+    for f in train_files:
+        shutil.copy(os.path.join(source_dir, f), os.path.join(train_dir, f))
+    for f in val_files:
+        shutil.copy(os.path.join(source_dir, f), os.path.join(val_dir, f))
+
