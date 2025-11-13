@@ -18,6 +18,7 @@ import pydsm.utils as utils
 import pydsm.geo as geo
 import pydsm.nda as nda
 import pydsm.tile as tile
+import pydsm.const as const
 
 
 ########### RGBD Monkey Patching ###########
@@ -213,7 +214,7 @@ class IndexLine:
         return IndexLine(new_class_index, self.contour, self.size)
 
 
-def to_index_lines(instance_labels: np.ndarray, semantic_labels: np.ndarray | None, *, edges=8, visualize=False) -> list[IndexLine]:
+def to_index_lines(instance_labels: np.ndarray, semantic_labels: np.ndarray | None, *, edges=32, visualize=False) -> list[IndexLine]:
     """
     Convert mask instances and their class labels to yolo class index strings
     Each instance is represented by a convex hull contour of 8 sides
@@ -342,7 +343,7 @@ def save_one_indexlines(dir_npz: str, dir_labels: str, class_index=1, class_coun
 ########### Segmentation Prediction ###########
 
 
-def load_rgbd(orthophoto_path: str, ndsm_path: str, clip_height : float = 30.0) -> np.ndarray:
+def load_rgbd(orthophoto_path: str, ndsm_path: str, clip_height : float = const.CLIP_HEIGHT) -> np.ndarray:
     """
     Load and normalize the rgbd image from an orthophoto (geoTIFF) and ndsm (geoTIFF)  
     The rgb part is normalized and converted to uint8  
@@ -366,7 +367,7 @@ def load_rgbd(orthophoto_path: str, ndsm_path: str, clip_height : float = 30.0) 
     return np.dstack((rgb, d))
 
 
-def load_as_tile(tiles_dir: str, tile_name: str, clip_height : float = 30.0, orthophoto_subdir = 'orthophoto', ndsm_subdir = 'ndsm') -> np.ndarray:
+def load_as_tile(tiles_dir: str, tile_name: str, clip_height : float = const.CLIP_HEIGHT, orthophoto_subdir = 'orthophoto', ndsm_subdir = 'ndsm') -> np.ndarray:
     """
     Load and normalize the rgbd image from an orthophoto (geoTIFF) and ndsm (geoTIFF).  
     see `load_rgbd` for more detailed informations  
@@ -382,14 +383,14 @@ def load_as_tile(tiles_dir: str, tile_name: str, clip_height : float = 30.0, ort
     return load_rgbd(ortho_path, ndsm_path, clip_height)
 
 
-def predict_instances(rgbd_model_path: str, rgbd_image: np.ndarray, confidence: float = 0.2, iou_threshold=0.5, min_area=400, remove_cracks=5) -> np.ndarray:
+def predict_instances(rgbd_model_path: str, rgbd_image: np.ndarray, confidence: float = const.CONFIDENCE_THRESHOLD, iou_threshold=const.IOU_THRESHOLD, min_area=const.MIN_MASK_SIZE, remove_cracks=const.REMOVE_CRACKS_SIZE) -> np.ndarray:
     """
     Predict the instance segmentation masks in one RGB-D image using a YOLO model.  
     The values in `rgbd_image` are of dtype uint8 :  
     - The rgb part is normalized (using min max).  
-    - The d part is clipped at 30.0 meters and then scaled to [0.255].  
+    - The d part is clipped at `CLIP_HEIGHT` meters and then scaled to [0.255].  
         - where `0` equals to 0.0 meters 
-        - and `255` equals to 30.0 meters (default training value)
+        - and `255` equals to `CLIP_HEIGHT` meters (default training value)
 
     Non-maximum-suppression is used to keep the best masks  
 
@@ -427,7 +428,7 @@ def predict_instances(rgbd_model_path: str, rgbd_image: np.ndarray, confidence: 
     return instances
 
 
-def predict_images_instances(rgbd_model_path: str, rgbd_images: list[np.ndarray], confidence: float = 0.2, iou_threshold=0.5):
+def predict_images_instances(rgbd_model_path: str, rgbd_images: list[np.ndarray], confidence: float, iou_threshold: float) -> list[np.ndarray]:
     predictions = []
     for rgbd in rgbd_images:
         predictions.append(predict_instances(rgbd_model_path, rgbd, confidence, iou_threshold))
@@ -448,10 +449,15 @@ def predict_tile_labels(model_name: str, tiles_dir: str, tile_name: str, *, pred
     :param verbose: If True, display the predicted labels using matplotlib
     :return: None, saves the predicted labels as a numpy file (napari format)
     """
-    rgbd = load_as_tile(tiles_dir, tile_name, orthophoto_subdir=orthophoto_subdir, ndsm_subdir=ndsm_subdir)
+    rgbd = load_as_tile(tiles_dir, tile_name, clip_height=const.CLIP_HEIGHT, orthophoto_subdir=orthophoto_subdir, ndsm_subdir=ndsm_subdir)
     rgbds = nda.split_four(rgbd)
-    pred = predict_images_instances(model_name, rgbds, confidence=0.2, iou_threshold=0.5)
-    labels = nda.combine_four_instances(pred, pixel_tolerance=20, circle_tolerance=0.3)
+    pred = predict_images_instances(model_name, rgbds, confidence=const.CONFIDENCE_THRESHOLD, iou_threshold=const.IOU_THRESHOLD)
+    labels = nda.combine_four_instances(pred, pixel_tolerance=const.PIXEL_TOLERANCE, circle_tolerance=const.CIRCLE_TOLERANCE)
+
+    depth = rgbd[..., 3] / 255.0 * const.CLIP_HEIGHT  # rescale to meters
+    labels = nda.remove_instances_below(labels, depth, const.MIN_HEIGHT)
+
+    # save predicted labels
 
     label_path = os.path.join(tiles_dir, prediction_subdir)
     label_name = f'{utils.remove_extension(tile_name)}.npz'

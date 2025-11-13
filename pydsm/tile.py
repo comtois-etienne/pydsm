@@ -13,6 +13,7 @@ from cv2 import INTER_CUBIC
 import pydsm.nda as nda
 import pydsm.geo as geo
 import pydsm.utils as utils
+import pydsm.const as const
 
 
 @dataclass
@@ -392,7 +393,7 @@ def split_tile(tile: Tile, center=False) -> list[Tile]:
     return tiles
 
 
-def normalize_ndsm(tile: Tile, clip_height=30.0) -> Tile:
+def normalize_ndsm(tile: Tile, clip_height=const.CLIP_HEIGHT) -> Tile:
     """
     Normalize the ndsm to [0.0, 1.0] range where 1.0 equals `clip_height`
 
@@ -416,7 +417,7 @@ def normalize_orthophoto(tile: Tile) -> Tile:
     return Tile(orthophoto, tile.ndsm, tile.instance_labels, tile.semantic_labels)
 
 
-def preprocess_tile(tile: Tile, ndsm_clip_height=30.0, min_mask_size=400) -> Tile:
+def preprocess_tile(tile: Tile, ndsm_clip_height=const.CLIP_HEIGHT, min_mask_size=400) -> Tile:
     """
     Preprocess a tile so it can be used for training a model.  
 
