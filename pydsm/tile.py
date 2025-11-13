@@ -43,37 +43,6 @@ def default_semantic_dict() -> dict:
     }
 
 
-def tree_species_dict_v1() -> dict:
-    """
-    arrière-plan + inconnu + 5 especes + 10 genres + 1 famille
-    18 classes total
-    """
-    return {
-        'BACKGROUND': 0,
-        'UNKNOWN_TREE': 1,
-        'ACSA': 2,
-        'ACPL': 3,
-        'ACSC': 4,
-        'ULWI': 5,
-        'ULXX': 6,
-        'UL': 7,
-        'PO': 8,
-        'FR': 9,
-        'TI': 10,
-        'QU': 11,
-        'AM': 12,
-        'PI': 13,
-        'JU': 14,
-        'GL': 15,
-        'PN': 16,
-        'BE': 17,
-        'OS': 17,
-        'AL': 17,
-        'CA': 17,
-        # 'SY': 18,
-    }
-
-
 def tree_species_dict_v2() -> dict:
     """
     20 classes total : 18 espèces + 1 arrière-plan + 1 inconnu
@@ -385,12 +354,29 @@ def open_as_tile(
     return Tile(ortho, ndsm, instances, semantics)
 
 
-def split_tile(tile: Tile) -> list[Tile]:
+def crop_center(tile: Tile) -> Tile:
+    """
+    Crop the center of the tile to half its size
+
+    :param tile: tile containing orthophoto, ndsm, instance labels, and semantic labels
+    :returns: tile cropped at the center to half its size
+    """
+    h, w = np.array(tile.orthophoto.shape[:2]) // 2
+    return Tile(
+        orthophoto=nda.center_crop(tile.orthophoto, h, w),
+        ndsm=nda.center_crop(tile.ndsm, h, w),
+        instance_labels=nda.center_crop(tile.instance_labels, h, w),
+        semantic_labels=nda.center_crop(tile.semantic_labels, h, w),
+    )
+
+
+def split_tile(tile: Tile, center=False) -> list[Tile]:
     """
     Splits a single tile into 4 identically sized tiles  
 
     :param tile: tile containing orthophoto, ndsm, instance labels, and semantic labels
-    :returns: a list of 4 tiles (`top-left`, `top-right`, `bottom-left`, `bottom-right`)
+    :param center: bool, adds the center crop as the 5th tile if True
+    :returns: a list of 4 tiles (`top-left`, `top-right`, `bottom-left`, `bottom-right`) (or 5 tiles if center=True)
     """
     orthos = nda.split_four(tile.orthophoto)
     ndsms = nda.split_four(tile.ndsm)
@@ -400,6 +386,8 @@ def split_tile(tile: Tile) -> list[Tile]:
     tiles = []
     for i in range(4):
         tiles.append(Tile(orthos[i], ndsms[i], instances[i], semantics[i]))
+
+    tiles.append(crop_center(tile)) if center else None
 
     return tiles
 

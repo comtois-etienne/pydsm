@@ -411,6 +411,21 @@ def split_four(array: np.ndarray) -> np.ndarray:
     return sub_arrays
 
 
+def center_crop(array: np.ndarray, new_height: int, new_width: int) -> np.ndarray:
+    """
+    Center crop a 2D or 3D numpy array to the specified new height and width.
+
+    :param array: np.ndarray, input array to be cropped
+    :param new_height: int, desired height of the cropped array
+    :param new_width: int, desired width of the cropped array
+    :return: np.ndarray, center cropped array
+    """
+    height, width = array.shape[:2]
+    start_y = (height - new_height) // 2
+    start_x = (width - new_width) // 2
+    return array[start_y:start_y + new_height, start_x:start_x + new_width]
+
+
 def augmentation(array: np.ndarray) -> np.ndarray:
     """
     Contrast, gamma, noise and blur augmentation
