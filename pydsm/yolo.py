@@ -451,7 +451,7 @@ def predict_tile_labels(model_name: str, tiles_dir: str, tile_name: str, *, pred
     rgbd = load_as_tile(tiles_dir, tile_name, orthophoto_subdir=orthophoto_subdir, ndsm_subdir=ndsm_subdir)
     rgbds = nda.split_four(rgbd)
     pred = predict_images_instances(model_name, rgbds, confidence=0.2, iou_threshold=0.5)
-    labels = nda.combine_four_instances(pred)
+    labels = nda.combine_four_instances(pred, pixel_tolerance=20, circle_tolerance=0.3)
 
     label_path = os.path.join(tiles_dir, prediction_subdir)
     label_name = f'{utils.remove_extension(tile_name)}.npz'
