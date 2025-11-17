@@ -216,8 +216,11 @@ def apply_semantic_codes(instance_labels: np.ndarray, semantics_df: pd.DataFrame
     unique_values = np.unique(instance_labels)
     unique_values = unique_values[1:] if unique_values[0] == 0 else unique_values
 
+    h, w = instance_labels.shape[:2]
+
     df = semantics_df[['axis-0', 'axis-1', 'code']].copy()
-    # df.rename(columns={'axis-0': 'y', 'axis-1': 'x', 'code': 'species'}, inplace=True)
+    df = df[(df['axis-0'] >= 0) & (df['axis-0'] < h)]
+    df = df[(df['axis-1'] >= 0) & (df['axis-1'] < w)]
 
     df['v'] = 0
     for i, (y, x) in enumerate(zip(df['axis-0'], df['axis-1'])):
@@ -593,7 +596,7 @@ def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'dataset', split=Tru
             save_tile(npz_path, t)
 
 
-def create_split_tile_dataset(tiles_dir: str, sub_dir: str, save_dir: str = 'dataset') -> None:
+def create_split_tile_dataset(tiles_dir: str, sub_dir: str, save_dir: str = 'dataset', additional=False) -> None:
     """
     Split all npz tiles from `tiles_dir/sub_dir` and saves them into `tiles_dir/save_dir`  
 
@@ -611,7 +614,7 @@ def create_split_tile_dataset(tiles_dir: str, sub_dir: str, save_dir: str = 'dat
     for name in names:
         if not name.endswith('.npz'): continue
         t = open_tile_npz(os.path.join(tiles_dir, sub_dir, name))
-        tiles = split_tile(t)
+        tiles = split_tile(t, additional)
         tiles = [preprocess_tile(t) for t in tiles]
         save_split_tiles(save_dir, name, tiles)
 
