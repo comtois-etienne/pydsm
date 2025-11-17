@@ -371,12 +371,29 @@ def crop_center(tile: Tile) -> Tile:
     )
 
 
-def split_tile(tile: Tile, center=False) -> list[Tile]:
+def resize_tile(tile: Tile, new_size: int) -> Tile:
+    """
+    Resize the tile to the new size (square)
+
+    :param tile: tile containing orthophoto, ndsm, instance labels, and semantic labels
+    :param new_size: int, new size of the tile (square)
+    :returns: tile resized to the new size
+    """
+    shape = (new_size, new_size)
+    return Tile(
+        orthophoto=nda.rescale_nearest_neighbour(tile.orthophoto, shape),
+        ndsm=nda.rescale_nearest_neighbour(tile.ndsm, shape),
+        instance_labels=nda.rescale_nearest_neighbour(tile.instance_labels, shape),
+        semantic_labels=nda.rescale_nearest_neighbour(tile.semantic_labels, shape),
+    )
+
+
+def split_tile(tile: Tile, additional=False) -> list[Tile]:
     """
     Splits a single tile into 4 identically sized tiles  
 
     :param tile: tile containing orthophoto, ndsm, instance labels, and semantic labels
-    :param center: bool, adds the center crop as the 5th tile if True
+    :param overlapping: bool, adds the center crop as the 5th tile and the full frame resized as the 6th tile
     :returns: a list of 4 tiles (`top-left`, `top-right`, `bottom-left`, `bottom-right`) (or 5 tiles if center=True)
     """
     orthos = nda.split_four(tile.orthophoto)
@@ -388,7 +405,8 @@ def split_tile(tile: Tile, center=False) -> list[Tile]:
     for i in range(4):
         tiles.append(Tile(orthos[i], ndsms[i], instances[i], semantics[i]))
 
-    tiles.append(crop_center(tile)) if center else None
+    tiles.append(crop_center(tile)) if additional else None
+    tiles.append(resize_tile(tile, tiles[0].orthophoto.shape[0])) if additional else None
 
     return tiles
 
@@ -537,8 +555,8 @@ def save_split_tiles(tiles_dir: str, tile_name: str, tiles: list[Tile]):
     - ne : north-east
     - sw : south-west
     - se : south-east
-    - ff : full frame (center crop)
     - cc : center crop
+    - ff : full frame (full tile resized to the size of the split tiles)
     - nc : north center
     - ec : east center
     - sc : south center
@@ -549,7 +567,7 @@ def save_split_tiles(tiles_dir: str, tile_name: str, tiles: list[Tile]):
     :param tiles: list[Tile], up to 10 tiles with orientation nw, ne, sw, se, ff, cc, nc, ec, sc, wc
     :return: None, saves the tiles to disk
     """
-    names = ['nw', 'ne', 'sw', 'se', 'ff', 'cc', 'nc', 'ec', 'sc', 'wc']
+    names = ['nw', 'ne', 'sw', 'se', 'cc', 'ff', 'nc', 'ec', 'sc', 'wc']
     tile_name = utils.remove_extension(tile_name)
 
     for i, tile in enumerate(tiles):
@@ -575,16 +593,16 @@ def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'dataset', semantic_
     
     for name in names:
         if not name.endswith('.tif'): continue
-        tile = open_as_tile(tiles_dir, name, semantic_dict)
+        t = open_as_tile(tiles_dir, name, semantic_dict)
         if split:
-            tiles = split_tile(tile)
+            tiles = split_tile(t)
             tiles = [preprocess_tile(tile) for tile in tiles]
             save_split_tiles(save_dir, name, tiles)
         else:
             file_name = f'{utils.remove_extension(name)}.npz'
             npz_path = utils.append_file_to_path(save_dir, file_name)
-            tile = preprocess_tile(tile)
-            save_tile(npz_path, tile)
+            t = preprocess_tile(t)
+            save_tile(npz_path, t)
 
 
 def create_split_tile_dataset(tiles_dir: str, sub_dir: str, save_dir: str = 'dataset') -> None:
