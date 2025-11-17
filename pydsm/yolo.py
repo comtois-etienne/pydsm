@@ -396,8 +396,6 @@ def predict_instances(rgbd_model_path: str, rgbd_image: np.ndarray) -> np.ndarra
 
     :param rgbd_model_path: str, path to the YOLO model trained on RGB-D images
     :param rgbd_image: np.ndarray (dtype=unint8), input RGB-D image as a numpy array of shape (H, W, 4) (RGBD)
-    :param confidence: float, confidence threshold for predictions. Default is 0.5
-    :param min_area: int, minimum area (in pixels) for keeping an instance mask. Default is 400
     :return: np.ndarray, instance segmentation mask of shape (H, W) with integer labels for each instance (from least to most confident)
     """
     orig_shape = rgbd_image.shape[:2]
@@ -443,9 +441,6 @@ def predict_tile_labels(model_name: str, tiles_dir: str, tile_name: str, *, verb
     :param model_name: YOLO instance segmentation model name (path to .pt file)
     :param tiles_dir: Directory containing the tiles
     :param tile_name: Name of the tile to predict
-    :param prediction_subdir: Subdirectory to save the predicted labels (default: 'labels_yolo')
-    :param orthophoto_subdir: Subdirectory containing the orthophotos (default: 'orthophoto')
-    :param ndsm_subdir: Subdirectory containing the ndsms (default: 'ndsm')
     :param verbose: If True, display the predicted labels using matplotlib
     :return: None, saves the predicted labels as a numpy file (napari format)
     """
@@ -478,9 +473,6 @@ def predict_tiles_labels(model_name: str, tiles_dir: str, *, verbose=False):
 
     :param model_name: name of the yolo model (path to the .pt file)
     :param tiles_dir: directory containing the tiles
-    :param prediction_subdir: subdirectory to save the predicted labels
-    :param orthophoto_subdir: subdirectory containing the orthophotos (RGB)
-    :param ndsm_subdir: subdirectory containing the ndsms (Depth channel)
     :param verbose: whether display the predicted masks
     :return: None, saves the predicted masks as .npz files in the prediction_subdir
     """
