@@ -565,7 +565,7 @@ def save_split_tiles(tiles_dir: str, tile_name: str, tiles: list[Tile]):
         save_tile(save_path, tile)
 
 
-def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'dataset', split=True) -> None:
+def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'dataset', split=True, normalize=False) -> None:
     """
     Saves the annotated tiles to npz to be used for training  
     Tiles are normalized  
@@ -584,12 +584,12 @@ def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'dataset', split=Tru
         t = open_as_tile(tiles_dir, name, const.SEMANTIC_DICT)
         if split:
             tiles = split_tile(t)
-            tiles = [preprocess_tile(tile) for tile in tiles]
+            tiles = [preprocess_tile(tile, normalize) for tile in tiles]
             save_split_tiles(save_dir, name, tiles)
         else:
             file_name = f'{utils.remove_extension(name)}.npz'
             npz_path = utils.append_file_to_path(save_dir, file_name)
-            t = preprocess_tile(t)
+            t = preprocess_tile(t, normalize)
             save_tile(npz_path, t)
 
 
