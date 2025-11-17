@@ -14,6 +14,7 @@ from .nda import is_mask_inside as nda_is_mask_inside
 from .nda import augmentation as nda_augmentation
 from .utils import get_uuid
 
+import pydsm.const as const
 from .tile import *
 
 
@@ -182,7 +183,7 @@ def pad_local_tile(tile: Tile, x=0, y=0, tile_size=2000):
     return Tile(ortho, ndsm, instances, semantics)
 
 
-def get_copy_paste_tile(copy_tile: Tile, paste_tile: Tile, remove_cracks=5) -> Tile:
+def get_copy_paste_tile(copy_tile: Tile, paste_tile: Tile, remove_cracks=const.REMOVE_CRACKS_SIZE) -> Tile:
     """
     Get the mask of the visible part of the ndsm in copy_tile  
     The resulting mask might be empty if the object is hidden under another  
@@ -208,21 +209,19 @@ def get_copy_paste_tile(copy_tile: Tile, paste_tile: Tile, remove_cracks=5) -> T
     return Tile(ortho, ndsm, mask, semantics)
 
 
-def copy_paste(copy_tile: Tile, paste_tile: Tile, remove_cracks=5, remove_masks=400, min_area_ratio=0.4) -> Tile:
+def copy_paste(copy_tile: Tile, paste_tile: Tile, min_area_ratio=0.4) -> Tile:
     """
     Copy-paste augmentation of RGBD tiles with instance and semantic segmentation  
     Both tiles have to be the same shape. 
 
     :param copy_tile: Tile, containing one instance with one semantic label
     :param paste_tile: Tile, can contain many instances with multiple semantic labels
-    :param remove_cracks: int, the crack size in the masks to remove
-    :param remove_masks: int, the size of the masks to be removed (smaller or equal to)
     :param min_area_ratio: float, the smallest size (compared to original) that the tile can be copied - will be ignored if smaller
     :return: Tile, copy-pasted tile 
     """
     area_before = np.sum(copy_tile.instance_labels.astype(bool))
 
-    copy_tile = get_copy_paste_tile(copy_tile, paste_tile, remove_cracks)
+    copy_tile = get_copy_paste_tile(copy_tile, paste_tile)
     ndsm_mask = copy_tile.instance_labels.astype(bool)
     array_mask = binary_erosion(ndsm_mask, disk(2))
 
@@ -251,18 +250,17 @@ def copy_paste(copy_tile: Tile, paste_tile: Tile, remove_cracks=5, remove_masks=
     semantics = paste_tile.semantic_labels * ~ndsm_mask
     semantics += copy_tile.semantic_labels
 
-    return remove_small_masks(Tile(ortho, ndsm, instances, semantics), remove_masks)
+    return remove_small_masks(Tile(ortho, ndsm, instances, semantics))
 
 
-def random_copy_paste(copy_local_tile: Tile, paste_tile: Tile, dim_change=0.2, remove_cracks=5, remove_masks=400, augmentation=False) -> Tile:
+def random_copy_paste(copy_local_tile: Tile, paste_tile: Tile, dim_change=0.2, augmentation=False) -> Tile:
     """
     Copy-paste a single instance to a Tile 
 
     :param copy_local_tile: Tile, containing a single instance. Size must be smaller than `paste_tile`
     :param paste_tile: Tile, to paste the `copy_local_tile` onto
     :param dim_change: float, plus-minus scale value of the pasted instance
-    :param remove_cracks: int, the size of the cracks to be removed
-    :param remove_masks: int, the size of the masks to be removed (smaller or equal to)
+    :param augmentation: bool, whether to apply random augmentations (rotation, flip, contrast, gamma, noise) to the instance
     :return: Tile, with pasted instance
     """
     tile_size = paste_tile.ndsm.shape[0]
@@ -286,7 +284,7 @@ def random_copy_paste(copy_local_tile: Tile, paste_tile: Tile, dim_change=0.2, r
     )
 
     if is_inside: return paste_tile
-    return copy_paste(copy_tile, paste_tile, remove_cracks, remove_masks)
+    return copy_paste(copy_tile, paste_tile)
 
 
 def export_instances(tiles_dir: str, tile_name: str) -> None:
@@ -332,7 +330,7 @@ def export_all_instances(tiles_dir: str) -> None:
         export_instances(tiles_dir, tile_name)
 
 
-def create_random_tile(paste_tile: Tile, instances: list[Tile], dim_change=0.2, remove_cracks=5, remove_masks=400, augmentation=False) -> Tile:
+def create_random_tile(paste_tile: Tile, instances: list[Tile], dim_change=0.2, augmentation=False) -> Tile:
     """
     Copy paste augmentation on a single tile.  
     Randomly copy pastes the given instances on the given tile.  
@@ -340,20 +338,17 @@ def create_random_tile(paste_tile: Tile, instances: list[Tile], dim_change=0.2, 
     :param paste_tile: Tile, tile to augment
     :param instances: list[Tile], instances to copy paste (local tiles with a single tree)
     :param dim_change: float, maximum dimension change (scaling) for the instances (plus or minus)
-    :param remove_cracks: int, maximum size of cracks to remove in the paste tile (in pixels)
-    :param remove_masks: int, minimum size of masks to keep in the paste tile (in square pixels)
     :param augmentation: bool, whether to apply random augmentations (rotation, flip, contrast, gamma, noise) to the instances
     :return: Tile, augmented tile
     """
     paste = paste_tile
-    paste = remove_small_masks(paste, min_area=remove_masks)
+    paste = remove_small_masks(paste)
 
     for instance in instances:
         paste = random_copy_paste(
             instance, 
             paste, 
             dim_change, 
-            remove_cracks, 
             augmentation
         )
 

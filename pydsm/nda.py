@@ -20,6 +20,7 @@ from skimage import exposure
 
 
 from .utils import *
+import pydsm.const as const
 
 
 """
@@ -835,7 +836,7 @@ def replace_value_inplace(instances: np.ndarray, old_values: list, new_values: l
     return array
 
 
-def remove_small_masks(instances: np.ndarray, min_area=400):
+def remove_small_masks(instances: np.ndarray, min_area=const.MIN_MASK_SIZE) -> np.ndarray:
     """
     Removes all instances with an area lower or equal to `min_area`
     The instances are relabeled to find unconnected parts of instances
@@ -853,7 +854,7 @@ def remove_small_masks(instances: np.ndarray, min_area=400):
     return instances
 
 
-def clean_mask_instances(instances: np.ndarray, min_area=400, remove_cracks=5) -> np.ndarray:
+def clean_mask_instances(instances: np.ndarray, min_area=const.MIN_MASK_SIZE, remove_cracks=const.REMOVE_CRACKS_SIZE) -> np.ndarray:
     """
     Simplifies the shape of the instance masks - removes cracks and aberations  
     Masks index should be from least confident=1 to most confident=n.  
@@ -926,7 +927,7 @@ def stack_horizontal(left: np.ndarray, right: np.ndarray) -> np.ndarray:
     return relabel(stacked)
 
 
-def get_border_touching_instances(instances: np.ndarray, *, tolerance=10, top=True, bottom=True, left=True, right=True) -> np.ndarray:
+def get_border_touching_instances(instances: np.ndarray, *, tolerance=const.PIXEL_TOLERANCE, top=True, bottom=True, left=True, right=True) -> np.ndarray:
     """
     Split the instances into two masks: border-touching and non-border-touching (inside) instances.
 
@@ -951,7 +952,7 @@ def get_border_touching_instances(instances: np.ndarray, *, tolerance=10, top=Tr
     return border_instances, inside_instances
 
 
-def get_complete_mask(mask: np.ndarray, instances: np.ndarray, pixel_tolerance=10, circle_tolerance=0.25) -> np.ndarray:
+def get_complete_mask(mask: np.ndarray, instances: np.ndarray, pixel_tolerance=const.PIXEL_TOLERANCE, circle_tolerance=const.CIRCLE_TOLERANCE) -> np.ndarray:
     """
     1. Dilate the input mask by the given tolerance.
     2. Find which instance in `instances` touches with the dilated mask.
@@ -991,7 +992,7 @@ def get_complete_mask(mask: np.ndarray, instances: np.ndarray, pixel_tolerance=1
     return mask
 
 
-def _combine_instances(first: np.ndarray, second: np.ndarray, vertical_direction=True, pixel_tolerance=10, circle_tolerance=0.25) -> np.ndarray:
+def _combine_instances(first: np.ndarray, second: np.ndarray, vertical_direction=True) -> np.ndarray:
     """
     1. find the border-touching instances for both instances
     2. add padding of zeroes to both masks (so they can be overlapped)
@@ -999,15 +1000,13 @@ def _combine_instances(first: np.ndarray, second: np.ndarray, vertical_direction
 
     :param first: instance segmentation mask on the left or top
     :param second: instance segmentation mask on the right or bottom
-    :param pixel_tolerance: tolerance in pixels to dilate the masks in order to find touching instances
-    :param circle_tolerance: tolerance in deviation from perfect circle to accept a match
     :return: combined instance segmentation mask
     """
     v = vertical_direction
     stack_func = stack_vertical if vertical_direction else stack_horizontal
 
-    first_b, first_i = get_border_touching_instances(first, tolerance=pixel_tolerance, top=False, bottom=v, left=False, right=(not v))
-    second_b, second_i = get_border_touching_instances(second, tolerance=pixel_tolerance, top=v, bottom=False, left=(not v), right=False)
+    first_b, first_i = get_border_touching_instances(first, top=False, bottom=v, left=False, right=(not v))
+    second_b, second_i = get_border_touching_instances(second, top=v, bottom=False, left=(not v), right=False)
 
     zeroes = np.zeros_like(first)
     instances = stack_func(first_i, second_i)
@@ -1018,60 +1017,52 @@ def _combine_instances(first: np.ndarray, second: np.ndarray, vertical_direction
     for v in np.unique(first):
         if v == 0: continue
         mask = (first == v)
-        complete_mask = get_complete_mask(mask, second, pixel_tolerance, circle_tolerance)
+        complete_mask = get_complete_mask(mask, second)
         instances[complete_mask] = np.max(instances) + 1
 
     for v in np.unique(second):
         if v == 0: continue
         mask = (second == v)
-        complete_mask = get_complete_mask(mask, first, pixel_tolerance, circle_tolerance)
+        complete_mask = get_complete_mask(mask, first)
         instances[complete_mask] = np.max(instances) + 1
 
-    instances = remove_small_masks(instances, min_area=400)
+    instances = remove_small_masks(instances)
     return relabel(instances)
 
 
-def combine_horizontal(instances_left: np.ndarray, instances_right: np.ndarray, pixel_tolerance=10, circle_tolerance=0.25) -> np.ndarray:
+def combine_horizontal(instances_left: np.ndarray, instances_right: np.ndarray) -> np.ndarray:
     """
     Combine two instance segmentation masks horizontally by merging border-touching instances.  
     See `_combine_instances` function.  
     
     :param instances_left: instance segmentation mask to the left
     :param instances_right: instance segmentation mask to the right
-    :param pixel_tolerance: tolerance in pixels to dilate the masks in order to find touching instances
-    :param circle_tolerance: tolerance in deviation from perfect circle to accept a match
     :return: combined instance segmentation mask in one horizontal array
     """
     return _combine_instances(
         instances_left, 
         instances_right, 
-        vertical_direction=False, 
-        pixel_tolerance=pixel_tolerance,
-        circle_tolerance=circle_tolerance,
+        vertical_direction=False
     )
 
 
-def combine_vertical(instances_top: np.ndarray, instances_bottom: np.ndarray, pixel_tolerance=10, circle_tolerance=0.25) -> np.ndarray:
+def combine_vertical(instances_top: np.ndarray, instances_bottom: np.ndarray) -> np.ndarray:
     """
     Combine two instance segmentation masks vertically by merging border-touching instances.  
     See `_combine_instances` function.  
     
     :param instances_top: instance segmentation mask to the top
     :param instances_bottom: instance segmentation mask to the bottom
-    :param pixel_tolerance: tolerance in pixels to dilate the masks in order to find touching instances
-    :param circle_tolerance: tolerance in deviation from perfect circle to accept a match
     :return: combined instance segmentation mask in one vertical array
     """
     return _combine_instances(
         instances_top, 
         instances_bottom, 
-        vertical_direction=True,
-        pixel_tolerance=pixel_tolerance,
-        circle_tolerance=circle_tolerance,
+        vertical_direction=True
     )
 
 
-def combine_four_instances(arrays: list[np.ndarray], pixel_tolerance=10, circle_tolerance=0.25) -> np.ndarray:
+def combine_four_instances(arrays: list[np.ndarray]) -> np.ndarray:
     """
     Combine four instance segmentation masks into one.  
     We assume that the instances are circular to help with matching.  
@@ -1081,9 +1072,9 @@ def combine_four_instances(arrays: list[np.ndarray], pixel_tolerance=10, circle_
     :param circle_tolerance: tolerance in deviation from perfect circle to accept a match
     :return: combined instance segmentation mask (size is sum of inputs)
     """
-    top = combine_horizontal(arrays[0], arrays[1], pixel_tolerance, circle_tolerance)
-    bot = combine_horizontal(arrays[2], arrays[3], pixel_tolerance, circle_tolerance)
-    full = combine_vertical(top, bot, pixel_tolerance, circle_tolerance)
+    top = combine_horizontal(arrays[0], arrays[1])
+    bot = combine_horizontal(arrays[2], arrays[3])
+    full = combine_vertical(top, bot)
     return full
 
 

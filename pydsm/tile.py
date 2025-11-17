@@ -269,7 +269,7 @@ def remove_holes(instance_labels: np.ndarray) -> np.ndarray:
     return new_instance_labels
 
 
-def remove_small_masks(tile: Tile, min_area=400):
+def remove_small_masks(tile: Tile, min_area=const.MIN_MASK_SIZE) -> Tile:
     """
     Removes all instances with an area lower or equal to `min_area`  
     The instances are relabeled to find unconnected parts of instances  
@@ -417,20 +417,19 @@ def normalize_orthophoto(tile: Tile) -> Tile:
     return Tile(orthophoto, tile.ndsm, tile.instance_labels, tile.semantic_labels)
 
 
-def preprocess_tile(tile: Tile, ndsm_clip_height=const.CLIP_HEIGHT, min_mask_size=400) -> Tile:
+def preprocess_tile(tile: Tile, clip_ndsm=True) -> Tile:
     """
     Preprocess a tile so it can be used for training a model.  
 
     :param tile: tile containing orthophoto, ndsm, instance labels, and semantic labels
-    :param dsm_clip_height: float, height to which the DSM will be clipped.
-    :param min_mask_size: int, keep the masks of size greater than (default=400)
+    :param clip_ndsm: bool, whether to normalize the ndsm or not (default=True)
     :return: Tile containing the processed `{orthophoto, dsm, labels, labels_downsampled, species, centers, centers_downsampled}`.  
         - `orthophoto` is normalized to `[0.0, 1.0]` range  
         - `ndsm` is clipped and rescaled to `[0.0, 1.0]` range where `1.0` equals `dsm_clip_height`
     """
-    tile = remove_small_masks(tile, min_mask_size)
+    tile = remove_small_masks(tile)
     tile = normalize_orthophoto(tile)
-    tile = normalize_ndsm(tile, ndsm_clip_height) if ndsm_clip_height > 0.0 else tile
+    tile = normalize_ndsm(tile) if clip_ndsm else tile
     return tile
 
 
@@ -533,23 +532,34 @@ def get_random_instances(tiles_dir: str, semantic_dict: dict, distribution: list
 def save_split_tiles(tiles_dir: str, tile_name: str, tiles: list[Tile]):
     """
     Saves the tiles into `tiles_dir` using tile_name with their orientation  
-    Tiles in order '(nw)', '(ne)', '(sw)', '(se)'  
+    Tiles in order :
+    - nw : north-west
+    - ne : north-east
+    - sw : south-west
+    - se : south-east
+    - ff : full frame (center crop)
+    - cc : center crop
+    - nc : north center
+    - ec : east center
+    - sc : south center
+    - wc : west center
 
     :param tiles_dir: str, directory to save the tiles in
     :param tile_name: str, the name of the tile (extension will be replaced) 
-    :param tiles: list[Tile], 4 tiles with orientation nw, ne, sw, and se
+    :param tiles: list[Tile], up to 10 tiles with orientation nw, ne, sw, se, ff, cc, nc, ec, sc, wc
     :return: None, saves the tiles to disk
     """
-    names = ['nw', 'ne', 'sw', 'se']
+    names = ['nw', 'ne', 'sw', 'se', 'ff', 'cc', 'nc', 'ec', 'sc', 'wc']
     tile_name = utils.remove_extension(tile_name)
 
     for i, tile in enumerate(tiles):
+        if i >= len(names): names.append(f'{i}')
         save_path = f'{tile_name} ({names[i]}).npz'
         save_path = utils.append_file_to_path(tiles_dir, save_path)
         save_tile(save_path, tile)
 
 
-def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'dataset', semantic_dict=default_semantic_dict(), split=True, normalize=True, min_mask_size=400) -> None:
+def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'dataset', semantic_dict=default_semantic_dict(), split=True) -> None:
     """
     Saves the annotated tiles to npz to be used for training  
     Tiles are normalized  
@@ -568,20 +578,16 @@ def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'dataset', semantic_
         tile = open_as_tile(tiles_dir, name, semantic_dict)
         if split:
             tiles = split_tile(tile)
-            tiles = [remove_small_masks(tile, min_mask_size) for tile in tiles]
-            tiles = [normalize_ndsm(tile) if normalize else tile for tile in tiles]
-            tiles = [normalize_orthophoto(tile) if normalize else tile for tile in tiles]
+            tiles = [preprocess_tile(tile) for tile in tiles]
             save_split_tiles(save_dir, name, tiles)
         else:
             file_name = f'{utils.remove_extension(name)}.npz'
             npz_path = utils.append_file_to_path(save_dir, file_name)
-            tile = remove_small_masks(tile, min_mask_size)
-            tile = normalize_ndsm(tile) if normalize else tile
-            tile = normalize_orthophoto(tile) if normalize else tile
+            tile = preprocess_tile(tile)
             save_tile(npz_path, tile)
 
 
-def create_split_tile_dataset(tiles_dir: str, sub_dir: str, save_dir: str = 'dataset', normalize=True, min_mask_size=400):
+def create_split_tile_dataset(tiles_dir: str, sub_dir: str, save_dir: str = 'dataset') -> None:
     """
     Split all npz tiles from `tiles_dir/sub_dir` and saves them into `tiles_dir/save_dir`  
 
@@ -600,9 +606,7 @@ def create_split_tile_dataset(tiles_dir: str, sub_dir: str, save_dir: str = 'dat
         if not name.endswith('.npz'): continue
         t = open_tile_npz(os.path.join(tiles_dir, sub_dir, name))
         tiles = split_tile(t)
-        tiles = [remove_small_masks(t, min_mask_size) for t in tiles]
-        tiles = [normalize_ndsm(t) if normalize else t for t in tiles]
-        tiles = [normalize_orthophoto(t) if normalize else t for t in tiles]
+        tiles = [preprocess_tile(t) for t in tiles]
         save_split_tiles(save_dir, name, tiles)
 
 
