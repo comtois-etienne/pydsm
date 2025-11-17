@@ -297,13 +297,12 @@ def export_instances(tiles_dir: str, tile_name: str) -> None:
     :param tile_name: str, name of the tile to open and extract the instances from
     :return: None, saves instances as tiles to disk
     """
-    species_dict = tree_species_dict_v2()
-    copy_tile = open_as_tile(tiles_dir, tile_name, species_dict)
+    copy_tile = open_as_tile(tiles_dir, tile_name)
     local_tiles = extract_instances(copy_tile, ignore_border=True)
 
     for local_tile in local_tiles:
         semantics = np.max(local_tile.semantic_labels)
-        code = get_semantic_code(species_dict, semantics)
+        code = get_semantic_code(const.SEMANTIC_DICT, semantics)
         instance = np.max(local_tile.instance_labels)
         npz_name = utils.remove_extension(tile_name)
         npz_name = f'{npz_name} (id={instance}).npz'
