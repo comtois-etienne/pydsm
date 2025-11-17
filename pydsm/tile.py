@@ -31,9 +31,9 @@ class Tile:
             self.semantic_labels.copy()
         )
     
-    def rgbd(self, norm = False) -> np.ndarray:
-        rgb = nda.to_uint8(self.orthophoto, norm=norm)
-        d = nda.to_uint8(self.ndsm, norm=norm)
+    def rgbd(self) -> np.ndarray:
+        rgb = self.orthophoto
+        d = self.ndsm
         return np.dstack((rgb, d))
 
 
@@ -178,7 +178,9 @@ def display_tile(tile: Tile, colorbar=False, semantic_dict=tree_species_dict_v2(
     plt.subplots(1, 4, figsize=(20, 10))
 
     plt.subplot(1, 4, 1)
-    plt.title('orthophoto')
+    dtype = tile.orthophoto.dtype
+    # plt.title(f'orthophoto={max_v:.1f}')
+    plt.title(f'orthophoto={dtype}')
     plt.imshow(tile.orthophoto)
 
     plt.subplot(1, 4, 2)
@@ -402,16 +404,16 @@ def split_tile(tile: Tile, additional=False) -> list[Tile]:
     return tiles
 
 
-def normalize_ndsm(tile: Tile, clip_height=const.CLIP_HEIGHT) -> Tile:
+def normalize_ndsm(tile: Tile) -> Tile:
     """
-    Normalize the ndsm to [0.0, 1.0] range where 1.0 equals `clip_height`
+    Normalize the ndsm to [0, 255] range where 255 equals `const.CLIP_HEIGHT`
 
     :param tile: Tile, with an ndsm to be normalized
-    :param clip_height: float, height to which the DSM will be clipped.
     :return: Tile, tile with a normalized ndsm
     """
     ndsm = tile.ndsm[..., :1] if tile.ndsm.ndim > 2 else tile.ndsm
-    ndsm = nda.clip_rescale(ndsm, clip_height)
+    ndsm = nda.clip_rescale(ndsm, const.CLIP_HEIGHT)
+    ndsm = nda.to_uint8(ndsm, norm=False)
     return Tile(tile.orthophoto, ndsm, tile.instance_labels, tile.semantic_labels)
 
 
@@ -422,23 +424,23 @@ def normalize_orthophoto(tile: Tile) -> Tile:
     :param tile: Tile, with an orthophoto to be normalized
     :return: Tile, tile with a normalized orthophoto
     """
-    orthophoto = nda.normalize(tile.orthophoto[..., :3])
+    orthophoto = nda.to_uint8(tile.orthophoto[..., :3], norm=True)
     return Tile(orthophoto, tile.ndsm, tile.instance_labels, tile.semantic_labels)
 
 
-def preprocess_tile(tile: Tile, clip_ndsm=True) -> Tile:
+def preprocess_tile(tile: Tile) -> Tile:
     """
     Preprocess a tile so it can be used for training a model.  
 
     :param tile: tile containing orthophoto, ndsm, instance labels, and semantic labels
     :param clip_ndsm: bool, whether to normalize the ndsm or not (default=True)
-    :return: Tile containing the processed `{orthophoto, dsm, labels, labels_downsampled, species, centers, centers_downsampled}`.  
-        - `orthophoto` is normalized to `[0.0, 1.0]` range  
-        - `ndsm` is clipped and rescaled to `[0.0, 1.0]` range where `1.0` equals `dsm_clip_height`
+    :return: Tile containing the preprocessed tile where :  
+        - `orthophoto` is normalized to `[0, 255]` range  
+        - `ndsm` is clipped and rescaled to `[0, 255]` range where `255` equals `const.CLIP_HEIGHT`
     """
     tile = remove_small_masks(tile)
     tile = normalize_orthophoto(tile)
-    tile = normalize_ndsm(tile) if clip_ndsm else tile
+    tile = normalize_ndsm(tile)
     return tile
 
 
@@ -568,11 +570,10 @@ def save_split_tiles(tiles_dir: str, tile_name: str, tiles: list[Tile]):
         save_tile(save_path, tile)
 
 
-def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'dataset', split=True, normalize=False) -> None:
+def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'dataset') -> None:
     """
-    Saves the annotated tiles to npz to be used for training  
-    Tiles are normalized  
-    Each tile is split into 4 'nw', 'ne', 'sw', 'se' sub-tiles  
+    Saves the annotated tiles to npz to be used for creating the copy-paste dataset.  
+    Tiles are not normalized (orthophoto=uint8, ndsm=float32)  
     
     :param tiles_dir: str, directory containing the sub-directories `orthophoto`, `ndsm`, `labels`, and `points`
     :param save_sub_dir: sub dir to save the tiles in
@@ -585,15 +586,10 @@ def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'dataset', split=Tru
     for name in names:
         if not name.endswith('.tif'): continue
         t = open_as_tile(tiles_dir, name, const.SEMANTIC_DICT)
-        if split:
-            tiles = split_tile(t)
-            tiles = [preprocess_tile(tile, normalize) for tile in tiles]
-            save_split_tiles(save_dir, name, tiles)
-        else:
-            file_name = f'{utils.remove_extension(name)}.npz'
-            npz_path = utils.append_file_to_path(save_dir, file_name)
-            t = preprocess_tile(t, normalize)
-            save_tile(npz_path, t)
+        file_name = f'{utils.remove_extension(name)}.npz'
+        npz_path = utils.append_file_to_path(save_dir, file_name)
+        t = remove_small_masks(t)
+        save_tile(npz_path, t)
 
 
 def create_split_tile_dataset(tiles_dir: str, sub_dir: str, save_dir: str = 'dataset', additional=False) -> None:
