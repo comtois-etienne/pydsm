@@ -308,7 +308,7 @@ def export_instances(tiles_dir: str, tile_name: str) -> None:
         npz_name = utils.remove_extension(tile_name)
         npz_name = f'{npz_name} (id={instance}).npz'
 
-        npz_path = os.path.join(tiles_dir, 'instances', code)
+        npz_path = os.path.join(tiles_dir, const.INSTANCES_TILES_SUBDIR, code)
         os.makedirs(npz_path, exist_ok=True)
 
         npz_path = os.path.join(npz_path, npz_name)
@@ -323,7 +323,7 @@ def export_all_instances(tiles_dir: str) -> None:
     :param tiles_dir: str, path to the tiles directory
     :return: None, saves instances as tiles to disk
     """
-    ortho_dir = os.path.join(tiles_dir, 'orthophoto')
+    ortho_dir = os.path.join(tiles_dir, const.ORTHOPHOTO_SUBDIR)
     for tile_name in os.listdir(ortho_dir):
         if not tile_name.endswith('.tif'):
             continue

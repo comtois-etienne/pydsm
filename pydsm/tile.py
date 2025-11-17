@@ -37,13 +37,6 @@ class Tile:
         return np.dstack((rgb, d))
 
 
-def default_semantic_dict() -> dict:
-    return {
-        'BACKGROUND': 0,
-        'UNKNOWN': 1,
-    }
-
-
 def tree_species_dict_v2() -> dict:
     """
     20 classes total : 18 espèces + 1 arrière-plan + 1 inconnu
@@ -310,12 +303,7 @@ def flip_tile(tile: Tile, axis=0):
 def open_as_tile(
         tiles_dir: str, 
         tile_name: str, 
-        semantic_dict=default_semantic_dict(), 
         as_array=True, 
-        orthophoto_subdir = 'orthophoto', 
-        ndsm_subdir = 'ndsm', 
-        instances_subdir = 'labels', 
-        points_subdir = 'points'
     ) -> Tile:
     """
     Opens all data from the tile (orthophoto, ndsm, instance_labels, semantic_labels)
@@ -327,13 +315,13 @@ def open_as_tile(
     """
     tile_name = utils.remove_extension(tile_name)
 
-    ortho_path = os.path.join(tiles_dir, orthophoto_subdir, f'{tile_name}.tif')
+    ortho_path = os.path.join(tiles_dir, const.ORTHOPHOTO_SUBDIR, f'{tile_name}.tif')
     ortho = geo.open_geotiff(ortho_path)
 
-    ndsm_path = os.path.join(tiles_dir, ndsm_subdir, f'{tile_name}.tif')
+    ndsm_path = os.path.join(tiles_dir, const.NDSM_SUBDIR, f'{tile_name}.tif')
     ndsm = geo.open_geotiff(ndsm_path)
 
-    instances_path = os.path.join(tiles_dir, instances_subdir, f'{tile_name}.npz')
+    instances_path = os.path.join(tiles_dir, const.INSTANCE_LABELS_SUBDIR, f'{tile_name}.npz')
     if not os.path.exists(instances_path):
         instances = np.zeros(geo.get_shape(ortho), dtype=np.uint16)
     else:
@@ -341,12 +329,12 @@ def open_as_tile(
         instances = nda.relabel(instances)
         instances = remove_holes(instances)
 
-    points_path = os.path.join(tiles_dir, points_subdir, f'{tile_name}.csv')
+    points_path = os.path.join(tiles_dir, const.SEMANTIC_POINTS_SUBDIR, f'{tile_name}.csv')
     if not os.path.exists(points_path):
         semantics = np.zeros_like(instances, dtype=np.uint8)
     else:
         points_df = pd.read_csv(points_path)
-        semantics = apply_semantic_codes(instances, points_df, semantic_dict)
+        semantics = apply_semantic_codes(instances, points_df, const.SEMANTIC_DICT)
 
     if as_array:
         ortho = geo.to_ndarray(ortho)[..., :3]
@@ -577,7 +565,7 @@ def save_split_tiles(tiles_dir: str, tile_name: str, tiles: list[Tile]):
         save_tile(save_path, tile)
 
 
-def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'dataset', semantic_dict=default_semantic_dict(), split=True) -> None:
+def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'dataset', split=True) -> None:
     """
     Saves the annotated tiles to npz to be used for training  
     Tiles are normalized  
@@ -587,13 +575,13 @@ def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'dataset', semantic_
     :param save_sub_dir: sub dir to save the tiles in
     :return: None, saves the tiles into the sub-dir of tiles_dir
     """
-    names = os.listdir(os.path.join(tiles_dir, 'orthophoto'))
+    names = os.listdir(os.path.join(tiles_dir, const.ORTHOPHOTO_SUBDIR))
     save_dir = os.path.join(tiles_dir, save_sub_dir)
     os.makedirs(save_dir, exist_ok=True)
     
     for name in names:
         if not name.endswith('.tif'): continue
-        t = open_as_tile(tiles_dir, name, semantic_dict)
+        t = open_as_tile(tiles_dir, name, const.SEMANTIC_DICT)
         if split:
             tiles = split_tile(t)
             tiles = [preprocess_tile(tile) for tile in tiles]

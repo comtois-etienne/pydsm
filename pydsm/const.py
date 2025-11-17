@@ -1,7 +1,17 @@
+########### SUB-DIRECTORIES ###########
+
+ORTHOPHOTO_SUBDIR = 'orthophoto'
+NDSM_SUBDIR = 'ndsm'
+INSTANCE_LABELS_SUBDIR = 'labels'
+SEMANTIC_POINTS_SUBDIR = 'points'
+INSTANCES_TILES_SUBDIR = 'instances'
+PREDICTION_INSTANCE_LABELS_SUBDIR = 'labels_yolo'
+
+
 ########### CONSTANTS FOR WHOLE PROJECT ###########
 
 CLIP_HEIGHT = 30.0  # in meters, for depth channel normalization in RGBD YOLO models
-
+SEMANTIC_DICT = { 'BACKGROUND': 0, 'UNKNOWN': 1 }
 
 ########### YOLO PREDICTIONS ###########
 
