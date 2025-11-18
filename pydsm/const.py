@@ -66,3 +66,15 @@ def tree_species_dict() -> dict:
         'PN': 18,
         'JU': 19,
     }
+
+
+def equal_distribution(lenght: int = 2) -> list:
+    return [0.0] + [1.0/(lenght-1)] * (lenght-1)
+
+
+def tree_species_distribution() -> list:
+    """
+    Precalculated distribution of tree species to rebalance the dataset
+    """
+    return [0.0, 0.0, 0.034, 0.033, 0.061, 0.05, 0.051, 0.055, 0.057, 0.055, 0.057, 0.058, 0.059, 0.058, 0.06, 0.062, 0.062, 0.062, 0.063, 0.063]
+
