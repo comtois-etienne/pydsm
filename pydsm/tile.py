@@ -557,7 +557,7 @@ def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'dataset') -> None:
     
     for name in names:
         if not name.endswith('.tif'): continue
-        t = open_as_tile(tiles_dir, name, const.SEMANTIC_DICT)
+        t = open_as_tile(tiles_dir, name)
         file_name = f'{utils.remove_extension(name)}.npz'
         npz_path = utils.append_file_to_path(save_dir, file_name)
         t = remove_small_masks(t)
