@@ -18,10 +18,10 @@ import pydsm.const as const
 
 @dataclass
 class Tile:
-    orthophoto: np.ndarray
-    ndsm: np.ndarray
-    instance_labels: np.ndarray
-    semantic_labels: np.ndarray
+    orthophoto: np.ndarray # dtype uint8
+    ndsm: np.ndarray # dtype float32
+    instance_labels: np.ndarray # dtype uint16
+    semantic_labels: np.ndarray # dtype uint16
 
     def copy(self) -> 'Tile':
         return Tile(
@@ -35,34 +35,9 @@ class Tile:
         rgb = self.orthophoto
         d = self.ndsm
         return np.dstack((rgb, d))
-
-
-def tree_species_dict_v2() -> dict:
-    """
-    20 classes total : 18 espèces + 1 arrière-plan + 1 inconnu
-    """
-    return {
-        'BACKGROUND': 0,
-        'UNKNOWN': 1,
-        'ACSA': 2,
-        'ACPL': 3,
-        'ACSC': 4,
-        'UL' : 5, # split? ULWI, ULXX, UL
-        'FR': 6, # split?
-        'QU': 7,
-        'PO': 8,
-        'GL': 9,
-        'SY': 10,
-        'PI': 11,
-        'CE': 12,
-        'TI': 13,
-        'AM': 14,
-        'GY': 15,
-        'GI': 16,
-        'MA': 17,
-        'PN': 18,
-        'JU': 19,
-    }
+    
+    def shape(self) -> tuple:
+        return self.orthophoto.shape[:2]
 
 
 def get_semantic_code(semantics_dict: dict, code: int) -> str:
@@ -174,7 +149,7 @@ def get_augmentation_distribution(distribution: list) -> list:
     return inverse / np.sum(inverse)
 
 
-def display_tile(tile: Tile, colorbar=False, semantic_dict=tree_species_dict_v2(), instance_cmap='tab20b', semantic_cmap='tab20'):
+def display_tile(tile: Tile, colorbar=False, instance_cmap='tab20b', semantic_cmap='tab20'):
     plt.subplots(1, 4, figsize=(20, 10))
 
     plt.subplot(1, 4, 1)
@@ -197,7 +172,7 @@ def display_tile(tile: Tile, colorbar=False, semantic_dict=tree_species_dict_v2(
     unique = len(np.unique(tile.semantic_labels))
     if unique == 2:
         unique = np.max(tile.semantic_labels)
-        unique = get_semantic_code(semantic_dict, unique)
+        unique = get_semantic_code(const.SEMANTIC_DICT, unique)
 
     plt.title(f'semantic_labels={unique}')
     plt.imshow(tile.semantic_labels, vmin=0, vmax=20, cmap=semantic_cmap, interpolation='nearest')
@@ -249,7 +224,7 @@ def apply_semantic_codes(instance_labels: np.ndarray, semantics_df: pd.DataFrame
     v_list = df['v'].tolist()
     s_list = df['int_code'].tolist()
 
-    return nda.replace_value_inplace(instance_labels, v_list, s_list)
+    return nda.replace_value_inplace(instance_labels, v_list, s_list).astype(np.uint16)
 
 
 def remove_holes(instance_labels: np.ndarray) -> np.ndarray:
@@ -305,17 +280,12 @@ def flip_tile(tile: Tile, axis=0):
     )
 
 
-def open_as_tile(
-        tiles_dir: str, 
-        tile_name: str, 
-        as_array=True, 
-    ) -> Tile:
+def open_as_tile(tiles_dir: str, tile_name: str) -> Tile:
     """
     Opens all data from the tile (orthophoto, ndsm, instance_labels, semantic_labels)
 
     :param tiles_dir: str, directory containing the sub-directories `orthophoto`, `ndsm`, `labels` and `points`
     :param tile_name: str, tile name in the sub-directories
-    :param as_array: bool, returns the orthophoto and the ndsm as numpy arrays if True, as gdal.Dataset if False
     :return: Tile containing `orthophoto`, `ndsm`, `instance_labels` and `semantic_labels`
     """
     tile_name = utils.remove_extension(tile_name)
@@ -336,14 +306,13 @@ def open_as_tile(
 
     points_path = os.path.join(tiles_dir, const.SEMANTIC_POINTS_SUBDIR, f'{tile_name}.csv')
     if not os.path.exists(points_path):
-        semantics = np.zeros_like(instances, dtype=np.uint8)
+        semantics = np.zeros_like(instances, dtype=np.uint16)
     else:
         points_df = pd.read_csv(points_path)
-        semantics = apply_semantic_codes(instances, points_df, const.SEMANTIC_DICT)
+        semantics = apply_semantic_codes(instances, points_df, const.SEMANTIC_DICT).astype(np.uint16)
 
-    if as_array:
-        ortho = geo.to_ndarray(ortho)[..., :3]
-        ndsm = geo.to_ndarray(ndsm)
+    ortho = geo.to_ndarray(ortho)[..., :3]
+    ndsm = geo.to_ndarray(ndsm)
 
     return Tile(ortho, ndsm, instances, semantics)
 
@@ -482,12 +451,15 @@ def save_tile(npz_path: str, tile: Tile) -> None:
     :param tile: Tile, tile to save
     :return: None, save to disk
     """
+    # print(f'o={tile.orthophoto.dtype} n={tile.ndsm.dtype} i={tile.instance_labels.dtype} s={tile.semantic_labels.dtype}')
     np.savez_compressed(
         npz_path,
         orthophoto=tile.orthophoto,
         ndsm=tile.ndsm,
         instance_labels=tile.instance_labels,
         semantic_labels=tile.semantic_labels,
+        # instance_labels=tile.instance_labels.astype(np.uint16),
+        # semantic_labels=tile.semantic_labels.astype(np.uint16),
     )
 
 

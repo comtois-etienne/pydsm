@@ -87,7 +87,7 @@ def read_numpy(npz_path: str, npz_format='pydsm') -> Tuple[Any, Any]:
     if npz_format == 'pydsm': 
         return npz['data'][0], npz['metadata'][0]
     if npz_format == 'napari':
-        return npz['arr_0']
+        return npz['arr_0'].astype(np.uint16)
     return npz
 
 

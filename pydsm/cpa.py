@@ -204,7 +204,7 @@ def get_copy_paste_tile(copy_tile: Tile, paste_tile: Tile, remove_cracks=const.R
 
     ortho = copy_tile.orthophoto * np.dstack([mask] * 3)
     ndsm = copy_tile.ndsm * mask
-    semantics = mask * np.max(copy_tile.semantic_labels)
+    semantics = (mask * np.max(copy_tile.semantic_labels)).astype(np.uint16)
 
     return Tile(ortho, ndsm, mask, semantics)
 
@@ -243,14 +243,14 @@ def copy_paste(copy_tile: Tile, paste_tile: Tile, min_area_ratio=0.4) -> Tile:
 
     # instances
     instance_val = np.max(paste_tile.instance_labels) + 1
-    instances = paste_tile.instance_labels * ~ndsm_mask
-    instances += (ndsm_mask * instance_val)
+    instances = (paste_tile.instance_labels * ~ndsm_mask)
+    instances += (ndsm_mask * instance_val).astype(np.uint16)
 
     # semantics
-    semantics = paste_tile.semantic_labels * ~ndsm_mask
+    semantics = (paste_tile.semantic_labels * ~ndsm_mask)
     semantics += copy_tile.semantic_labels
 
-    return remove_small_masks(Tile(ortho.astype(np.uint8), ndsm, instances, semantics))
+    return remove_small_masks(Tile(ortho, ndsm, instances, semantics))
 
 
 def random_copy_paste(copy_local_tile: Tile, paste_tile: Tile, dim_change=0.2, augmentation=False) -> Tile:
@@ -369,7 +369,6 @@ def create_random_tiles(tiles_dir: str, copy_sub_dir='regular_tiles', save_sub_d
     :return: None, saves the augmented tiles in `tiles_dir/save_sub_dir`
     """
     os.makedirs(os.path.join(tiles_dir, save_sub_dir), exist_ok=True)
-    semantic_dict = tree_species_dict_v2()
     paste_tiles = select_tiles(tiles_dir, sub_dir=copy_sub_dir, min_instances=0, max_instances=10)
 
     for _ in range(tile_count):
@@ -377,8 +376,8 @@ def create_random_tiles(tiles_dir: str, copy_sub_dir='regular_tiles', save_sub_d
         name = np.random.choice(paste_tiles)
 
         paste_tile = open_tile_npz(os.path.join(tiles_dir, copy_sub_dir, name))
-        instances = get_random_instances(tiles_dir, semantic_dict, const.DISTRIBUTION, size=instances_per_tile)
-        paste_tile = create_random_tile(paste_tile, instances, augmentation = True)
+        instances = get_random_instances(tiles_dir, const.SEMANTIC_DICT, const.DISTRIBUTION, size=instances_per_tile)
+        paste_tile = create_random_tile(paste_tile, instances, augmentation = False)
 
         npz_name = name.replace('.npz', f' ({get_uuid(8)}).npz')
         npz_path = os.path.join(tiles_dir, save_sub_dir, npz_name)
