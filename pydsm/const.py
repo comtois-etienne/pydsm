@@ -10,8 +10,10 @@ PREDICTION_INSTANCE_LABELS_SUBDIR = 'labels_yolo'
 
 ########### CONSTANTS FOR WHOLE PROJECT ###########
 
-CLIP_HEIGHT = 30.0  # in meters, for depth channel normalization in RGBD YOLO models
+CLIP_HEIGHT = 25.5  # in meters, for depth channel normalization in RGBD YOLO models
 SEMANTIC_DICT = { 'BACKGROUND': 0, 'UNKNOWN': 1 }
+DISTRIBUTION = [0.0, 1.0]
+
 
 ########### YOLO PREDICTIONS ###########
 
@@ -36,3 +38,31 @@ def display_constants():
     print("MIN_HEIGHT:", MIN_HEIGHT)
     print("MIN_MASK_SIZE:", MIN_MASK_SIZE)
     print("REMOVE_CRACKS_SIZE:", REMOVE_CRACKS_SIZE)
+
+
+def tree_species_dict() -> dict:
+    """
+    20 classes total : 18 espèces + 1 arrière-plan + 1 inconnu
+    """
+    return {
+        'BACKGROUND': 0,
+        'UNKNOWN': 1,
+        'ACSA': 2,
+        'ACPL': 3,
+        'ACSC': 4,
+        'UL' : 5, # split? ULWI, ULXX, UL
+        'FR': 6, # split?
+        'QU': 7,
+        'PO': 8,
+        'GL': 9,
+        'SY': 10,
+        'PI': 11,
+        'CE': 12,
+        'TI': 13,
+        'AM': 14,
+        'GY': 15,
+        'GI': 16,
+        'MA': 17,
+        'PN': 18,
+        'JU': 19,
+    }
