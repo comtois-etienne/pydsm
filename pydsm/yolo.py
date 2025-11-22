@@ -51,7 +51,7 @@ def fake_cv2_imread(file_path):
     # print('Called fake_imread')
     if utils.get_extension(file_path) == 'npz':
         t = tile.open_tile_npz(file_path)
-        return t.rgbd(norm=False)
+        return t.rgbd()
     else:
         return cv2.original_imread(file_path)
 
@@ -60,7 +60,7 @@ def fake_pil_open(file_path):
     # print('Called fake_open')
     if utils.get_extension(file_path) == 'npz':
         t = tile.open_tile_npz(file_path)
-        rgbd = t.rgbd(norm=False)
+        rgbd = t.rgbd()
         pil_im = Image.fromarray(rgbd, mode='RGBA')
         pil_im.format = 'NPZ'
         return pil_im
@@ -287,19 +287,20 @@ def save_indexlines(dir_npz: str, dir_labels: str, edges_per_instance=32, remap_
     :return: None, saves .txt files in YOLO format in dir_labels
     """
     os.makedirs(dir_labels, exist_ok=True)
+    remap_dict = None if instance else remap_dict # ignore remap_dict if instance only
 
     for filename in os.listdir(dir_npz):
         if not filename.endswith('.npz'):
             continue
 
         tile_path = os.path.join(dir_npz, filename)
-        tile = tile.open_tile_npz(tile_path)
+        t = tile.open_tile_npz(tile_path)
 
         if visualize: print(f'Processing \'{filename}\'')
 
         index_lines = to_index_lines(
-            tile.instance_labels, 
-            None if instance else tile.semantic_labels, 
+            t.instance_labels, 
+            None if instance else t.semantic_labels, 
             edges=edges_per_instance, 
             visualize=visualize
         )
@@ -446,8 +447,8 @@ def predict_tile_labels(model_name: str, tiles_dir: str, tile_name: str, *, verb
     """
     rgbd = load_as_tile(tiles_dir, tile_name, clip_height=const.CLIP_HEIGHT)
     rgbds = nda.split_four(rgbd)
-    pred = predict_images_instances(model_name, rgbds, confidence=const.CONFIDENCE_THRESHOLD, iou_threshold=const.IOU_THRESHOLD)
-    labels = nda.combine_four_instances(pred, pixel_tolerance=const.PIXEL_TOLERANCE, circle_tolerance=const.CIRCLE_TOLERANCE)
+    pred = predict_images_instances(model_name, rgbds)
+    labels = nda.combine_four_instances(pred)
 
     depth = rgbd[..., 3] / 255.0 * const.CLIP_HEIGHT  # rescale to meters
     labels = nda.remove_instances_below(labels, depth, const.MIN_HEIGHT)
