@@ -355,8 +355,8 @@ def split_tile(tile: Tile, additional=False) -> list[Tile]:
     Splits a single tile into 4 identically sized tiles  
 
     :param tile: tile containing orthophoto, ndsm, instance labels, and semantic labels
-    :param overlapping: bool, adds the center crop as the 5th tile and the full frame resized as the 6th tile
-    :returns: a list of 4 tiles (`top-left`, `top-right`, `bottom-left`, `bottom-right`) (or 5 tiles if center=True)
+    :param additional: bool, adds the center crop as the 5th tile and the full frame resized as the 6th tile
+    :returns: a list of 4 tiles (`top-left`, `top-right`, `bottom-left`, `bottom-right`)
     """
     orthos = nda.split_four(tile.orthophoto)
     ndsms = nda.split_four(tile.ndsm)
@@ -367,8 +367,9 @@ def split_tile(tile: Tile, additional=False) -> list[Tile]:
     for i in range(4):
         tiles.append(Tile(orthos[i], ndsms[i], instances[i], semantics[i]))
 
-    tiles.append(crop_center(tile)) if additional else None
-    tiles.append(resize_tile(tile, tiles[0].orthophoto.shape[0])) if additional else None
+    if additional:
+        tiles.append(crop_center(tile))
+        tiles.append(resize_tile(tile, tiles[0].shape()[0]))
 
     return tiles
 
