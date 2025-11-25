@@ -83,12 +83,13 @@ def rotate_local_tile(tile: Tile, angle: float) -> Tile:
     return Tile(ortho, ndsm, instance_labels, semantic_labels)
 
 
-def zoom_local_tile(tile: Tile, zoom=1.0) -> Tile:
+def zoom_local_tile(tile: Tile, zoom=1.0, epsilon=0.1) -> Tile:
     """
     Scale up or down a local tile (tile with only one instance)
 
     :param tile: Tile, tile with only one instance to change size
     :param zoom: float, `1.0` for no change max `1.9`, min `0.1`
+    :param epsilon: float, small value to add before scaling the ndsm to avoid zeroing it out (in meters)
     :return: Tile, zoomed in or out tile
     """
     zoom = max(min(1.9, zoom), 0.1)
@@ -99,7 +100,7 @@ def zoom_local_tile(tile: Tile, zoom=1.0) -> Tile:
     instances = nda_rescale_nearest_neighbour(tile.instance_labels, shape).astype(bool).astype(int)
     semantics = instances * np.max(tile.semantic_labels)
 
-    return Tile(ortho, ndsm * zoom, instances, semantics)
+    return Tile(ortho, (ndsm + epsilon) * zoom, instances, semantics)
 
 
 def augmentation_local_tile(tile: Tile):
