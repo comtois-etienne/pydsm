@@ -17,6 +17,8 @@ DISTRIBUTION = [0.0, 1.0]
 
 ########### YOLO PREDICTIONS ###########
 
+RGBD = True
+
 CONFIDENCE_THRESHOLD = 0.2  # confidence threshold for YOLO predictions
 IOU_THRESHOLD = 0.5  # IoU threshold for YOLO predictions
 
@@ -50,8 +52,8 @@ def tree_species_dict() -> dict:
         'ACSA': 2,
         'ACPL': 3,
         'ACSC': 4,
-        'UL' : 5, # split? ULWI, ULXX, UL
-        'FR': 6, # split?
+        'UL' : 5,
+        'FR': 6,
         'QU': 7,
         'PO': 8,
         'GL': 9,
@@ -63,8 +65,8 @@ def tree_species_dict() -> dict:
         'GY': 15,
         'GI': 16,
         'MA': 17,
-        'PN': 18,
-        'JU': 19,
+        'PN': 18, # maybe out
+        'JU': 19, # maybe out
     }
 
 
