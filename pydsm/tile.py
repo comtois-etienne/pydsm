@@ -9,6 +9,7 @@ from scipy.ndimage import distance_transform_edt
 from skimage.measure import label
 from cv2 import resize as cv2_resize
 from cv2 import INTER_CUBIC
+from cv2 import cvtColor, COLOR_RGB2BGR
 
 import pydsm.nda as nda
 import pydsm.geo as geo
@@ -30,6 +31,14 @@ class Tile:
             self.instance_labels.copy(), 
             self.semantic_labels.copy()
         )
+    
+    def rgb(self, mode='bgr') -> np.ndarray:
+        rgb = self.orthophoto
+        if mode == 'bgr':
+            return cvtColor(rgb, COLOR_RGB2BGR)
+        elif mode == 'rgb':
+            return rgb
+        return None
     
     def rgbd(self) -> np.ndarray:
         rgb = self.orthophoto
