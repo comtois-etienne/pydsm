@@ -717,6 +717,20 @@ def nms(masks: list[np.ndarray], confidences: list[float] = None, iou_threshold:
     return kept_masks
 
 
+def kmeans(array: np.ndarray, n_clusters=2) -> list[float]:
+    """
+    sklearn kmeans abstraction to find threshold on ndsm values.  
+
+    :param ndsm: np.ndarray, ndsm array
+    :param n_clusters: int, number of clusters for kmeans (default 2: ground and non-ground)
+    :return: float, threshold value between ground and non-ground
+    """
+    from sklearn.cluster import KMeans
+    ndsm_values = array[array > 0].reshape(-1, 1)
+    kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init='auto').fit(ndsm_values)
+    return kmeans.cluster_centers_.tolist()
+
+
 ########### INSTANCE SEGMENTATION MASKS ###########
 
 
