@@ -417,7 +417,7 @@ def split_star(array: np.ndarray) -> list[np.ndarray]:
     Crops an array into 4 squares in a star pattern to quarter resolution of the original array.
     
     :param array: Input array to be cropped.
-    :return: List of 4 cropped arrays [center-top, center-left, center-bottom, center-right].
+    :return: List of 4 cropped arrays [top-center, left-center, bottom-center, right-center].
     """
     h, w = array.shape[:2]
     h, w = h // 4, w // 4
