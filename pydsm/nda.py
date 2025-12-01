@@ -412,6 +412,27 @@ def split_four(array: np.ndarray) -> np.ndarray:
     return sub_arrays
 
 
+def split_star(array: np.ndarray) -> list[np.ndarray]:
+    """
+    Crops an array into 4 squares in a star pattern to quarter resolution of the original array.
+    
+    :param array: Input array to be cropped.
+    :return: List of 4 cropped arrays [center-top, center-left, center-bottom, center-right].
+    """
+    h, w = array.shape[:2]
+    h, w = h // 4, w // 4
+
+    vertical = array[:, w:3*w]
+    top = vertical[:h*2, :]
+    bot = vertical[2*h:, :]
+
+    horizontal = array[h:3*h, :]
+    left = horizontal[:, :w*2]
+    right = horizontal[:, 2*w:]
+
+    return [top, left, bot, right]
+
+
 def center_crop(array: np.ndarray, new_height: int, new_width: int) -> np.ndarray:
     """
     Center crop a 2D or 3D numpy array to the specified new height and width.
