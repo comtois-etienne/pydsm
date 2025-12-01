@@ -83,7 +83,7 @@ def rotate_local_tile(tile: Tile, angle: float) -> Tile:
     return Tile(ortho, ndsm, instance_labels, semantic_labels)
 
 
-def zoom_local_tile(tile: Tile, zoom=1.0, epsilon=0.1) -> Tile:
+def zoom_local_tile(tile: Tile, zoom=1.0, epsilon=0.0) -> Tile:
     """
     Scale up or down a local tile (tile with only one instance)
 
