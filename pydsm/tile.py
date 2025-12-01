@@ -610,7 +610,7 @@ def create_split_tile_dataset(tiles_dir: str, sub_dir: str, save_dir: str = 'dat
         save_split_tiles(save_dir, name, tiles)
 
 
-def is_tile_pastable(t: Tile, max_instances=10, min_ground_ratio=0.6, max_ground_height=1.0) -> bool:
+def is_tile_pastable(t: Tile, max_instances=10, min_ground_ratio=0.8, max_ground_height=2.0) -> bool:
     """
     Evaluates if the tile is a good candidate to be pasted on.  
     Criteria:
@@ -632,13 +632,17 @@ def is_tile_pastable(t: Tile, max_instances=10, min_ground_ratio=0.6, max_ground
     ndsm = t.ndsm.copy()
     ndsm[ndsm > const.CLIP_HEIGHT] = const.CLIP_HEIGHT
 
+    # First check on the whole ndsm - in case kmeans fails
+    if np.mean(ndsm) > max_ground_height:
+        return False
+
     threshold = np.mean(nda.kmeans(t.ndsm, 3)[:2])
     ground_mask = (t.ndsm <= threshold)
     if (ground_mask.sum() / t.ndsm.size) < min_ground_ratio:
         return False
 
     ndsm[~ground_mask] = -1
-    if np.mean(ndsm[ndsm >= 0]) > max_ground_height:
+    if np.mean(ndsm) > max_ground_height:
         return False
 
     return True
