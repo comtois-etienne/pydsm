@@ -26,7 +26,7 @@ PIXEL_TOLERANCE = 24  # in pixels, tolerance for combining 2 instances
 CIRCLE_TOLERANCE = 0.3  # in ratio, tolerance for combining 2 instances
 MIN_HEIGHT = 1.0  # in meters, minimum height for predicted buildings
 
-MIN_MASK_SIZE = 400  # in pixels squared, minimum size for mask cleaning during preprocessing
+MIN_MASK_SIZE = 1024  # in pixels squared, minimum size for mask cleaning during preprocessing
 REMOVE_CRACKS_SIZE = 5 # in pixels, size for morphological operation to remove cracks in masks during preprocessing
 
 
