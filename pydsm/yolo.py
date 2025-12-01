@@ -39,11 +39,11 @@ import cv2
 
 
 if cv2.__dict__.get('original_imread', None) is None:
-    print("Monkey Patching cv2.imread to add .npz tiles support for RGBD YOLO")
+    print("Monkey Patching 🐒 cv2.imread to add .npz tiles support for YOLO RGBD")
     cv2.original_imread = cv2.imread
 
 if Image.__dict__.get('original_open', None) is None:
-    print("Monkey Patching PIL.Image.open to add .npz tiles support for RGBD YOLO")
+    print("Monkey Patching 🐒 PIL.Image.open to add .npz tiles support for YOLO RGBD")
     Image.original_open = Image.open
 
 
