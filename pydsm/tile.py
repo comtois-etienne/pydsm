@@ -371,12 +371,11 @@ def resize_tile(tile: Tile, new_size: int) -> Tile:
     )
 
 
-def split_tile(tile: Tile, additional=False) -> list[Tile]:
+def split_four(tile: Tile) -> list[Tile]:
     """
-    Splits a single tile into 4 identically sized tiles  
+    Split a tile into 4 corner cropped sub-tiles
 
     :param tile: tile containing orthophoto, ndsm, instance labels, and semantic labels
-    :param additional: bool, adds the center crop as the 5th tile and the full frame resized as the 6th tile
     :returns: a list of 4 tiles (`top-left`, `top-right`, `bottom-left`, `bottom-right`)
     """
     orthos = nda.split_four(tile.orthophoto)
@@ -387,10 +386,60 @@ def split_tile(tile: Tile, additional=False) -> list[Tile]:
     tiles = []
     for i in range(4):
         tiles.append(Tile(orthos[i], ndsms[i], instances[i], semantics[i]))
+    
+    return tiles
 
-    if additional:
-        tiles.append(crop_center(tile))
+
+def split_star(tile: Tile) -> list[Tile]:
+    """
+    Split a tile into 4 center cropped sub-tiles
+
+    :param tile: tile containing orthophoto, ndsm, instance labels, and semantic labels
+    :returns: a list of 4 tiles (`top-center`, `right-center`, `bottom-center`, `left-center`)
+    """
+    orthos = nda.split_star(tile.orthophoto)
+    ndsms = nda.split_star(tile.ndsm)
+    instances = nda.split_star(tile.instance_labels)
+    semantics = nda.split_star(tile.semantic_labels)
+
+    tiles = []
+    for i in range(4):
+        tiles.append(Tile(orthos[i], ndsms[i], instances[i], semantics[i]))
+    
+    return tiles
+
+
+def split_tile(tile: Tile, count=4) -> list[Tile]:
+    """
+    Splits a single tile into identically sized tiles  
+
+    Tiles in order :
+    - nw : north-west (count >= 4)
+    - ne : north-east (count >= 4)
+    - sw : south-west (count >= 4)
+    - se : south-east (count >= 4)
+    - ff : full frame (count >= 5)
+    - cc : center crop (count >= 6)
+    - nc : north center (count >= 10)
+    - ec : east center (count >= 10)
+    - sc : south center (count >= 10)
+    - wc : west center (count >= 10)
+
+    :param tile: tile containing orthophoto, ndsm, instance labels, and semantic labels
+    :param count: int, number of tiles to split into (minimum 4, maximum 10)
+    :returns: a list of tiles
+    """
+    count = max(4, count)
+    tiles = split_four(tile)
+
+    if count >= 5:
         tiles.append(resize_tile(tile, tiles[0].shape()[0]))
+
+    if count >= 6:
+        tiles.append(crop_center(tile))
+    
+    if count >= 10:
+        tiles.extend(split_star(tile))
 
     return tiles
 
@@ -542,8 +591,8 @@ def save_split_tiles(tiles_dir: str, tile_name: str, tiles: list[Tile]):
     - ne : north-east
     - sw : south-west
     - se : south-east
-    - cc : center crop
     - ff : full frame (full tile resized to the size of the split tiles)
+    - cc : center crop
     - nc : north center
     - ec : east center
     - sc : south center
@@ -554,7 +603,7 @@ def save_split_tiles(tiles_dir: str, tile_name: str, tiles: list[Tile]):
     :param tiles: list[Tile], up to 10 tiles with orientation nw, ne, sw, se, ff, cc, nc, ec, sc, wc
     :return: None, saves the tiles to disk
     """
-    names = ['nw', 'ne', 'sw', 'se', 'cc', 'ff', 'nc', 'ec', 'sc', 'wc']
+    names = ['nw', 'ne', 'sw', 'se', 'ff', 'cc', 'nc', 'ec', 'sc', 'wc']
     tile_name = utils.remove_extension(tile_name)
 
     for i, tile in enumerate(tiles):
@@ -587,15 +636,14 @@ def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'tiles_regular') -> 
         save_tile(npz_path, t)
 
 
-def create_split_tile_dataset(tiles_dir: str, sub_dir: str, save_dir: str = 'dataset', additional=False) -> None:
+def create_split_tile_dataset(tiles_dir: str, sub_dir: str, save_dir: str = 'dataset', count=4) -> None:
     """
     Split all npz tiles from `tiles_dir/sub_dir` and saves them into `tiles_dir/save_dir`  
 
     :param tiles_dir: str, directory where the tiles are saved
     :param sub_dir: str, sub-directory where the tiles are saved
     :param save_dir: str, sub-directory where the split tiles will be saved
-    :param normalize: bool, whether to normalize the nDSM and orthophoto
-    :param min_mask_size: int, minimum size of the masks to keep
+    :param count: int, number of sub-tiles per tile
     :return: None, saves the split tiles into `tiles_dir/save_dir`
     """
     names = os.listdir(os.path.join(tiles_dir, sub_dir))
@@ -605,7 +653,7 @@ def create_split_tile_dataset(tiles_dir: str, sub_dir: str, save_dir: str = 'dat
     for name in names:
         if not name.endswith('.npz'): continue
         t = open_tile_npz(os.path.join(tiles_dir, sub_dir, name))
-        tiles = split_tile(t, additional)
+        tiles = split_tile(t, count)
         tiles = [preprocess_tile(t) for t in tiles]
         save_split_tiles(save_dir, name, tiles)
 
