@@ -484,6 +484,30 @@ def preprocess_tile(tile: Tile) -> Tile:
     return tile
 
 
+def remove_disconnected_masks(tile: Tile) -> Tile:
+    """
+    Cleans a tile by removing the smallest disconnected masks for each instance.
+
+    :param tile: Tile to clean
+    :return: Cleaned Tile
+    """
+    new_instances = tile.instance_labels.copy()
+    new_semantics = tile.semantic_labels.copy()
+
+    for v in np.unique(tile.instance_labels):
+        if v == 0: continue
+
+        mask_a = (tile.instance_labels == v)
+        mask_b = nda.get_biggest_mask(mask_a)
+        mask_r = np.logical_xor(mask_a, mask_b)
+        
+        if np.sum(mask_r) > 0:
+            new_instances[mask_r] = 0
+            new_semantics[mask_r] = 0
+
+    return Tile(tile.orthophoto, tile.ndsm, new_instances, new_semantics)
+
+
 def correct_ndsm(tile: Tile, subsampling_size=8, median_kernel_size=3) -> Tile:
     """
     Correct the ndsm by replacing the aberant values

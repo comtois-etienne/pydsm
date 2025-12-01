@@ -252,7 +252,9 @@ def copy_paste(copy_tile: Tile, paste_tile: Tile, min_area_ratio=0.4) -> Tile:
     semantics = (paste_tile.semantic_labels * ~ndsm_mask)
     semantics += copy_tile.semantic_labels
 
-    return remove_small_masks(Tile(ortho, ndsm, instances, semantics))
+    t = Tile(ortho, ndsm, instances, semantics)
+    t = remove_disconnected_masks(t)
+    return remove_small_masks(t)
 
 
 def random_copy_paste(copy_local_tile: Tile, paste_tile: Tile, dim_change=0.2, augmentation=False) -> Tile:
