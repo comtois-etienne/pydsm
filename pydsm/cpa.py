@@ -231,6 +231,7 @@ def copy_paste(copy_tile: Tile, paste_tile: Tile, min_area_ratio=0.4) -> Tile:
 
     # no paste if too small
     if area_ratio < min_area_ratio: return paste_tile
+    if area_after < const.MIN_MASK_SIZE: return paste_tile
     
     # orthophotox
     copy_ortho = (copy_tile.orthophoto * np.dstack([array_mask]*3))
@@ -298,7 +299,7 @@ def export_instances(tiles_dir: str, tile_name: str) -> None:
     :param tile_name: str, name of the tile to open and extract the instances from
     :return: None, saves instances as tiles to disk
     """
-    copy_tile = open_as_tile(tiles_dir, tile_name)
+    copy_tile = open_tile_npz(os.path.join(tiles_dir, tile_name))
     local_tiles = extract_instances(copy_tile, ignore_border=True)
 
     for local_tile in local_tiles:
@@ -315,20 +316,19 @@ def export_instances(tiles_dir: str, tile_name: str) -> None:
         save_tile(npz_path, local_tile)
 
 
-def export_all_instances(tiles_dir: str) -> None:
+def export_all_instances(npz_tiles_dir: str) -> None:
     """
     Export all instances of every tiles into the sub-dir `instances` by semantics  
     This is usefull to create copy-paste tiles for augmentation  
     The instances are not normalized when saved (orthophoto=uint8, ndsm=float32)
 
-    :param tiles_dir: str, path to the tiles directory
+    :param path_dir: str, path to the tiles directory
     :return: None, saves instances as tiles to disk
     """
-    ortho_dir = os.path.join(tiles_dir, const.ORTHOPHOTO_SUBDIR)
-    for tile_name in os.listdir(ortho_dir):
-        if not tile_name.endswith('.tif'):
+    for tile_name in os.listdir(npz_tiles_dir):
+        if not tile_name.endswith('.npz'):
             continue
-        export_instances(tiles_dir, tile_name)
+        export_instances(npz_tiles_dir, tile_name)
 
 
 def create_random_tile(paste_tile: Tile, instances: list[Tile], dim_change=0.2, augmentation=False) -> Tile:
@@ -370,7 +370,7 @@ def create_random_tiles(tiles_dir: str, copy_sub_dir='regular_tiles', save_sub_d
     :return: None, saves the augmented tiles in `tiles_dir/save_sub_dir`
     """
     os.makedirs(os.path.join(tiles_dir, save_sub_dir), exist_ok=True)
-    paste_tiles = select_tiles(tiles_dir, sub_dir=copy_sub_dir, min_instances=0, max_instances=10)
+    paste_tiles = select_tiles(tiles_dir, sub_dir=copy_sub_dir)
 
     for _ in range(tile_count):
         instances_per_tile = np.random.randint(min_instance, max_instance)
