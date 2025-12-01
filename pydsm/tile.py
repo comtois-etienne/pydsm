@@ -274,6 +274,18 @@ def remove_small_masks(tile: Tile, min_area=const.MIN_MASK_SIZE) -> Tile:
     return tile
 
 
+def clip_height(tile: Tile, max_height=const.CLIP_HEIGHT) -> Tile:
+    """
+    Clip the height values in the ndsm to the max_height
+
+    :param tile: Tile, tile with an ndsm to be clipped
+    :param max_height: float, maximum height value
+    :return: Tile, tile with a clipped ndsm
+    """
+    ndsm = np.clip(tile.ndsm, 0, max_height)
+    return Tile(tile.orthophoto, ndsm, tile.instance_labels, tile.semantic_labels)
+
+
 def flip_tile(tile: Tile, axis=0):
     """
     Flip on axis 1 or 2 (0=vertical, 1=horizontal)
@@ -552,7 +564,7 @@ def save_split_tiles(tiles_dir: str, tile_name: str, tiles: list[Tile]):
         save_tile(save_path, tile)
 
 
-def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'dataset') -> None:
+def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'tiles_regular') -> None:
     """
     Saves the annotated tiles to npz to be used for creating the copy-paste dataset.  
     Tiles are not normalized (orthophoto=uint8, ndsm=float32)  
@@ -571,6 +583,7 @@ def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'dataset') -> None:
         file_name = f'{utils.remove_extension(name)}.npz'
         npz_path = utils.append_file_to_path(save_dir, file_name)
         t = remove_small_masks(t)
+        t = clip_height(t)
         save_tile(npz_path, t)
 
 
@@ -597,9 +610,43 @@ def create_split_tile_dataset(tiles_dir: str, sub_dir: str, save_dir: str = 'dat
         save_split_tiles(save_dir, name, tiles)
 
 
-def select_tiles(tiles_dir: str, sub_dir: str = 'dataset', min_instances: int = 0, max_instances: int = 100) -> list[str]:
+def is_tile_pastable(t: Tile, max_instances=10, min_ground_ratio=0.6, max_ground_height=1.0) -> bool:
     """
-    Return the name of the tiles that have between min_instances and max_instances instances.
+    Evaluates if the tile is a good candidate to be pasted on.  
+    Criteria:
+    - number of instances <= `max_instances`
+    - ground ratio >= `min_ground_ratio` (ground defined by kmeans with 2 clusters on ndsm)
+    - average ground height <= `max_ground_height` (used the kmeans ground mask)
+
+    :param t: Tile, tile that needs the ndsm and instance labels
+    :param max_instances: int, maximum number of instances allowed
+    :param min_ground_ratio: float, minimum ratio of ground pixels [0.0, 1.0]
+    :param max_ground_height: float, maximum average ground height in meters
+    :return: bool, True if the tile is pastable, False otherwise
+    """
+    unique = np.unique(t.instance_labels)
+    instance_count = len(unique) - (1 if 0 in unique else 0)
+    if instance_count > max_instances:
+        return False
+
+    ndsm = t.ndsm.copy()
+    ndsm[ndsm > const.CLIP_HEIGHT] = const.CLIP_HEIGHT
+
+    threshold = np.mean(nda.kmeans(t.ndsm, 3)[:2])
+    ground_mask = (t.ndsm <= threshold)
+    if (ground_mask.sum() / t.ndsm.size) < min_ground_ratio:
+        return False
+
+    ndsm[~ground_mask] = -1
+    if np.mean(ndsm[ndsm >= 0]) > max_ground_height:
+        return False
+
+    return True
+
+
+def select_tiles(tiles_dir: str, sub_dir: str = 'dataset') -> list[str]:
+    """
+    Return the name of the tiles that are pastable
 
     :param tiles_dir: str, path to the directory containing the tiles
     :param sub_dir: str, sub-directory where the tiles are saved
@@ -612,8 +659,7 @@ def select_tiles(tiles_dir: str, sub_dir: str = 'dataset', min_instances: int = 
     for tile_name in tile_names:
         if not tile_name.endswith('.npz'): continue
         t = open_tile_npz(os.path.join(tiles_dir, sub_dir, tile_name))
-        n_instances = np.max(t.instance_labels)
-        if n_instances >= min_instances and n_instances <= max_instances:
+        if is_tile_pastable(t, const.MAX_INSTANCES, const.MIN_GROUND_RATIO, const.MAX_GROUND_HEIGHT):
             selected_tiles.append(tile_name)
     return selected_tiles
 
