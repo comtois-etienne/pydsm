@@ -67,6 +67,51 @@ def tree_species_dict() -> dict:
     }
 
 
+def tree_species_dict_2() -> dict:
+    """
+    20 classes total
+    """
+    def list_to_dict(l: list) -> dict:
+        return {l[i]: i for i in range(len(l))}
+    
+    return list_to_dict([
+        'BACKGROUND',
+        'UNKNOWN',
+        'ACPL',
+        'ACSA',
+        'GLTR',
+        'FRPE',
+        'UL',
+        'PIPU',
+        'SYRE',
+        'CEOC',
+        'QURU',
+        'TICO',
+        'MA',
+        'PO',
+        'GI',
+        'GY',
+        'PN',
+        'AM',
+    ])
+
+
+def get_tile_mean_std() -> dict:
+    """
+    Based on 1000 tiles
+    """
+    return {
+        'r_mean': 68.806,
+        'r_std': 45.867,
+        'g_mean': 91.519,
+        'g_std': 42.803,
+        'b_mean': 50.144,
+        'b_std': 44.72,
+        'd_mean': 4.800,
+        'd_std': 5.030
+    }
+
+
 def equal_distribution(lenght: int = 2) -> list:
     return [0.0] + [1.0/(lenght-1)] * (lenght-1)
 
@@ -75,5 +120,5 @@ def tree_species_distribution() -> list:
     """
     Precalculated distribution of tree species to rebalance the dataset
     """
-    return [0.0, 0.0, 0.034, 0.033, 0.061, 0.05, 0.051, 0.055, 0.057, 0.055, 0.057, 0.058, 0.059, 0.058, 0.06, 0.062, 0.062, 0.062, 0.063, 0.063]
+    return [0.0, 0.0, 0.039, 0.043, 0.046, 0.054, 0.059, 0.065, 0.065, 0.066, 0.068, 0.069, 0.068, 0.071, 0.071, 0.072, 0.072, 0.072]
 
