@@ -306,7 +306,7 @@ def export_instances(tiles_dir: str, tile_name: str) -> None:
 
     for local_tile in local_tiles:
         semantics = np.max(local_tile.semantic_labels)
-        code = get_semantic_code(const.SEMANTIC_DICT, semantics)
+        code = get_semantic_code(semantics)
         instance = np.max(local_tile.instance_labels)
         npz_name = utils.remove_extension(tile_name)
         npz_name = f'{npz_name} (id={instance}).npz'
@@ -379,7 +379,7 @@ def create_random_tiles(tiles_dir: str, copy_sub_dir='regular_tiles', save_sub_d
         name = np.random.choice(paste_tiles)
 
         paste_tile = open_tile_npz(os.path.join(tiles_dir, copy_sub_dir, name))
-        instances = get_random_instances(tiles_dir, const.SEMANTIC_DICT, const.DISTRIBUTION, size=instances_per_tile)
+        instances = get_random_instances(tiles_dir, const.DISTRIBUTION, size=instances_per_tile)
         paste_tile = create_random_tile(paste_tile, instances, augmentation = False)
 
         npz_name = name.replace('.npz', f' ({get_uuid(8)}).npz')

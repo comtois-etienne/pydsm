@@ -49,7 +49,7 @@ class Tile:
         return self.orthophoto.shape[:2]
 
 
-def get_semantic_code(semantics_dict: dict, code: int) -> str:
+def get_semantic_code(code: int) -> str:
     """
     `Warning` does not check for out of bound errors
 
@@ -57,10 +57,10 @@ def get_semantic_code(semantics_dict: dict, code: int) -> str:
     :param code: int, int value of the semantic str
     :return: str, semantic str
     """
-    return list(semantics_dict)[code]
+    return list(const.SEMANTIC_DICT)[code]
 
 
-def get_semantic_intcode(semantics_dict: dict, code: str) -> int:
+def get_semantic_intcode(code: str) -> int:
     """
     Get the integer value of the given code  
     4 first char are used. If no corresponding value was found, the 2 first char are used  
@@ -70,6 +70,7 @@ def get_semantic_intcode(semantics_dict: dict, code: str) -> int:
     :param code: str, key value with corresponding int in the `semantics_dict`
     :return: int value corresponding to the code string
     """
+    semantics_dict = const.SEMANTIC_DICT
     long = code.upper()[:4]
     short = long[:2]
 
@@ -105,7 +106,7 @@ def get_all_points(tiles_dir: str):
     return all_points
 
 
-def get_semantic_count(all_points: pd.DataFrame, semantic_dict: dict, semantic_col: str = 'code'):
+def get_semantic_count(all_points: pd.DataFrame, semantic_col: str = 'code'):
     """
     Return the count of each semantic class in the points DataFrame.  
     The semantic classes are defined in the semantic_dict.  
@@ -118,7 +119,7 @@ def get_semantic_count(all_points: pd.DataFrame, semantic_dict: dict, semantic_c
     """
     all_points = all_points[[semantic_col]].copy()
     all_points['int_code'] = all_points[semantic_col].apply(
-        lambda code: get_semantic_intcode(semantic_dict, code)
+        lambda code: get_semantic_intcode(code)
     )
     occurrences = all_points['int_code'].value_counts().sort_index()
     # occurrences.index = occurrences.index.map(lambda int_code: tile.get_semantic_code(semantic_dict, int_code))
@@ -126,17 +127,16 @@ def get_semantic_count(all_points: pd.DataFrame, semantic_dict: dict, semantic_c
     return [0, 0] + occurrences.to_list()[1:]
 
 
-def get_semantic_distribution(tiles_dir: str, semantic_dict: dict) -> list:
+def get_semantic_distribution(tiles_dir: str) -> list:
     """
     Return the distribution of semantic classes in the points DataFrame.  
     The semantic classes are defined in the semantic_dict.  
 
     :param tiles_dir: str, directory containing a 'points' subdirectory with CSV files.
-    :param semantic_dict: dict, mapping semantic codes to integer codes.
     :return: list, of the distribution of each semantic class, ordered by the integer codes as indexes.
     """
     all_points = get_all_points(tiles_dir)
-    semantic_count = get_semantic_count(all_points, semantic_dict, 'code')
+    semantic_count = get_semantic_count(all_points, 'code')
     semantic_count = np.array(semantic_count) / np.sum(semantic_count)
     return semantic_count.tolist()
 
@@ -181,7 +181,7 @@ def display_tile(tile: Tile, colorbar=False, instance_cmap='tab20b', semantic_cm
     unique = len(np.unique(tile.semantic_labels))
     if unique == 2:
         unique = np.max(tile.semantic_labels)
-        unique = get_semantic_code(const.SEMANTIC_DICT, unique)
+        unique = get_semantic_code(unique)
 
     plt.title(f'semantic_labels={unique}')
     plt.imshow(tile.semantic_labels, vmin=0, vmax=20, cmap=semantic_cmap, interpolation='nearest')
@@ -190,13 +190,12 @@ def display_tile(tile: Tile, colorbar=False, instance_cmap='tab20b', semantic_cm
     plt.show()
 
 
-def apply_semantic_codes(instance_labels: np.ndarray, semantics_df: pd.DataFrame, semantics_dict: dict) -> np.ndarray:
+def apply_semantic_codes(instance_labels: np.ndarray, semantics_df: pd.DataFrame) -> np.ndarray:
     """
     Creates the semantic labels from the instance labels 
 
     :param instance_labels: numpy array, dtype must be integer. contains the mask instances
     :param semantics_df: pd.DataFrame with columns ['axis-0', 'axis-1', 'code'] representing the semantic labels.
-    :param semantics_dict: dictionary mapping the semantic str (code) to integer values
     :return: np.ndarray with the semantic int values applied to the instance masks
     """
     unique_values = np.unique(instance_labels)
@@ -226,7 +225,7 @@ def apply_semantic_codes(instance_labels: np.ndarray, semantics_df: pd.DataFrame
 
     df['int_code'] = 0
     for code in df['code']:
-        int_code = get_semantic_intcode(semantics_dict, code)
+        int_code = get_semantic_intcode(code)
         row_indexer = df['code'] == code
         df.loc[row_indexer, 'int_code'] = int_code
 
@@ -330,7 +329,7 @@ def open_as_tile(tiles_dir: str, tile_name: str) -> Tile:
         semantics = np.zeros_like(instances, dtype=np.uint16)
     else:
         points_df = pd.read_csv(points_path)
-        semantics = apply_semantic_codes(instances, points_df, const.SEMANTIC_DICT).astype(np.uint16)
+        semantics = apply_semantic_codes(instances, points_df).astype(np.uint16)
 
     ortho = geo.to_ndarray(ortho)[..., :3]
     ndsm = geo.to_ndarray(ndsm)
@@ -418,28 +417,30 @@ def split_tile(tile: Tile, count=4) -> list[Tile]:
     - ne : north-east (count >= 4)
     - sw : south-west (count >= 4)
     - se : south-east (count >= 4)
-    - ff : full frame (count >= 5)
-    - cc : center crop (count >= 6)
-    - nc : north center (count >= 10)
-    - ec : east center (count >= 10)
-    - sc : south center (count >= 10)
-    - wc : west center (count >= 10)
+    - cc : center crop (count >= 5)
+    - nc : north center (count >= 9)
+    - ec : east center (count >= 9)
+    - sc : south center (count >= 9)
+    - wc : west center (count >= 9)
+    - ff : full frame resized (count >= 10)
 
     :param tile: tile containing orthophoto, ndsm, instance labels, and semantic labels
     :param count: int, number of tiles to split into (minimum 4, maximum 10)
     :returns: a list of tiles
     """
+    if count == 1: return [tile]
+
     count = max(4, count)
     tiles = split_four(tile)
 
     if count >= 5:
-        tiles.append(resize_tile(tile, tiles[0].shape()[0]))
-
-    if count >= 6:
         tiles.append(crop_center(tile))
     
-    if count >= 10:
+    if count >= 9:
         tiles.extend(split_star(tile))
+
+    if count >= 10:
+        tiles.append(resize_tile(tile, tiles[0].shape()[0]))
 
     return tiles
 
@@ -587,17 +588,16 @@ def get_instance(tiles_dir: str, semantic_code: str, percentile=0.0) -> Tile:
     return open_tile_npz(tile_path)
 
 
-def get_random_instances(tiles_dir: str, semantic_dict: dict, distribution: list, size=1) -> list[Tile] | Tile:
+def get_random_instances(tiles_dir: str, distribution: list, size=1) -> list[Tile] | Tile:
     """
     Get a random instance from the tiles directory based on the given distribution.  
     The distribution dictactes the probability of selecting each semantic class.  
 
     :param tiles_dir: str, Path to the tiles directory (should contain 'instances' subdirectory)
-    :param semantic_dict: dict, mapping semantic codes to integer codes.
     :param distribution: list, of the distribution of each semantic class, ordered by the integer
     :return: Tile | list[Tile], a random instance from the tiles directory based on the given distribution.
     """
-    semantics = list(semantic_dict)
+    semantics = list(const.SEMANTIC_DICT)
     codes = np.random.choice(semantics, size=size, p=distribution)
     instances = []
     for code in codes:
@@ -629,6 +629,12 @@ def save_split_tiles(tiles_dir: str, tile_name: str, tiles: list[Tile]):
     """
     names = ['nw', 'ne', 'sw', 'se', 'ff', 'cc', 'nc', 'ec', 'sc', 'wc']
     tile_name = utils.remove_extension(tile_name)
+
+    if len(tiles) == 1:
+        save_path = f'{tile_name}.npz'
+        save_path = utils.append_file_to_path(tiles_dir, save_path)
+        save_tile(save_path, tiles[0])
+        return
 
     for i, tile in enumerate(tiles):
         if i >= len(names): names.append(f'{i}')
@@ -662,12 +668,13 @@ def create_tile_dataset(tiles_dir: str, save_sub_dir: str = 'tiles_regular') -> 
 
 def create_split_tile_dataset(tiles_dir: str, sub_dir: str, save_dir: str = 'dataset', count=4) -> None:
     """
-    Split all npz tiles from `tiles_dir/sub_dir` and saves them into `tiles_dir/save_dir`  
+    Split all npz tiles from `tiles_dir/sub_dir` and saves them into `tiles_dir/save_dir` 
+    Preprocesses each sub-tile for YOLO before saving them.
 
     :param tiles_dir: str, directory where the tiles are saved
     :param sub_dir: str, sub-directory where the tiles are saved
     :param save_dir: str, sub-directory where the split tiles will be saved
-    :param count: int, number of sub-tiles per tile
+    :param count: int, number of sub-tiles per tile (1 or more)
     :return: None, saves the split tiles into `tiles_dir/save_dir`
     """
     names = os.listdir(os.path.join(tiles_dir, sub_dir))
@@ -703,6 +710,9 @@ def is_tile_pastable(t: Tile, max_instances=10, min_ground_ratio=0.8, max_ground
 
     ndsm = t.ndsm.copy()
     ndsm[ndsm > const.CLIP_HEIGHT] = const.CLIP_HEIGHT
+
+    if np.max(ndsm) == const.CLIP_HEIGHT:
+        return False
 
     # First check on the whole ndsm - in case kmeans fails
     if np.mean(ndsm) > max_ground_height:
