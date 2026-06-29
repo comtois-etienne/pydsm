@@ -1,0 +1,551 @@
+{
+    "63907176-29e6-4990-81fc-238b71bcf93f_1": {
+        "mask_id": 1,
+        "origin_x": 299366.525,
+        "origin_y": 5036873.95,
+        "origin_z": 28.786,
+        "area": 77.103,
+        "crown_height": 11.969,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_2": {
+        "mask_id": 2,
+        "origin_x": 299364.245,
+        "origin_y": 5036866.089,
+        "origin_z": 29.123,
+        "area": 33.787,
+        "crown_height": 11.302,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_3": {
+        "mask_id": 3,
+        "origin_x": 299379.627,
+        "origin_y": 5036882.332,
+        "origin_z": 28.925,
+        "area": 26.23,
+        "crown_height": 8.32,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_5": {
+        "mask_id": 5,
+        "origin_x": 299363.845,
+        "origin_y": 5036848.927,
+        "origin_z": 28.619,
+        "area": 31.878,
+        "crown_height": 13.045,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_6": {
+        "mask_id": 6,
+        "origin_x": 299359.704,
+        "origin_y": 5036846.906,
+        "origin_z": 29.016,
+        "area": 14.805,
+        "crown_height": 8.219,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_7": {
+        "mask_id": 7,
+        "origin_x": 299363.845,
+        "origin_y": 5036836.105,
+        "origin_z": 28.87,
+        "area": 36.676,
+        "crown_height": 13.74,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_8": {
+        "mask_id": 8,
+        "origin_x": 299362.965,
+        "origin_y": 5036828.744,
+        "origin_z": 28.726,
+        "area": 33.413,
+        "crown_height": 12.463,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_9": {
+        "mask_id": 9,
+        "origin_x": 299360.624,
+        "origin_y": 5036819.222,
+        "origin_z": 28.968,
+        "area": 11.507,
+        "crown_height": 9.518,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_10": {
+        "mask_id": 10,
+        "origin_x": 299359.564,
+        "origin_y": 5036812.481,
+        "origin_z": 28.828,
+        "area": 23.264,
+        "crown_height": 9.792,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_11": {
+        "mask_id": 11,
+        "origin_x": 299360.864,
+        "origin_y": 5036804.06,
+        "origin_z": 28.79,
+        "area": 37.639,
+        "crown_height": 8.956,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_12": {
+        "mask_id": 12,
+        "origin_x": 299359.844,
+        "origin_y": 5036794.159,
+        "origin_z": 28.81,
+        "area": 24.319,
+        "crown_height": 9.772,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_13": {
+        "mask_id": 13,
+        "origin_x": 299355.103,
+        "origin_y": 5036785.577,
+        "origin_z": 29.239,
+        "area": 10.992,
+        "crown_height": 7.926,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_14": {
+        "mask_id": 14,
+        "origin_x": 299359.324,
+        "origin_y": 5036785.617,
+        "origin_z": 28.402,
+        "area": 16.398,
+        "crown_height": 8.676,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_15": {
+        "mask_id": 15,
+        "origin_x": 299358.904,
+        "origin_y": 5036777.376,
+        "origin_z": 28.748,
+        "area": 36.161,
+        "crown_height": 9.609,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_16": {
+        "mask_id": 16,
+        "origin_x": 299358.644,
+        "origin_y": 5036771.635,
+        "origin_z": 28.77,
+        "area": 27.402,
+        "crown_height": 11.011,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_17": {
+        "mask_id": 17,
+        "origin_x": 299358.244,
+        "origin_y": 5036761.074,
+        "origin_z": 29.437,
+        "area": 50.913,
+        "crown_height": 11.939,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_19": {
+        "mask_id": 19,
+        "origin_x": 299372.766,
+        "origin_y": 5036734.67,
+        "origin_z": 29.349,
+        "area": 11.784,
+        "crown_height": 3.772,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_20": {
+        "mask_id": 20,
+        "origin_x": 299374.906,
+        "origin_y": 5036755.693,
+        "origin_z": 28.962,
+        "area": 14.54,
+        "crown_height": 8.105,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_21": {
+        "mask_id": 21,
+        "origin_x": 299383.108,
+        "origin_y": 5036755.053,
+        "origin_z": 29.65,
+        "area": 35.277,
+        "crown_height": 12.471,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_22": {
+        "mask_id": 22,
+        "origin_x": 299400.17,
+        "origin_y": 5036752.613,
+        "origin_z": 29.088,
+        "area": 68.662,
+        "crown_height": 11.046,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_55": {
+        "mask_id": 55,
+        "origin_x": 299375.046,
+        "origin_y": 5036764.774,
+        "origin_z": 28.833,
+        "area": 54.059,
+        "crown_height": 8.567,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_56": {
+        "mask_id": 56,
+        "origin_x": 299377.887,
+        "origin_y": 5036772.915,
+        "origin_z": 28.638,
+        "area": 53.089,
+        "crown_height": 9.949,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_57": {
+        "mask_id": 57,
+        "origin_x": 299378.047,
+        "origin_y": 5036777.396,
+        "origin_z": 28.922,
+        "area": 16.399,
+        "crown_height": 10.412,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_59": {
+        "mask_id": 59,
+        "origin_x": 299375.506,
+        "origin_y": 5036796.379,
+        "origin_z": 28.566,
+        "area": 17.917,
+        "crown_height": 5.013,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_60": {
+        "mask_id": 60,
+        "origin_x": 299370.506,
+        "origin_y": 5036780.537,
+        "origin_z": 28.638,
+        "area": 153.598,
+        "crown_height": 11.874,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_61": {
+        "mask_id": 61,
+        "origin_x": 299402.01,
+        "origin_y": 5036768.955,
+        "origin_z": 28.862,
+        "area": 117.899,
+        "crown_height": 14.067,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_62": {
+        "mask_id": 62,
+        "origin_x": 299403.831,
+        "origin_y": 5036777.936,
+        "origin_z": 28.82,
+        "area": 22.446,
+        "crown_height": 8.298,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_63": {
+        "mask_id": 63,
+        "origin_x": 299400.53,
+        "origin_y": 5036784.897,
+        "origin_z": 28.709,
+        "area": 50.753,
+        "crown_height": 12.511,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_64": {
+        "mask_id": 64,
+        "origin_x": 299402.07,
+        "origin_y": 5036790.458,
+        "origin_z": 28.709,
+        "area": 81.71,
+        "crown_height": 20.528,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_65": {
+        "mask_id": 65,
+        "origin_x": 299403.731,
+        "origin_y": 5036797.719,
+        "origin_z": 28.606,
+        "area": 76.209,
+        "crown_height": 10.161,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_67": {
+        "mask_id": 67,
+        "origin_x": 299411.652,
+        "origin_y": 5036812.881,
+        "origin_z": 28.549,
+        "area": 38.3,
+        "crown_height": 9.016,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_69": {
+        "mask_id": 69,
+        "origin_x": 299378.807,
+        "origin_y": 5036809.921,
+        "origin_z": 28.693,
+        "area": 37.847,
+        "crown_height": 7.171,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_70": {
+        "mask_id": 70,
+        "origin_x": 299383.388,
+        "origin_y": 5036815.922,
+        "origin_z": 28.915,
+        "area": 38.913,
+        "crown_height": 6.644,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_71": {
+        "mask_id": 71,
+        "origin_x": 299378.787,
+        "origin_y": 5036822.783,
+        "origin_z": 28.964,
+        "area": 66.591,
+        "crown_height": 8.416,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_72": {
+        "mask_id": 72,
+        "origin_x": 299385.988,
+        "origin_y": 5036834.204,
+        "origin_z": 29.058,
+        "area": 128.239,
+        "crown_height": 18.422,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_74": {
+        "mask_id": 74,
+        "origin_x": 299409.891,
+        "origin_y": 5036774.056,
+        "origin_z": 29.236,
+        "area": 12.739,
+        "crown_height": 3.449,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_75": {
+        "mask_id": 75,
+        "origin_x": 299416.372,
+        "origin_y": 5036768.315,
+        "origin_z": 29.4,
+        "area": 132.745,
+        "crown_height": 14.408,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_76": {
+        "mask_id": 76,
+        "origin_x": 299445.457,
+        "origin_y": 5036735.57,
+        "origin_z": 29.53,
+        "area": 13.654,
+        "crown_height": 11.794,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_78": {
+        "mask_id": 78,
+        "origin_x": 299406.151,
+        "origin_y": 5036818.162,
+        "origin_z": 28.628,
+        "area": 80.071,
+        "crown_height": 12.179,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_79": {
+        "mask_id": 79,
+        "origin_x": 299402.95,
+        "origin_y": 5036824.543,
+        "origin_z": 29.162,
+        "area": 81.11,
+        "crown_height": 12.13,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_80": {
+        "mask_id": 80,
+        "origin_x": 299397.69,
+        "origin_y": 5036835.265,
+        "origin_z": 28.95,
+        "area": 118.594,
+        "crown_height": 15.802,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_81": {
+        "mask_id": 81,
+        "origin_x": 299406.551,
+        "origin_y": 5036858.988,
+        "origin_z": 28.401,
+        "area": 37.648,
+        "crown_height": 7.183,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_82": {
+        "mask_id": 82,
+        "origin_x": 299408.911,
+        "origin_y": 5036865.409,
+        "origin_z": 28.889,
+        "area": 13.881,
+        "crown_height": 8.038,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_83": {
+        "mask_id": 83,
+        "origin_x": 299413.212,
+        "origin_y": 5036848.487,
+        "origin_z": 28.898,
+        "area": 91.921,
+        "crown_height": 8.332,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_84": {
+        "mask_id": 84,
+        "origin_x": 299393.389,
+        "origin_y": 5036853.627,
+        "origin_z": 29.247,
+        "area": 78.55,
+        "crown_height": 12.316,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_85": {
+        "mask_id": 85,
+        "origin_x": 299400.91,
+        "origin_y": 5036875.35,
+        "origin_z": 28.834,
+        "area": 60.46,
+        "crown_height": 10.415,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_86": {
+        "mask_id": 86,
+        "origin_x": 299400.13,
+        "origin_y": 5036883.372,
+        "origin_z": 29.715,
+        "area": 32.56,
+        "crown_height": 11.217,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_89": {
+        "mask_id": 89,
+        "origin_x": 299427.894,
+        "origin_y": 5036815.682,
+        "origin_z": 29.101,
+        "area": 49.146,
+        "crown_height": 9.67,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_92": {
+        "mask_id": 92,
+        "origin_x": 299452.378,
+        "origin_y": 5036758.373,
+        "origin_z": 29.967,
+        "area": 86.826,
+        "crown_height": 13.376,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_93": {
+        "mask_id": 93,
+        "origin_x": 299459.839,
+        "origin_y": 5036742.711,
+        "origin_z": 29.474,
+        "area": 73.279,
+        "crown_height": 12.694,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_94": {
+        "mask_id": 94,
+        "origin_x": 299437.015,
+        "origin_y": 5036756.473,
+        "origin_z": 30.363,
+        "area": 9.388,
+        "crown_height": 3.314,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_95": {
+        "mask_id": 95,
+        "origin_x": 299440.156,
+        "origin_y": 5036733.91,
+        "origin_z": 29.471,
+        "area": 30.389,
+        "crown_height": 7.631,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_96": {
+        "mask_id": 96,
+        "origin_x": 299441.996,
+        "origin_y": 5036736.41,
+        "origin_z": 29.512,
+        "area": 19.809,
+        "crown_height": 7.508,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_97": {
+        "mask_id": 97,
+        "origin_x": 299438.196,
+        "origin_y": 5036742.511,
+        "origin_z": 30.203,
+        "area": 43.4,
+        "crown_height": 7.385,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_100": {
+        "mask_id": 100,
+        "origin_x": 299391.809,
+        "origin_y": 5036710.406,
+        "origin_z": 29.813,
+        "area": 18.22,
+        "crown_height": 5.88,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_101": {
+        "mask_id": 101,
+        "origin_x": 299396.85,
+        "origin_y": 5036709.446,
+        "origin_z": 29.462,
+        "area": 13.52,
+        "crown_height": 4.031,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_102": {
+        "mask_id": 102,
+        "origin_x": 299410.311,
+        "origin_y": 5036709.466,
+        "origin_z": 29.521,
+        "area": 18.712,
+        "crown_height": 5.272,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_103": {
+        "mask_id": 103,
+        "origin_x": 299417.313,
+        "origin_y": 5036709.546,
+        "origin_z": 29.731,
+        "area": 21.609,
+        "crown_height": 6.116,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_105": {
+        "mask_id": 105,
+        "origin_x": 299432.095,
+        "origin_y": 5036707.466,
+        "origin_z": 29.638,
+        "area": 38.993,
+        "crown_height": 8.52,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_107": {
+        "mask_id": 107,
+        "origin_x": 299385.028,
+        "origin_y": 5036711.446,
+        "origin_z": 29.511,
+        "area": 14.95,
+        "crown_height": 8.162,
+        "elevation_offset": 15.0
+    },
+    "63907176-29e6-4990-81fc-238b71bcf93f_109": {
+        "mask_id": 109,
+        "origin_x": 299373.486,
+        "origin_y": 5036712.387,
+        "origin_z": 29.786,
+        "area": 48.657,
+        "crown_height": 12.325,
+        "elevation_offset": 15.0
+    }
+}
