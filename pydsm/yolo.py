@@ -502,6 +502,7 @@ def predict_from_geotiffs(model_paths: str | list[str], tiles_dir: str, pred_mod
     :return: None, saves the prediction results as Tile (numpy array) on disk in const.PREDICTION_SUBDIR
     """
     tile_names = [utils.remove_extension(f) for f in os.listdir(os.path.join(tiles_dir, const.ORTHOPHOTO_SUBDIR)) if f.endswith('.tif')]
+    tile_names = sorted(tile_names)
     for tile_name in tile_names:
         t = predict_from_geotiff(model_paths, tiles_dir, tile_name, pred_mode, verbose=verbose)
         t_path = os.path.join(tiles_dir, const.PREDICTED_TILES_SUBDIR, f'{tile_name}.npz')
