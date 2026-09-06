@@ -70,6 +70,7 @@ def get_semantic_intcode(code: str) -> int:
     :param code: str, key value with corresponding int in the `semantics_dict`
     :return: int value corresponding to the code string
     """
+    # return 2 if code is None or code is '' else 1
     semantics_dict = const.SEMANTIC_DICT
     long = code.upper()[:4]
     short = long[:2]
@@ -174,7 +175,7 @@ def display_tile(tile: Tile, colorbar=False, instance_cmap='tab20b', semantic_cm
 
     plt.subplot(1, 4, 3)
     unique = len(np.unique(tile.instance_labels))
-    plt.title(f'instance_labels={unique}')
+    plt.title(f'instance_labels={unique - 1}')
     plt.imshow(tile.instance_labels, cmap=instance_cmap, interpolation='nearest')
 
     plt.subplot(1, 4, 4)
@@ -182,6 +183,8 @@ def display_tile(tile: Tile, colorbar=False, instance_cmap='tab20b', semantic_cm
     if unique == 2:
         unique = np.max(tile.semantic_labels)
         unique = get_semantic_code(unique)
+    else:
+        unique = unique - 1
 
     plt.title(f'semantic_labels={unique}')
     plt.imshow(tile.semantic_labels, vmin=0, vmax=20, cmap=semantic_cmap, interpolation='nearest')
@@ -548,15 +551,25 @@ def save_tile(npz_path: str, tile: Tile) -> None:
     :return: None, save to disk
     """
     # print(f'o={tile.orthophoto.dtype} n={tile.ndsm.dtype} i={tile.instance_labels.dtype} s={tile.semantic_labels.dtype}')
-    np.savez_compressed(
-        npz_path,
-        orthophoto=tile.orthophoto,
-        ndsm=tile.ndsm,
-        instance_labels=tile.instance_labels,
-        semantic_labels=tile.semantic_labels,
-        # instance_labels=tile.instance_labels.astype(np.uint16),
-        # semantic_labels=tile.semantic_labels.astype(np.uint16),
-    )
+    os.makedirs(os.path.dirname(npz_path), exist_ok=True)
+
+    if tile.confidence_labels is None:
+        np.savez_compressed(
+            npz_path,
+            orthophoto=tile.orthophoto,
+            ndsm=tile.ndsm,
+            instance_labels=tile.instance_labels,
+            semantic_labels=tile.semantic_labels,
+        )
+    else:
+        np.savez_compressed(
+            npz_path,
+            orthophoto=tile.orthophoto,
+            ndsm=tile.ndsm,
+            instance_labels=tile.instance_labels,
+            semantic_labels=tile.semantic_labels,
+            confidence_labels=tile.confidence_labels
+        )
 
 
 def open_tile_npz(npz_path: str) -> Tile:
@@ -567,7 +580,10 @@ def open_tile_npz(npz_path: str) -> Tile:
     :return: Tile from disk
     """
     npz = np.load(npz_path, allow_pickle=True)
-    return Tile(npz['orthophoto'], npz['ndsm'], npz['instance_labels'], npz['semantic_labels'])
+    tile = Tile(npz['orthophoto'], npz['ndsm'], npz['instance_labels'], npz['semantic_labels'])
+    if 'confidence_labels' in npz:
+        tile.confidence_labels = npz['confidence_labels']
+    return tile
 
 
 def get_instance(tiles_dir: str, semantic_code: str, percentile=0.0) -> Tile:
