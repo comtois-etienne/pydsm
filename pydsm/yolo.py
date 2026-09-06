@@ -5,6 +5,8 @@ import numpy as np
 import cv2
 import math
 import matplotlib.pyplot as plt
+from skimage.morphology import disk
+from skimage.morphology import opening as binary_opening
 import os
 
 from skimage.measure import label
@@ -368,124 +370,140 @@ def load_rgbd(orthophoto_path: str, ndsm_path: str, clip_height : float = const.
     return np.dstack((rgb, d))
 
 
-def load_as_tile(tiles_dir: str, tile_name: str, clip_height : float = const.CLIP_HEIGHT) -> np.ndarray:
+def predict_instances(model_path: str, image: np.ndarray, confidence=const.CONFIDENCE_THRESHOLD) -> tuple[list[np.array], list[float], list[int]]:
     """
-    Load and normalize the rgbd image from an orthophoto (geoTIFF) and ndsm (geoTIFF).  
-    see `load_rgbd` for more detailed informations  
+    Predict the instance segmentation masks in one image using a YOLO model.
 
-    :param tiles_dir: str, directory containing the sub-directories `orthophoto`, `ndsm`
-    :param tile_name: str, tile name in the sub-directories
-    :param clip_height: float, ceiling of the ndsm on which the model has been trained on
-    :return: np.ndarray, rgbd array with dtype uint8 for the YOLO model prediction
+    :param model_path: str, path to the YOLO model trained on RGB-D or RGB images
+    :param image: np.ndarray (dtype=unint8), input RGB-D or RGB image as a numpy array of shape (H, W, 4) (RGBD) or (H, W, 3) (RGB)
+    :param confidence: float, confidence threshold for predictions
+    :return: tuple of lists containing:
+        - list of np.ndarray, predicted instance segmentation masks of shape (H, W) with binary values (0 or 1)
+        - list of float, confidence scores for each predicted mask
+        - list of int, class labels for each predicted mask
     """
-    tile_name = utils.remove_extension(tile_name)
-    ortho_path = os.path.join(tiles_dir, const.ORTHOPHOTO_SUBDIR, f'{tile_name}.tif')
-    ndsm_path = os.path.join(tiles_dir, const.NDSM_SUBDIR, f'{tile_name}.tif')
-    return load_rgbd(ortho_path, ndsm_path, clip_height)
-
-
-def predict_instances(rgbd_model_path: str, rgbd_image: np.ndarray) -> np.ndarray:
-    """
-    Predict the instance segmentation masks in one RGB-D image using a YOLO model.  
-    The values in `rgbd_image` are of dtype uint8 :  
-    - The rgb part is normalized (using min max).  
-    - The d part is clipped at `CLIP_HEIGHT` meters and then scaled to [0.255].  
-        - where `0` equals to 0.0 meters 
-        - and `255` equals to `CLIP_HEIGHT` meters (default training value)
-
-    Non-maximum-suppression is used to keep the best masks  
-
-    :param rgbd_model_path: str, path to the YOLO model trained on RGB-D images
-    :param rgbd_image: np.ndarray (dtype=unint8), input RGB-D image as a numpy array of shape (H, W, 4) (RGBD)
-    :return: np.ndarray, instance segmentation mask of shape (H, W) with integer labels for each instance (from least to most confident)
-    """
-    orig_shape = rgbd_image.shape[:2]
-    model = YOLO(rgbd_model_path)
-    results = model.predict(source=rgbd_image, conf=const.CONFIDENCE_THRESHOLD, verbose=False)
+    orig_shape = image.shape[:2]
+    model = YOLO(model_path)
+    results = model.predict(source=image, conf=confidence, verbose=False)
 
     if results[0].masks is None:
-        return np.zeros(orig_shape, dtype=np.uint8)
-    
+        return [], [], []
+
     masks = results[0].masks.data.cpu().numpy()
     confs = results[0].boxes.conf.cpu().numpy()
-    # classes = results[0].boxes.cls.cpu().numpy()
+    classes = [int(c) for c in results[0].boxes.cls.cpu().numpy()]
 
+    out_shape = masks[0].shape[:2]
+    if out_shape != orig_shape:
+        masks = [nda.rescale_nearest_neighbour(mask, orig_shape) for mask in masks]
+
+    return masks, confs, classes
+
+
+def clean_prediction(masks: list[np.ndarray], confs: list[float], classes: list[int]) -> tuple[np.ndarray]:
+    """
+    Merges the predicted instance segmentation masks into a single instance mask and a semantic mask. 
+    Removes holes, applys non-maximum suppression (NMS), and assigs instance and semantic labels.
+
+    :param masks: list of np.ndarray, predicted instance segmentation masks of shape (H, W) with binary values (0 or 1)
+    :param confs: list of float, confidence scores for each predicted mask
+    :param classes: list of int, class labels for each predicted mask
+    :return: tuple containing:
+        - np.ndarray, instance mask of shape (H, W) with integer values representing instance labels (0 for background, 1 for first instance, 2 for second instance, etc.)
+        - np.ndarray, semantic mask of shape (H, W) with integer values representing class labels (0 for background, 1 for first class, 2 for second class, etc.)
+        - np.ndarray, confidence mask of shape (H, W) with float values representing confidence scores for each pixel
+    """
     masks = [nda.get_biggest_mask(mask) for mask in masks]
     masks = [nda.remove_holes(mask) for mask in masks]
-    masks = nda.nms(masks, confs, const.IOU_THRESHOLD)[::-1]  # from least to most confident
+    kept_masks = nda.nms(masks, confs, const.IOU_THRESHOLD)[::-1]
+    kept_masks_index = [np.where(np.all(masks == m, axis=(1, 2)))[0][0] for m in kept_masks]
 
     out_shape = masks[0].shape[:2]
     instances = np.zeros(out_shape, dtype=np.uint16)
+    semantics = np.zeros(out_shape, dtype=np.uint16)
+    confidences = np.zeros(out_shape, dtype=np.float32)
 
-    for i, mask in enumerate(masks):
+    for i, mask in enumerate(kept_masks):
         instances[mask > 0] = i + 1
 
-    if out_shape != orig_shape:
-        instances = nda.rescale_nearest_neighbour(instances, orig_shape)
+    new_instances = np.zeros_like(instances)
+    instances = nda.remove_small_masks(instances, min_area=const.MIN_MASK_SIZE)
+    for i in np.unique(instances):
+        if i == 0: continue
+        mask = instances == i
+        mask = binary_opening(mask, disk(const.REMOVE_CRACKS_SIZE))
+        mask = nda.get_biggest_mask(mask)
+        new_instances[mask > 0] = i
+    instances = new_instances
 
-    instances = nda.clean_mask_instances(instances, const.MIN_MASK_SIZE, const.REMOVE_CRACKS_SIZE)
-    return instances
+    kept_masks = [instances == (i + 1) for i in range(instances.max())] # clears the removed small masks
+
+    for i, mask in enumerate(kept_masks):
+        index = kept_masks_index[i]
+        semantics[mask > 0] = classes[index] + 1
+        confidences[mask > 0] = confs[index]
+
+    instances = nda.relabel(instances)
+    return instances, semantics, confidences
 
 
-def predict_images_instances(rgbd_model_path: str, rgbd_images: list[np.ndarray]) -> list[np.ndarray]:
-    predictions = []
-    for rgbd in rgbd_images:
-        predictions.append(predict_instances(rgbd_model_path, rgbd))
-    return predictions
-
-
-def predict_tile_labels(model_name: str, tiles_dir: str, tile_name: str, *, verbose=False):
+def predict_from_geotiff(model_paths: str | list[str], tiles_dir: str, tile_name: str, pred_mode='rgb', verbose=False) -> None:
     """
-    Predict a rgbd tile (orthophoto + ndsm) using a YOLO segmentation model and save the predicted instances as a numpy file.  
-    Split the tile into four quadrants for prediction and then combine the predicted quadrants into one tile.  
+    Predict the instance segmentation masks in one tile using a YOLO model.
 
-    :param model_name: YOLO instance segmentation model name (path to .pt file)
-    :param tiles_dir: Directory containing the tiles
-    :param tile_name: Name of the tile to predict
-    :param verbose: If True, display the predicted labels using matplotlib
-    :return: None, saves the predicted labels as a numpy file (napari format)
+    :param model_path: str, path to the YOLO model trained on RGB-D images
+    :param tiles_dir: str, path to the directory containing the tiles
+    :param tile_name: str, name of the tile (with or without extension)
+    :param pred_mode: str, 'rgb' or 'rgbd', whether to use only RGB channels or RGB-D channels for prediction
+    :param verbose: bool, whether to display the prediction results
+    :return: None, saves the prediction results as Tile (numpy array) on disk in const.PREDICTION_SUBDIR
     """
-    rgbd = load_as_tile(tiles_dir, tile_name, clip_height=const.CLIP_HEIGHT)
-    rgbds = nda.split_four(rgbd)
-    pred = predict_images_instances(model_name, rgbds)
-    labels = nda.combine_four_instances(pred)
+    thresh = const.CONFIDENCE_THRESHOLD
+    model_paths = [model_paths] if isinstance(model_paths, str) else model_paths
+    tile_name = utils.remove_extension(tile_name)
 
-    depth = rgbd[..., 3] / 255.0 * const.CLIP_HEIGHT  # rescale to meters
-    labels = nda.remove_instances_below(labels, depth, const.MIN_HEIGHT)
+    image = load_rgbd(
+        os.path.join(tiles_dir, const.ORTHOPHOTO_SUBDIR, f'{tile_name}.tif'),
+        os.path.join(tiles_dir, const.NDSM_SUBDIR, f'{tile_name}.tif')
+    )
+    rgb, d = image[:, :, :3], image[:, :, 3]
+    image = rgb if pred_mode == 'rgb' else image
 
-    # save predicted labels
+    masks, confs, classes = [], [], []
+    for model_path in model_paths:
+        ms, cs, cls = predict_instances(model_path, image, thresh)
+        masks.extend(ms)
+        classes.extend(cls)
+        confs.extend([c * thresh if cl == 0 else c for c, cl in zip(cs, cls)])
 
-    label_path = os.path.join(tiles_dir, const.PREDICTION_INSTANCE_LABELS_SUBDIR)
-    label_name = f'{utils.remove_extension(tile_name)}.npz'
-    os.makedirs(label_path, exist_ok=True)
+    instances, semantics, confidences = clean_prediction(masks, confs, classes)
+    confidences[confidences < thresh] *= (1/thresh)
 
-    if verbose:
-        z = np.zeros_like(labels, dtype=np.uint8)
-        t = tile.Tile(rgbd[..., :3], rgbd[..., 3], labels, z)
-        print(label_name)
+    t = tile.Tile(rgb, d, instances, semantics)
+    t.confidence_labels = confidences
+    if verbose: 
         tile.display_tile(t)
+        plt.imshow(t.confidence_labels, vmin=0, vmax=1, cmap='hot', interpolation='nearest')
+        plt.colorbar(label='Confidence', orientation='vertical')
+        plt.show()
 
-    nda.write_numpy_napari(os.path.join(label_path, label_name), labels)
+    return t
 
 
-def predict_tiles_labels(model_name: str, tiles_dir: str, *, verbose=False):
+def predict_from_geotiffs(model_paths: str | list[str], tiles_dir: str, pred_mode='rgb', verbose=False) -> None:
     """
-    Predict labels from the `orthophoto_subdir` using yolo segmentation model.
+    Predict the instance segmentation masks in multiple tiles using the combined prediction from multiple YOLO models.
 
-    :param model_name: name of the yolo model (path to the .pt file)
-    :param tiles_dir: directory containing the tiles
-    :param verbose: whether display the predicted masks
-    :return: None, saves the predicted masks as .npz files in the prediction_subdir
+    :param model_paths: list[str], path to the YOLO models trained on RGB-D or RGB images
+    :param tiles_dir: str, path to the directory containing the tiles
+    :param tile_names: list[str], names of the tiles (with or without extension)
+    :param pred_mode: str, 'rgb' or 'rgbd', whether to use only RGB channels or RGB-D channels for prediction
+    :param verbose: bool, whether to display the prediction results
+    :return: None, saves the prediction results as Tile (numpy array) on disk in const.PREDICTION_SUBDIR
     """
-    ortho_dir = os.path.join(tiles_dir, const.ORTHOPHOTO_SUBDIR)
-    tile_names = os.listdir(ortho_dir)
-    tile_names = [tn for tn in tile_names if tn.endswith('.tif')]
-
+    tile_names = [utils.remove_extension(f) for f in os.listdir(os.path.join(tiles_dir, const.ORTHOPHOTO_SUBDIR)) if f.endswith('.tif')]
     for tile_name in tile_names:
-        predict_tile_labels(
-            model_name, 
-            tiles_dir, 
-            tile_name,
-            verbose=verbose
-        )
+        t = predict_from_geotiff(model_paths, tiles_dir, tile_name, pred_mode, verbose=verbose)
+        t_path = os.path.join(tiles_dir, const.PREDICTED_TILES_SUBDIR, f'{tile_name}.npz')
+        tile.save_tile(t_path, t)
 

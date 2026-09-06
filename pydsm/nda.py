@@ -10,7 +10,10 @@ from cv2 import resize as cv2_resize
 from cv2 import INTER_CUBIC
 from typing import Any, Optional, Tuple
 import skimage.transform
-from skimage.morphology import disk, binary_dilation, binary_closing, binary_opening, skeletonize
+from skimage.morphology import disk, skeletonize
+from skimage.morphology import dilation as binary_dilation
+from skimage.morphology import closing as binary_closing
+from skimage.morphology import opening as binary_opening
 from skimage.transform import rotate as sk_rotate
 from skimage.measure import label
 
@@ -713,7 +716,7 @@ def iou(mask_a: np.ndarray, mask_b: np.ndarray) -> float:
     return intersection / union
 
 
-def nms(masks: list[np.ndarray], confidences: list[float] = None, iou_threshold: float = 0.5) -> list[np.ndarray]:
+def nms(masks: list[np.ndarray], confidences: list[float], iou_threshold: float = 0.5) -> list[np.ndarray]:
     """
     Perform Non-Maximum Suppression (NMS) on a list of binary masks based on their IoU.
 
@@ -722,10 +725,9 @@ def nms(masks: list[np.ndarray], confidences: list[float] = None, iou_threshold:
     :param iou_threshold: float, IoU threshold for suppression
     :return: list of np.ndarray, list of masks after NMS (from most to least confident)
     """
-    if confidences is not None:
-        ordered_indices = np.argsort(confidences)[::-1] # high to low
-        masks = [masks[i] for i in ordered_indices]
-        confidences = [confidences[i] for i in ordered_indices]
+    ordered_indices = np.argsort(confidences)[::-1] # high to low
+    masks = [masks[i] for i in ordered_indices]
+    confidences = [confidences[i] for i in ordered_indices]
 
     kept_masks = []
 
@@ -874,46 +876,18 @@ def replace_value_inplace(instances: np.ndarray, old_values: list, new_values: l
 def remove_small_masks(instances: np.ndarray, min_area=const.MIN_MASK_SIZE) -> np.ndarray:
     """
     Removes all instances with an area lower or equal to `min_area`
-    The instances are relabeled to find unconnected parts of instances
 
     :param instances: np.ndarray, array with instances to be filtered
     :param min_area: int, rejects masks with lower or equal area (default=20*20=400)
     :return: np.ndarray, array with small masks removed
     """
-    labeled = label(instances)
-    for v in np.unique(labeled):
-        mask = (labeled == v)
+    # labeled = label(instances)
+    for v in np.unique(instances):
+        mask = (instances == v)
         if np.sum(mask) > min_area:
             continue
         instances = instances * ~mask
     return instances
-
-
-def clean_mask_instances(instances: np.ndarray, min_area=const.MIN_MASK_SIZE, remove_cracks=const.REMOVE_CRACKS_SIZE) -> np.ndarray:
-    """
-    Simplifies the shape of the instance masks - removes cracks and aberations  
-    Masks index should be from least confident=1 to most confident=n.  
-    Some masks might be removed if too small or considered as aberant (thin lines)  
-
-    :param instances: np.ndarray, uint instance segmentation masks
-    :param min_area: int, minimum area (in pixels) for keeping an instance mask. Default is 400
-    :param remove_cracks: int, the crack size and small lines in the masks to be removed
-    :return: np.ndarray, the instance segmentation masks without aberations
-    """
-    instances = remove_small_masks(instances, min_area=min_area)
-    new_instances = np.zeros_like(instances)
-    k = disk(remove_cracks)
-
-    for i in np.unique(instances):
-        if i == 0: continue
-        mask = (instances == i)
-        mask = binary_opening(mask, k)
-        mask = get_biggest_mask(mask)
-        mask = binary_closing(mask, k)
-        mask = remove_holes(mask)
-        new_instances[mask] = i
-
-    return relabel(new_instances)
 
 
 def remove_instances_below(instances: np.ndarray, depth: np.ndarray, min_depth: float) -> np.ndarray:
@@ -1124,9 +1098,8 @@ def to_cmap(array: np.ndarray, cmap: str='viridis', nrm=True) -> np.ndarray:
     :param cmap: str, name of the matplotlib colormap.
     :param nrm: bool, if True, the array is normalized.
     """
-    cmap = mpl.colormaps[cmap]
+    array = mpl.colormaps[cmap](array)
     array = normalize(array) if nrm else array
-    array = plt.cm.get_cmap(cmap)(array)
     return array[:, :, :3]
 
 
