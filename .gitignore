@@ -6,6 +6,8 @@ runs
 runs/*
 tiles
 tiles/*
+venv_ultralytics
+venv_ultralytics/*
 strath
 cache
 processed
@@ -15,7 +17,8 @@ logs
 *.jpg
 *.tif
 *.ipynb
-*.obj
+# *.obj
+*.TTF
 *.csv
 *.pkl
 *.pt
