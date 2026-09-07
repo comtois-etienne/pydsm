@@ -382,19 +382,19 @@ def predict_instances(model_path: str, image: np.ndarray, confidence=const.CONFI
         - list of float, confidence scores for each predicted mask
         - list of int, class labels for each predicted mask
     """
-    orig_shape = image.shape[:2]
     model = YOLO(model_path)
     results = model.predict(source=image, conf=confidence, verbose=False)
 
+    orig_shape = image.shape[:2]
     if results[0].masks is None:
-        return [], [], []
+        return [np.zeros(orig_shape, dtype=np.uint16)], [0.0], [0]
 
     masks = results[0].masks.data.cpu().numpy()
     confs = results[0].boxes.conf.cpu().numpy()
     classes = [int(c) for c in results[0].boxes.cls.cpu().numpy()]
 
-    out_shape = masks[0].shape[:2]
-    if out_shape != orig_shape:
+    pred_shape = masks[0].shape[:2]
+    if pred_shape != orig_shape:
         masks = [nda.rescale_nearest_neighbour(mask, orig_shape) for mask in masks]
 
     return masks, confs, classes
