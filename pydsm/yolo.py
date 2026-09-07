@@ -490,7 +490,7 @@ def predict_from_geotiff(model_paths: str | list[str], tiles_dir: str, tile_name
     return t
 
 
-def predict_from_geotiffs(model_paths: str | list[str], tiles_dir: str, pred_mode='rgb', verbose=False) -> None:
+def predict_from_geotiffs(model_paths: str | list[str], tiles_dir: str, pred_mode='rgb', verbose=False, skip_existing=False) -> None:
     """
     Predict the instance segmentation masks in multiple tiles using the combined prediction from multiple YOLO models.
 
@@ -499,12 +499,17 @@ def predict_from_geotiffs(model_paths: str | list[str], tiles_dir: str, pred_mod
     :param tile_names: list[str], names of the tiles (with or without extension)
     :param pred_mode: str, 'rgb' or 'rgbd', whether to use only RGB channels or RGB-D channels for prediction
     :param verbose: bool, whether to display the prediction results
+    :param skip_existing: bool, whether to skip tiles that already have prediction results saved
     :return: None, saves the prediction results as Tile (numpy array) on disk in const.PREDICTION_SUBDIR
     """
     tile_names = [utils.remove_extension(f) for f in os.listdir(os.path.join(tiles_dir, const.ORTHOPHOTO_SUBDIR)) if f.endswith('.tif')]
     tile_names = sorted(tile_names)
     for tile_name in tile_names:
-        t = predict_from_geotiff(model_paths, tiles_dir, tile_name, pred_mode, verbose=verbose)
         t_path = os.path.join(tiles_dir, const.PREDICTED_TILES_SUBDIR, f'{tile_name}.npz')
+        if skip_existing:
+            if os.path.exists(t_path):
+                if verbose: print(f'Skipping existing prediction for tile \'{tile_name}\'')
+                continue
+        t = predict_from_geotiff(model_paths, tiles_dir, tile_name, pred_mode, verbose=verbose)
         tile.save_tile(t_path, t)
 
