@@ -415,6 +415,19 @@ def evaluate(
     )
 
 
+def get_device() -> torch.device:
+    """
+    Get the computation device (GPU, MPS, or CPU).
+
+    :return: computation device.
+    """
+    if torch.cuda.is_available():
+        return torch.device('cuda')
+    elif torch.backends.mps.is_available():
+        return torch.device('mps')
+    else:
+        return torch.device('cpu')
+
 
 def train_model(dataset_path: str, classes_list: list[str], model_output: str, num_epoch=1, imgs=512) -> None:
     """
@@ -428,13 +441,7 @@ def train_model(dataset_path: str, classes_list: list[str], model_output: str, n
     # Device
     # -------------------------------------------------------------------------
 
-    if torch.cuda.is_available():
-        device = torch.device('cuda')
-    elif torch.backends.mps.is_available():
-        device = torch.device('mps')
-    else:
-        device = torch.device('cpu')
-
+    device = get_device()
     print(f'Device: {device}')
     print()
 
@@ -595,5 +602,33 @@ def train_model(dataset_path: str, classes_list: list[str], model_output: str, n
 
     return labels, predictions
 
+
+def plot_confusion_matrix(labels, predictions, class_names, title='Confusion Matrix'):
+    import plotly.figure_factory as ff
+
+    cm = confusion_matrix(labels, predictions)
+
+    plotly_cm = ff.create_annotated_heatmap(
+        z=cm,
+        x=class_names,
+        y=class_names,
+        colorscale='Blues',
+        showscale=True,
+        annotation_text=cm,
+        hoverinfo='z',
+    )
+
+    plotly_cm.update_layout(
+        title=title,
+        title_x=0.5,
+        xaxis_title='Predicted Label',
+        yaxis_title='True Label',
+        xaxis=dict(
+            tickangle=-45,
+            side='bottom',
+        ),
+        width=800,
+        height=800,
+    )
 
 
