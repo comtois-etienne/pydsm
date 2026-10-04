@@ -92,7 +92,7 @@ def tree_species_dict_2() -> dict:
         'GI',
         'GY',
         'PN',
-        'AM',
+        # 'AM',
     ])
 
 
