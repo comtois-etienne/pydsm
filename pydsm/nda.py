@@ -266,6 +266,23 @@ def crop_resize(array: np.ndarray, bbox: tuple[Coordinate, Coordinate], resoluti
     return tile
 
 
+def crop_using_mask(array: np.ndarray, binary_mask: np.ndarray) -> np.ndarray:
+    """
+    Crops the input image using the provided mask. The function finds the bounding box of the mask and returns the cropped image.
+
+    :param array: The input image as a numpy array.
+    :param binary_mask: A binary mask (numpy array) where the region of interest is marked with True (or 1) and the rest is False (or 0).
+    :return: The cropped image as a numpy array.
+    """
+    y_max = np.where(binary_mask)[0].max()
+    y_min = np.where(binary_mask)[0].min()
+    x_max = np.where(binary_mask)[1].max()
+    x_min = np.where(binary_mask)[1].min()
+
+    crop_image = array[y_min:y_max, x_min:x_max]
+    return crop_image
+
+
 ########### NORMALISATION ###########
 
 
