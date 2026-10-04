@@ -5,6 +5,7 @@
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 from PIL import Image
 
 import torch
@@ -12,8 +13,14 @@ from torch import nn
 from torch.utils.data import DataLoader, Subset
 from torchvision import datasets, models, transforms
 
+from dataclasses import dataclass
+
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, confusion_matrix
+
+from .tile import Tile
+from .nda import get_labels_centers as nda_get_labels_centers
+from .nda import crop_using_mask as nda_crop_using_mask
 
 
 
@@ -632,3 +639,86 @@ def plot_confusion_matrix(labels, predictions, class_names, title='Confusion Mat
     )
 
 
+
+# -------------------------------------------------------------------------
+# Prediction
+# -------------------------------------------------------------------------
+
+
+
+@dataclass
+class PredictionModel:
+    model: torch.nn.Module
+    class_names: list
+    input_size: int
+    device: torch.device
+    predict_transform: transforms.Compose
+
+    def predict(self, array: np.ndarray) -> tuple:
+        img = Image.fromarray(array)
+        img = self.predict_transform(img)
+        img = img.unsqueeze(0)
+        img = img.to(self.device)
+        return self.model(img)
+
+
+def get_prediction_model(model_path) -> PredictionModel:
+    device = get_device()
+    checkpoint = torch.load(model_path, map_location=device)
+    imgs = checkpoint['image_size']
+    class_names = checkpoint['class_names']
+    model = create_model(num_classes=len(class_names))
+    model.load_state_dict(checkpoint['model_state_dict'])
+    model = model.to(device)
+    model.eval()
+
+    predict_transform = transforms.Compose([
+        MirrorPadResize(imgs),
+        transforms.ToTensor(),
+        transforms.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225],
+        ),
+    ])
+
+    return PredictionModel(
+        model=model,
+        class_names=class_names,
+        input_size=imgs,
+        device=device,
+        predict_transform=predict_transform
+    )
+
+
+def predict_species(t: Tile, prediction_model: PredictionModel) -> pd.DataFrame:
+    """
+    predict the classes of the instances in the tile using the prediction model and return a dataframe with the results
+
+    :param t: tile.Tile object containing the orthophoto and instance labels
+    :param prediction_model: PredictionModel object containing the trained model and class names
+    :return: pd.DataFrame containing the predictions for each instance in the tile
+    """
+    int_labels = np.unique(t.instance_labels)
+    int_labels = int_labels[int_labels != 0]
+
+    predictions = []
+    for i_label in int_labels:
+        mask = (t.instance_labels == i_label)
+        center = nda_get_labels_centers(mask)[0]
+        crop = nda_crop_using_mask(t.orthophoto, mask)
+
+        pred = prediction_model.predict(crop)
+        probabilities = torch.softmax(pred, dim=1)
+        predicted_index = probabilities.argmax(dim=1).item()
+        predicted_species = prediction_model.class_names[predicted_index]
+        confidence = round(probabilities[0, predicted_index].item(), 3)
+
+        predictions.append({
+            'tile_instance_label': int(i_label),
+            'code': predicted_species,
+            'code_confidence': confidence,
+            'axis-0': int(center[0]),
+            'axis-1': int(center[1]),
+        })
+
+    return pd.DataFrame(predictions)
