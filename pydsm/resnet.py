@@ -1,5 +1,4 @@
 # RESNET MODEL FOR TREE SPECIES CLASSIFICATION
-# mostly written using the help of ChatGPT
 
 
 from pathlib import Path
@@ -32,13 +31,6 @@ from .utils import remove_extension as utils_remove_extension
 # =============================================================================
 # Configuration
 # =============================================================================
-
-TEST_RATIO = 0.20
-BATCH_SIZE = 16
-NUM_WORKERS = 0
-
-LEARNING_RATE = 1e-4
-WEIGHT_DECAY = 1e-4
 
 RANDOM_SEED = 42
 
@@ -182,12 +174,12 @@ def create_transforms(imgs=512) -> tuple:
     return train_transform, test_transform
 
 
-def create_datasets(dataset_path: Path, classes_list: list[str], imgs=512) -> tuple:
+def create_datasets(dataset_path: Path, classes_list: list[str], test_ratio=0.20, imgs=512) -> tuple:
     """
     Create stratified training and testing datasets using the class order
-    defined by species_list.
+    defined by classes_list.
 
-    :param species_list: ordered list of class/folder names.
+    :param classes_list: ordered list of class/folder names.
     :return: training dataset, testing dataset, class names.
     """
     train_transform, test_transform = create_transforms(imgs)
@@ -204,7 +196,7 @@ def create_datasets(dataset_path: Path, classes_list: list[str], imgs=512) -> tu
     )
 
     # -------------------------------------------------------------------------
-    # Verify that the folders match species_list
+    # Verify that the folders match classes_list
     # -------------------------------------------------------------------------
 
     folder_classes = train_full.classes
@@ -217,11 +209,6 @@ def create_datasets(dataset_path: Path, classes_list: list[str], imgs=512) -> tu
             f'Class folders do not match species_list.\n'
             f'Missing folders: {sorted(missing)}\n'
             f'Unexpected folders: {sorted(unexpected)}'
-        )
-
-    if len(classes_list) != 16:
-        raise ValueError(
-            f'Expected 16 classes, found {len(classes_list)}.'
         )
 
     # -------------------------------------------------------------------------
@@ -277,20 +264,13 @@ def create_datasets(dataset_path: Path, classes_list: list[str], imgs=512) -> tu
 
     train_indices, test_indices = train_test_split(
         indices,
-        test_size=TEST_RATIO,
+        test_size=test_ratio,
         random_state=RANDOM_SEED,
-        stratify=labels,
+        stratify=labels
     )
 
-    train_dataset = Subset(
-        train_full,
-        train_indices,
-    )
-
-    test_dataset = Subset(
-        test_full,
-        test_indices,
-    )
+    train_dataset = Subset(train_full, train_indices)
+    test_dataset = Subset(test_full, test_indices)
 
     return train_dataset, test_dataset, classes_list
 
@@ -323,12 +303,12 @@ def create_model(num_classes: int) -> nn.Module:
 # =============================================================================
 
 def train_one_epoch(
-    model: nn.Module,
-    loader: DataLoader,
-    criterion: nn.Module,
-    optimizer: torch.optim.Optimizer,
-    device: torch.device,
-) -> tuple:
+        model: nn.Module,
+        loader: DataLoader,
+        criterion: nn.Module,
+        optimizer: torch.optim.Optimizer,
+        device: torch.device,
+    ) -> tuple:
     """
     Train the model for one epoch.
 
@@ -375,11 +355,11 @@ def train_one_epoch(
 # =============================================================================
 
 def evaluate(
-    model: nn.Module,
-    loader: DataLoader,
-    criterion: nn.Module,
-    device: torch.device,
-) -> tuple:
+        model: nn.Module,
+        loader: DataLoader,
+        criterion: nn.Module,
+        device: torch.device,
+    ) -> tuple:
     """
     Evaluate the model.
 
@@ -441,13 +421,24 @@ def get_device() -> torch.device:
         return torch.device('cpu')
 
 
-def train_model(dataset_path: str, classes_list: list[str], model_output: str, num_epoch=1, imgs=512) -> None:
+def train_model(
+        dataset_path: str, 
+        classes_list: list[str], 
+        model_output: str, 
+        *, 
+        num_epoch=1, 
+        batch_size=16, 
+        test_ratio=0.20, 
+        learning_rate=1e-4, 
+        weight_decay=1e-4, 
+        imgs=512
+    ) -> None:
     """
     Train the ResNet-50 model for tree species classification.
     """
     dataset_path = Path(dataset_path)
     model_output = Path(model_output)
-    set_seed(42)
+    set_seed(RANDOM_SEED)
 
     # -------------------------------------------------------------------------
     # Device
@@ -461,7 +452,7 @@ def train_model(dataset_path: str, classes_list: list[str], model_output: str, n
     # Dataset
     # -------------------------------------------------------------------------
 
-    train_dataset, test_dataset, class_names = create_datasets(dataset_path, classes_list, imgs)
+    train_dataset, test_dataset, class_names = create_datasets(dataset_path, classes_list, test_ratio, imgs)
 
     print(f'Classes: {class_names}')
     print(f'Total images: {len(train_dataset) + len(test_dataset)}')
@@ -475,17 +466,17 @@ def train_model(dataset_path: str, classes_list: list[str], model_output: str, n
 
     train_loader = DataLoader(
         train_dataset,
-        batch_size=BATCH_SIZE,
+        batch_size=batch_size,
         shuffle=True,
-        num_workers=NUM_WORKERS,
+        num_workers=0,
         pin_memory=torch.cuda.is_available(),
     )
 
     test_loader = DataLoader(
         test_dataset,
-        batch_size=BATCH_SIZE,
+        batch_size=batch_size,
         shuffle=False,
-        num_workers=NUM_WORKERS,
+        num_workers=0,
         pin_memory=torch.cuda.is_available(),
     )
 
@@ -493,10 +484,7 @@ def train_model(dataset_path: str, classes_list: list[str], model_output: str, n
     # Model
     # -------------------------------------------------------------------------
 
-    model = create_model(
-        num_classes=len(class_names),
-    )
-
+    model = create_model(num_classes=len(class_names))
     model = model.to(device)
 
     # -------------------------------------------------------------------------
@@ -507,8 +495,8 @@ def train_model(dataset_path: str, classes_list: list[str], model_output: str, n
 
     optimizer = torch.optim.AdamW(
         model.parameters(),
-        lr=LEARNING_RATE,
-        weight_decay=WEIGHT_DECAY,
+        lr=learning_rate,
+        weight_decay=weight_decay,
     )
 
     # -------------------------------------------------------------------------
@@ -518,20 +506,8 @@ def train_model(dataset_path: str, classes_list: list[str], model_output: str, n
     best_accuracy = 0.0
 
     for epoch in range(num_epoch):
-        train_loss, train_accuracy = train_one_epoch(
-            model=model,
-            loader=train_loader,
-            criterion=criterion,
-            optimizer=optimizer,
-            device=device,
-        )
-
-        test_loss, test_accuracy, _, _ = evaluate(
-            model=model,
-            loader=test_loader,
-            criterion=criterion,
-            device=device,
-        )
+        train_loss, train_accuracy = train_one_epoch(model, train_loader, criterion, optimizer, device)
+        test_loss, test_accuracy, _, _ = evaluate(model, test_loader, criterion, device)
 
         print(
             f'Epoch {epoch + 1:02d}/{num_epoch} | '
@@ -549,7 +525,7 @@ def train_model(dataset_path: str, classes_list: list[str], model_output: str, n
                     'model_state_dict': model.state_dict(),
                     'class_names': class_names,
                     'image_size': imgs,
-                    'test_ratio': TEST_RATIO,
+                    'test_ratio': test_ratio,
                     'best_test_accuracy': best_accuracy,
                 },
                 model_output,
@@ -562,14 +538,8 @@ def train_model(dataset_path: str, classes_list: list[str], model_output: str, n
     print()
     print('Loading best model...')
 
-    checkpoint = torch.load(
-        model_output,
-        map_location=device,
-    )
-
-    model.load_state_dict(
-        checkpoint['model_state_dict'],
-    )
+    checkpoint = torch.load(model_output, map_location=device)
+    model.load_state_dict(checkpoint['model_state_dict'])
 
     _, final_accuracy, labels, predictions = evaluate(
         model=model,
