@@ -613,6 +613,8 @@ def plot_confusion_matrix(labels, predictions, class_names, title='Confusion Mat
         height=800,
     )
 
+    plotly_cm.show()
+
 
 
 # -------------------------------------------------------------------------
