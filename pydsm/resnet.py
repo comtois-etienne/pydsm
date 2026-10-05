@@ -6,6 +6,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import os
 from PIL import Image
 
 import torch
@@ -18,9 +19,13 @@ from dataclasses import dataclass
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, confusion_matrix
 
+import pydsm.const as const
 from .tile import Tile
+from .tile import open_as_tile as tile_open_as_tile
 from .nda import get_labels_centers as nda_get_labels_centers
 from .nda import crop_using_mask as nda_crop_using_mask
+from .utils import remove_extension as utils_remove_extension
+
 
 
 
@@ -722,3 +727,34 @@ def predict_species(t: Tile, prediction_model: PredictionModel) -> pd.DataFrame:
         })
 
     return pd.DataFrame(predictions)
+
+
+def predict_tiles_species(tile_dir: str, model_path: str, save_dir: str = 'points_pred', *, verbose: bool) -> None:
+    """
+    Predict the species of the instances in the tiles using the prediction model and save the results to CSV files.
+
+    :param tile_dir: The directory containing the tiles and their orthophotos.
+    :param model_path: The path to the trained prediction model.
+    :param save_dir: The directory where the prediction CSV files will be saved (default is 'points_pred').
+    """
+    prediction_model = get_prediction_model(model_path)
+    orthophoto_dir = os.path.join(tile_dir, const.ORTHOPHOTO_SUBDIR)
+    tile_names = sorted(os.listdir(orthophoto_dir))
+
+    for tile_name in tile_names:
+        if not tile_name.endswith('.tif'):
+            continue
+
+        tile_name = utils_remove_extension(tile_name)
+        t = tile_open_as_tile(tile_dir, tile_name)
+        pred = predict_species(t, prediction_model)
+
+        print(f'Predicting species for tile: {tile_name}') if verbose else None
+        print(pred) if verbose == 2 else None
+        print() if verbose else None
+
+        save_path = os.path.join(tile_dir, save_dir)
+        os.makedirs(save_path, exist_ok=True)
+        pred.to_csv(os.path.join(save_path, f'{tile_name}.csv'), index=False)
+
+
