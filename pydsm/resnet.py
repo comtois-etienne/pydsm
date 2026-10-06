@@ -436,8 +436,6 @@ def train_model(
     """
     Train the ResNet-50 model for tree species classification.
     """
-    dataset_path = Path(dataset_path)
-    model_output = Path(model_output)
     set_seed(RANDOM_SEED)
 
     # -------------------------------------------------------------------------
@@ -530,6 +528,17 @@ def train_model(
                 },
                 model_output,
             )
+
+        torch.save(
+            {
+                'model_state_dict': model.state_dict(),
+                'class_names': class_names,
+                'image_size': imgs,
+                'test_ratio': test_ratio,
+                'best_test_accuracy': best_accuracy,
+            },
+            f'{model_output.split('.')[0]}_epoch{epoch + 1:02d}.pth',
+        )
 
     # -------------------------------------------------------------------------
     # Final evaluation
@@ -675,14 +684,21 @@ def predict_species(t: Tile, prediction_model: PredictionModel) -> pd.DataFrame:
     :param prediction_model: PredictionModel object containing the trained model and class names
     :return: pd.DataFrame containing the predictions for each instance in the tile
     """
+    columns = ['tile_instance_label', 'code', 'code_confidence', 'axis-0', 'axis-1']
     int_labels = np.unique(t.instance_labels)
     int_labels = int_labels[int_labels != 0]
+
+    if len(int_labels) == 0:
+        return pd.DataFrame(columns=columns)
 
     predictions = []
     for i_label in int_labels:
         mask = (t.instance_labels == i_label)
         center = nda_get_labels_centers(mask)[0]
         crop = nda_crop_using_mask(t.orthophoto, mask)
+
+        if crop is None or any(i == 0 for i in list(crop.shape)):
+            continue
 
         pred = prediction_model.predict(crop)
         probabilities = torch.softmax(pred, dim=1)
@@ -698,10 +714,10 @@ def predict_species(t: Tile, prediction_model: PredictionModel) -> pd.DataFrame:
             'axis-1': int(center[1]),
         })
 
-    return pd.DataFrame(predictions)
+    return pd.DataFrame(predictions, columns=columns)
 
 
-def predict_tiles_species(tile_dir: str, model_path: str, save_dir: str = 'points_pred', *, verbose: bool) -> None:
+def predict_tiles_species(tile_dir: str, model_path: str, save_dir: str = 'points_pred', *, verbose: bool=False, skip_existing=False) -> None:
     """
     Predict the species of the instances in the tiles using the prediction model and save the results to CSV files.
 
@@ -709,6 +725,9 @@ def predict_tiles_species(tile_dir: str, model_path: str, save_dir: str = 'point
     :param model_path: The path to the trained prediction model.
     :param save_dir: The directory where the prediction CSV files will be saved (default is 'points_pred').
     """
+    save_path = os.path.join(tile_dir, save_dir)
+    os.makedirs(save_path, exist_ok=True)
+
     prediction_model = get_prediction_model(model_path)
     orthophoto_dir = os.path.join(tile_dir, const.ORTHOPHOTO_SUBDIR)
     tile_names = sorted(os.listdir(orthophoto_dir))
@@ -718,15 +737,18 @@ def predict_tiles_species(tile_dir: str, model_path: str, save_dir: str = 'point
             continue
 
         tile_name = utils_remove_extension(tile_name)
+        pred_path = os.path.join(save_path, f'{tile_name}.csv')
+
+        if skip_existing and os.path.exists(pred_path):
+            print(f'Skipping existing prediction for tile: {tile_name}') if verbose else None
+            continue
+
         t = tile_open_as_tile(tile_dir, tile_name)
         pred = predict_species(t, prediction_model)
 
         print(f'Predicting species for tile: {tile_name}') if verbose else None
-        print(pred) if verbose == 2 else None
-        print() if verbose else None
+        print(pred, '\n') if verbose == 2 else None
 
-        save_path = os.path.join(tile_dir, save_dir)
-        os.makedirs(save_path, exist_ok=True)
-        pred.to_csv(os.path.join(save_path, f'{tile_name}.csv'), index=False)
+        pred.to_csv(pred_path, index=False)
 
 
