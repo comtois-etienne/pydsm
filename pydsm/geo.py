@@ -36,6 +36,9 @@ from .shp import area as shp_area
 from .utils import *
 
 
+gdal.UseExceptions()
+
+
 ########## GEOTIF IO ##########
 
 def open_geotiff(path: str) -> osgeo.gdal.Dataset:
