@@ -626,6 +626,7 @@ def plot_confusion_matrix(labels, predictions, class_names, title='Confusion Mat
 
 
 
+
 # -------------------------------------------------------------------------
 # Prediction
 # -------------------------------------------------------------------------
@@ -752,3 +753,88 @@ def predict_tiles_species(tile_dir: str, model_path: str, save_dir: str = 'point
         pred.to_csv(pred_path, index=False)
 
 
+def calculate_species_accuracy(model_path: str, dataset_path: str) -> pd.DataFrame:
+    """
+    Calculate classification accuracy and percentage error for each species.
+
+    :param model_path: path to the trained model.
+    :param dataset_path: path to the dataset containing species subfolders.
+    :return: DataFrame containing per-species statistics.
+    """
+    prediction_model = get_prediction_model(model_path)
+    dataset = datasets.ImageFolder(root=dataset_path)
+    class_names = prediction_model.class_names
+
+    class_to_idx = {name: i for i, name in enumerate(class_names)}
+
+    actual_counts = np.zeros(len(class_names), dtype=int)
+    correct_counts = np.zeros(len(class_names), dtype=int)
+    predicted_counts = np.zeros(len(class_names), dtype=int)
+
+    with torch.no_grad():
+        for image_path, _ in dataset.samples:
+
+            species = Path(image_path).parent.name
+            true_label = class_to_idx[species]
+
+            image = np.array(Image.open(image_path).convert('RGB'))
+
+            output = prediction_model.predict(image)
+
+            predicted_label = output.argmax(dim=1).item()
+
+            actual_counts[true_label] += 1
+            predicted_counts[predicted_label] += 1
+
+            if predicted_label == true_label:
+                correct_counts[true_label] += 1
+
+    # 1 - (actual_count / predicted_count)
+
+    forecast = np.divide(
+        actual_counts,
+        predicted_counts,
+        out=np.zeros(len(class_names), dtype=float),
+        where=predicted_counts != 0,
+    )
+
+    accuracy = np.divide(
+        correct_counts,
+        actual_counts,
+        out=np.zeros(len(class_names), dtype=float),
+        where=actual_counts != 0,
+    )
+
+    precision = np.divide(
+        correct_counts,
+        predicted_counts,
+        out=np.zeros(len(class_names), dtype=float),
+        where=predicted_counts != 0,
+    )
+
+    accuracy = np.round(accuracy, 3)
+    precision = np.round(precision, 3)
+    forecast = np.round(forecast, 3)
+
+    accuracy = np.where(accuracy > 1, 2 - accuracy, accuracy)
+    precision = np.where(precision > 1, 2 - precision, precision)
+    forecast = np.where(forecast > 1, 2 - forecast, forecast)
+
+    accuracy_error = np.round(1 - accuracy, 3)
+    precision_error = np.round(1 - precision, 3)
+    forecast_error = np.round(1 - forecast, 3)
+
+    results = pd.DataFrame({
+        'species': class_names,
+        'actual_count': actual_counts,
+        'correct_count': correct_counts,
+        'predicted_count': predicted_counts,
+        'accuracy': accuracy,
+        'precision': precision, 
+        'forecast': forecast,
+        'accuracy_error': accuracy_error,
+        'precision_error': precision_error,
+        'forecast_error': forecast_error,
+    })
+
+    return results
