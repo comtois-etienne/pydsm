@@ -677,7 +677,37 @@ def get_prediction_model(model_path) -> PredictionModel:
     )
 
 
-def predict_species(t: Tile, prediction_model: PredictionModel) -> pd.DataFrame:
+def _predict_species(array: np.ndarray, prediction_model: PredictionModel) -> tuple:
+    """
+    Predict the species of a single image using the prediction model.
+
+    :param array: numpy array representing the image.
+    :param prediction_model: PredictionModel object containing the trained model and class names.
+    :return: predicted species and confidence score.
+    """
+    pred = prediction_model.predict(array)
+    probabilities = torch.softmax(pred, dim=1)
+    predicted_index = probabilities.argmax(dim=1).item()
+    predicted_species = prediction_model.class_names[predicted_index]
+    confidence = round(probabilities[0, predicted_index].item(), 3)
+
+    return predicted_species, confidence
+
+
+def predict_species(img_path: str, model_path: str) -> tuple:
+    """
+    Predict the species of a single image using the prediction model.
+
+    :param img_path: path to the image file.
+    :param model_path: path to the trained prediction model.
+    :return: predicted species and confidence score.
+    """
+    prediction_model = get_prediction_model(model_path)
+    array = np.array(Image.open(img_path).convert('RGB'))
+    return _predict_species(array, prediction_model)
+
+
+def predict_tile_species(t: Tile, prediction_model: PredictionModel) -> pd.DataFrame:
     """
     predict the classes of the instances in the tile using the prediction model and return a dataframe with the results
 
@@ -701,11 +731,7 @@ def predict_species(t: Tile, prediction_model: PredictionModel) -> pd.DataFrame:
         if crop is None or any(i == 0 for i in list(crop.shape)):
             continue
 
-        pred = prediction_model.predict(crop)
-        probabilities = torch.softmax(pred, dim=1)
-        predicted_index = probabilities.argmax(dim=1).item()
-        predicted_species = prediction_model.class_names[predicted_index]
-        confidence = round(probabilities[0, predicted_index].item(), 3)
+        predicted_species, confidence = _predict_species(crop, prediction_model)
 
         predictions.append({
             'tile_instance_label': int(i_label),
@@ -745,7 +771,7 @@ def predict_tiles_species(tile_dir: str, model_path: str, save_dir: str = 'point
             continue
 
         t = tile_open_as_tile(tile_dir, tile_name)
-        pred = predict_species(t, prediction_model)
+        pred = predict_tile_species(t, prediction_model)
 
         print(f'Predicting species for tile: {tile_name}') if verbose else None
         print(pred, '\n') if verbose == 2 else None
