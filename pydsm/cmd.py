@@ -653,6 +653,131 @@ def generate_rbc_wavefront_tiles(
         )
 
 
+def generate_rbc_cityjson_tiles(
+        tiles_dir: str,
+        save_dir: str,
+        elevation_offset: float | bool = False,
+        verbose: bool = False,
+        skip_processed: bool = False,
+    ) -> None:
+    """Generate one CityJSON file containing RBC trees for each tile.
+
+    The dataset must contain the mandatory subdirectories defined in
+    :mod:`pydsm.const`. The optional DTM directory may be absent or empty.
+    Each tree's modeling metadata is stored as CityObject attributes.
+    """
+    required_directories = (
+        const.ORTHOPHOTO_SUBDIR,
+        const.NDSM_SUBDIR,
+        const.INSTANCE_LABELS_SUBDIR,
+        const.SEMANTIC_POINTS_SUBDIR,
+    )
+    directories = {
+        name: os.path.join(tiles_dir, name)
+        for name in required_directories
+    }
+    missing_directories = [
+        path for path in directories.values() if not os.path.isdir(path)
+    ]
+    if missing_directories:
+        raise FileNotFoundError(
+            f"Missing tile directories: {', '.join(missing_directories)}"
+        )
+
+    os.makedirs(save_dir, exist_ok=True)
+    ndsm_files = sorted(
+        os.path.join(directories[const.NDSM_SUBDIR], filename)
+        for filename in os.listdir(directories[const.NDSM_SUBDIR])
+        if filename.lower().endswith(('.tif', '.tiff'))
+    )
+    if not ndsm_files:
+        raise FileNotFoundError(
+            f"No nDSM GeoTIFF files found in {directories[const.NDSM_SUBDIR]}"
+        )
+
+    def tile_identity(path: str) -> str:
+        return os.path.splitext(os.path.basename(path))[0].split(' (')[0]
+
+    def find_tile_file(
+            directory: str,
+            filename: str,
+            suffixes: tuple[str, ...],
+        ) -> str | None:
+        exact = os.path.join(directory, filename)
+        if os.path.isfile(exact):
+            return exact
+        identity = tile_identity(filename)
+        candidates = sorted(
+            os.path.join(directory, candidate)
+            for candidate in os.listdir(directory)
+            if candidate.lower().endswith(suffixes)
+            and tile_identity(candidate) == identity
+        )
+        return candidates[0] if candidates else None
+
+    dtm_directory = os.path.join(tiles_dir, const.DTM_SUBDIR)
+    for ndsm_path in ndsm_files:
+        filename = os.path.basename(ndsm_path)
+        stem = os.path.splitext(filename)[0]
+        ortho_path = find_tile_file(
+            directories[const.ORTHOPHOTO_SUBDIR],
+            filename,
+            ('.tif', '.tiff', '.png'),
+        )
+        labels_path = find_tile_file(
+            directories[const.INSTANCE_LABELS_SUBDIR],
+            filename,
+            ('.npz',),
+        )
+        dtm_path = (
+            find_tile_file(dtm_directory, filename, ('.tif', '.tiff'))
+            if os.path.isdir(dtm_directory) else None
+        )
+        missing = [
+            name for name, path in (
+                (const.ORTHOPHOTO_SUBDIR, ortho_path),
+                (const.INSTANCE_LABELS_SUBDIR, labels_path),
+            )
+            if path is None
+        ]
+        if missing:
+            raise FileNotFoundError(
+                f"Missing {', '.join(missing)} input(s) for tile {stem}"
+            )
+
+        output_uuid = os.path.splitext(os.path.basename(ortho_path))[0]
+        cityjson_path = os.path.join(save_dir, f'{output_uuid}_trees.city.json')
+        if skip_processed and os.path.isfile(cityjson_path):
+            _print(f'* Skipping already processed tile {output_uuid}')
+            continue
+
+        _print(f'* Generating CityJSON objects from masks in {labels_path}')
+        instance_masks = nda.read_numpy(labels_path, npz_format='napari')
+        ndsm = geo.open_geotiff(ndsm_path)
+        rejection_region = geo.get_outside_mask(geo.open_geotiff(ortho_path))
+        dtm = geo.open_geotiff(dtm_path) if dtm_path else 0.0
+        city_objects, objects_metadata = rbc.tree_modeling(
+            ndsm=ndsm,
+            dtm=dtm,
+            instance_masks=instance_masks,
+            rejection_region=rejection_region,
+            uuid=output_uuid,
+            elevation_offset=elevation_offset,
+            verbose=verbose,
+        )
+
+        city = cjio.City()
+        for city_object in city_objects:
+            metadata = objects_metadata.get(city_object.uuid())
+            if metadata is not None:
+                for key, value in metadata.items():
+                    city_object.set_attribute(key, value)
+            city["cityobjects"].add_cityobject(city_object)
+        city.set_geographical_extent()
+        cjio.write_as_cityjson(city, cityjson_path, pretty=True)
+        _print(f'* Saved to \'{cityjson_path}\'')
+
+
 def extract_tiles(orthophoto_path: str, tiles_dir: str, date: str, tile_size: int = None, scale: float = None, verbose: bool = True, *, ndsm_path: str = None, dsm_path: str = None) -> None:
     """
     Extract valid tiles from an orthophoto and NDSM, and save them to a directory.

@@ -1,3 +1,4 @@
+import json
 import shutil
 from pathlib import Path
 
@@ -151,3 +152,26 @@ def test_generate_rbc_wavefront_tiles_ignores_processed_tiles(
         str(output),
         skip_processed=True,
     )
+
+
+def test_generate_rbc_cityjson_tiles_stores_metadata(tmp_path: Path) -> None:
+    tiles = tmp_path / "tiles"
+    output = tmp_path / "output"
+    for subdirectory in ("orthophoto", "ndsm", "labels", "points"):
+        (tiles / subdirectory).mkdir(parents=True)
+
+    shutil.copy(NDSM_PATH, tiles / "ndsm" / NDSM_PATH.name)
+    shutil.copy(LABELS_PATH, tiles / "labels" / LABELS_PATH.name)
+    orthophoto_path = next((TILES / "orthophoto").glob("*.tif"))
+    shutil.copy(orthophoto_path, tiles / "orthophoto" / orthophoto_path.name)
+
+    cmd.generate_rbc_cityjson_tiles(str(tiles), str(output))
+
+    cityjson_path = next(output.glob("*_trees.city.json"))
+    cityjson = json.loads(cityjson_path.read_text())
+    city_objects = cityjson["CityObjects"]
+    assert city_objects
+    for tree in city_objects.values():
+        assert tree["type"] == "SolitaryVegetationObject"
+        assert isinstance(tree["attributes"]["mask_id"], int)
+        assert "crown_height" in tree["attributes"]

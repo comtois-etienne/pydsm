@@ -46,6 +46,19 @@ geometry and Wavefront export. The DTM argument to `tree_modeling` may be a
 constant elevation or a GDAL dataset covering the same spatial extent as the
 nDSM; lower-resolution DTM datasets are resized to the nDSM grid.
 
+To export one CityJSON file per tile, with each tree's modeling metadata stored
+on its `SolitaryVegetationObject`, use:
+
+```python
+from pydsm.cmd import generate_rbc_cityjson_tiles
+
+generate_rbc_cityjson_tiles(
+    tiles_dir="/path/to/tiles",
+    save_dir="/path/to/tiles/cityjson",
+    skip_processed=True,
+)
+```
+
 Elevation tiles can be downloaded with `pydsm.map.load_dtm()` and
 `pydsm.map.load_dsm()`. Both functions return in-memory GDAL datasets that can
 be saved with `pydsm.geo.save_geotiff()`. The default source is Natural
