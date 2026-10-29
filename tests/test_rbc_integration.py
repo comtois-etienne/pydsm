@@ -1,10 +1,11 @@
+import shutil
 from pathlib import Path
 
 import numpy as np
 from osgeo import gdal
 from pycityjson.model import CityObject
 
-from pydsm import geo, nda, rbc
+from pydsm import cmd, geo, nda, rbc
 
 TILES = Path(__file__).parent / "test_files" / "tiles"
 NDSM_PATH = next((TILES / "ndsm").glob("*.tif"))
@@ -68,3 +69,29 @@ def test_public_rbc_functions_process_fixture() -> None:
     )
     assert points.shape[1] == 3
     assert triangles.shape[1] == 3
+
+
+def test_generate_rbc_wavefront_tiles_allows_empty_dtm(tmp_path: Path) -> None:
+    tiles = tmp_path / "tiles"
+    output = tmp_path / "output"
+    for subdirectory in ("orthophoto", "ndsm", "labels", "points"):
+        (tiles / subdirectory).mkdir(parents=True)
+    (tiles / "dtm").mkdir()
+
+    shutil.copy(NDSM_PATH, tiles / "ndsm" / NDSM_PATH.name)
+    shutil.copy(LABELS_PATH, tiles / "labels" / LABELS_PATH.name)
+    shutil.copy(
+        next((TILES / "orthophoto").glob("*.tif")),
+        tiles / "orthophoto" / next((TILES / "orthophoto").glob("*.tif")).name,
+    )
+
+    cmd.generate_rbc_wavefront_tiles(str(tiles), str(output))
+
+    assert next(output.glob("*_trees.obj")).stat().st_size > 0
+    assert next(output.glob("*_trees_metadata.json")).exists()
+    assert not list(output.iterdir())[0].is_dir()
+
+    shutil.rmtree(tiles / "dtm")
+    output_without_dtm = tmp_path / "output_without_dtm"
+    cmd.generate_rbc_wavefront_tiles(str(tiles), str(output_without_dtm))
+    assert next(output_without_dtm.glob("*_trees.obj")).exists()

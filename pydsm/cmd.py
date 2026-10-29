@@ -13,13 +13,14 @@ import pandas as pd
 import pycityjson.io as cjio
 from skimage.draw import polygon
 
+from pydsm import const
 import pydsm.geo as geo
 import pydsm.nda as nda
 import pydsm.rbc as rbc
 import pydsm.shp as shp
 import pydsm.utils as utils
 
-MUTE_SPEECH = False
+MUTE_SPEECH = True
 
 
 def _print(string: str, end: str = '\n'):
@@ -485,7 +486,7 @@ def geotiff_registration(
 def generate_rbc_wavefront(
         masks_path: str, 
         ndsm_path: str, 
-        dtm_path: str, 
+        dtm_path: str | None,
         ortho_path: str,
         save_dir: str = None, 
         elevation_offset: float = False, 
@@ -499,13 +500,14 @@ def generate_rbc_wavefront(
 
     :param masks_path: str, path to the instance masks (mandatory)
     :param ndsm_path: str, path to the nDSM (mandatory)
-    :param dtm_path: str, path to the DTM (mandatory)
+    :param dtm_path: str, path to the DTM (optional; defaults to zero elevation)
     :param ortho_path: str, path to the orthophoto (mandatory)
     :param save_dir: str, path to directory to save the wavefront and metadata (optional) (default: current directory)
     :param elevation_offset: float, elevation offset for the trees instead of relying on the DTM (optional) (default: False)
     :param verbose: bool, verbose mode to display the whole process (optional) (default: False)
     :return: None (saves the wavefront and metadata to disk)
     """
+    save_dir = save_dir or './'
     if not os.path.exists(save_dir):
         _print(f'* Creating directory \'{save_dir}\'')
         os.makedirs(save_dir)
@@ -514,8 +516,8 @@ def generate_rbc_wavefront(
     instance_masks = nda.read_numpy(masks_path, npz_format='napari')
     ndsm = geo.open_geotiff(ndsm_path)
     rejection_region = geo.get_outside_mask(geo.open_geotiff(ortho_path))
-    dtm = geo.open_geotiff(dtm_path)
-    uuid = os.path.basename(ortho_path).split('_')[0]
+    dtm = geo.open_geotiff(dtm_path) if dtm_path else 0.0
+    uuid = os.path.splitext(os.path.basename(ortho_path))[0]
 
     wavefront_objects, objects_metadata = rbc.tree_modeling(
         ndsm=ndsm,
@@ -537,7 +539,104 @@ def generate_rbc_wavefront(
     _print(f'* Saved to \'{obj_path}\'')
 
     utils.write_dict_as_json(objects_metadata, file_path=meta_path)
-    _print(f'* Saved to \'{meta_path}\'')
+
+
+def generate_rbc_wavefront_tiles(
+        tiles_dir: str,
+        save_dir: str,
+        elevation_offset: float | bool = False,
+        verbose: bool = False,
+    ) -> None:
+    """Generate RBC Wavefront files for every complete tile in a dataset.
+
+    The dataset must contain the mandatory subdirectories defined in
+    :mod:`pydsm.const`. The optional DTM directory may be absent or empty.
+    Files are paired by their tile identity.
+    """
+    required_directories = (
+        const.ORTHOPHOTO_SUBDIR,
+        const.NDSM_SUBDIR,
+        const.INSTANCE_LABELS_SUBDIR,
+        const.SEMANTIC_POINTS_SUBDIR,
+    )
+    directories = {
+        name: os.path.join(tiles_dir, name)
+        for name in required_directories
+    }
+    missing_directories = [
+        path for path in directories.values() if not os.path.isdir(path)
+    ]
+    if missing_directories:
+        raise FileNotFoundError(
+            f"Missing tile directories: {', '.join(missing_directories)}"
+        )
+
+    os.makedirs(save_dir, exist_ok=True)
+    ndsm_files = sorted(
+        os.path.join(directories[const.NDSM_SUBDIR], filename)
+        for filename in os.listdir(directories[const.NDSM_SUBDIR])
+        if filename.lower().endswith(('.tif', '.tiff'))
+    )
+    if not ndsm_files:
+        raise FileNotFoundError(
+            f"No nDSM GeoTIFF files found in {directories[const.NDSM_SUBDIR]}"
+        )
+
+    def tile_identity(path: str) -> str:
+        return os.path.splitext(os.path.basename(path))[0].split(' (')[0]
+
+    def find_tile_file(directory: str, filename: str, suffixes: tuple[str, ...]) -> str | None:
+        exact = os.path.join(directory, filename)
+        if os.path.isfile(exact):
+            return exact
+        identity = tile_identity(filename)
+        candidates = sorted(
+            os.path.join(directory, candidate)
+            for candidate in os.listdir(directory)
+            if candidate.lower().endswith(suffixes)
+            and tile_identity(candidate) == identity
+        )
+        return candidates[0] if candidates else None
+
+    dtm_directory = os.path.join(tiles_dir, const.DTM_SUBDIR)
+    for ndsm_path in ndsm_files:
+        filename = os.path.basename(ndsm_path)
+        stem = os.path.splitext(filename)[0]
+        ortho_path = find_tile_file(
+            directories[const.ORTHOPHOTO_SUBDIR],
+            filename,
+            ('.tif', '.tiff', '.png'),
+        )
+        labels_path = find_tile_file(
+            directories[const.INSTANCE_LABELS_SUBDIR],
+            filename,
+            ('.npz',),
+        )
+        dtm_path = (
+            find_tile_file(dtm_directory, filename, ('.tif', '.tiff'))
+            if os.path.isdir(dtm_directory) else None
+        )
+        missing = [
+            name for name, path in (
+                (const.ORTHOPHOTO_SUBDIR, ortho_path),
+                (const.INSTANCE_LABELS_SUBDIR, labels_path),
+            )
+            if path is None
+        ]
+        if missing:
+            raise FileNotFoundError(
+                f"Missing {', '.join(missing)} input(s) for tile {stem}"
+            )
+
+        generate_rbc_wavefront(
+            masks_path=labels_path,
+            ndsm_path=ndsm_path,
+            dtm_path=dtm_path,
+            ortho_path=ortho_path,
+            save_dir=save_dir,
+            elevation_offset=elevation_offset,
+            verbose=verbose,
+        )
 
 
 def extract_tiles(orthophoto_path: str, tiles_dir: str, date: str, tile_size: int = None, scale: float = None, verbose: bool = True, *, ndsm_path: str = None, dsm_path: str = None) -> None:
