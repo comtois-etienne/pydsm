@@ -2,6 +2,8 @@
 
 ORTHOPHOTO_SUBDIR = 'orthophoto'
 NDSM_SUBDIR = 'ndsm'
+DTM_SUBDIR = 'dtm'
+DSM_SUBDIR = 'dsm'
 INSTANCE_LABELS_SUBDIR = 'labels'
 SEMANTIC_POINTS_SUBDIR = 'points'
 INSTANCES_TILES_SUBDIR = 'instances'
