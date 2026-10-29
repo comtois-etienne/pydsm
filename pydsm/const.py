@@ -1,13 +1,13 @@
 ########### SUB-DIRECTORIES ###########
 
-ORTHOPHOTO_SUBDIR = 'orthophoto'
-NDSM_SUBDIR = 'ndsm'
-DTM_SUBDIR = 'dtm'
-DSM_SUBDIR = 'dsm'
-INSTANCE_LABELS_SUBDIR = 'labels'
-SEMANTIC_POINTS_SUBDIR = 'points'
-INSTANCES_TILES_SUBDIR = 'instances'
-PREDICTED_TILES_SUBDIR = 'labels_pred'
+ORTHOPHOTO_SUBDIR = 'orthophoto' # mandatory
+NDSM_SUBDIR = 'ndsm' # mandatory
+DTM_SUBDIR = 'dtm' # optional
+DSM_SUBDIR = 'dsm' # optional
+INSTANCE_LABELS_SUBDIR = 'labels' # mandatory
+SEMANTIC_POINTS_SUBDIR = 'points' # mandatory
+INSTANCES_TILES_SUBDIR = 'instances' # optional
+PREDICTED_TILES_SUBDIR = 'labels_pred' # optional
 
 
 ########### CONSTANTS FOR WHOLE PROJECT ###########
