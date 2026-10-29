@@ -1,0 +1,10 @@
+name: pydsm
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - gdal>=3.6.2
+  - pip
+  - pip:
+      - -e .[test]
+      - ipykernel>=6.29
