@@ -2,6 +2,29 @@
 
 DSM, DTM, nDSM and Ortophoto tools
 
+## Development environment
+
+Create the project virtual environment with Python 3.12 or newer, then install
+the test tools and project dependencies:
+
+```sh
+python3.12 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -e ".[test]"
+```
+
+GDAL must be installed by the operating system or environment manager before
+installing the Python bindings. On macOS, use a Python environment that
+provides matching GDAL bindings (such as a Conda environment) when `pip` cannot
+find `gdal-config`.
+
+Run the integration tests and Ruff with:
+
+```sh
+.venv/bin/python -m pytest
+.venv/bin/ruff check tests
+```
+
 
 ## pipeline example  
 
@@ -50,4 +73,3 @@ to avoid circular dependencies, the files can be imported in such a way that :
 `nda` --__import__--> (`shp`, `utils`)  
 `shp` --__import__--> (`utils`)  
 `utils`  
-
