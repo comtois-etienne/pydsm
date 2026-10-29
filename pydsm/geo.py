@@ -1,6 +1,8 @@
+from pathlib import Path
+
+import numpy as np
 import osgeo
 from osgeo import gdal, ogr, osr
-import numpy as np
 
 from skimage import draw
 from skimage.morphology import binary_erosion
@@ -58,9 +60,25 @@ def save_geotiff(gdal_file: osgeo.gdal.Dataset, path: str) -> None:
     :param gdal_file: gdal dataset
     :param path: path to the file
     """
+    if gdal_file is None:
+        raise ValueError("gdal_file must be a GDAL dataset")
+
+    output_path = Path(path)
+    if output_path.parent != Path("."):
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
     driver = gdal.GetDriverByName('GTiff')
-    options = ["COMPRESS=LZW", "TILED=YES"]
-    driver.CreateCopy(path, gdal_file, options=options)
+    if driver is None:
+        raise RuntimeError("The GTiff driver is not available")
+
+    options = ["COMPRESS=LZW"]
+    if gdal_file.RasterXSize >= 256 and gdal_file.RasterYSize >= 256:
+        options.append("TILED=YES")
+    output = driver.CreateCopy(str(output_path), gdal_file, options=options)
+    if output is None:
+        raise RuntimeError(f"Could not create GeoTIFF at {output_path}")
+    output.FlushCache()
+    output = None
 
 
 ########## PROPRIETIES ##########
@@ -935,4 +953,3 @@ def to_wavefront(gdal_file: osgeo.gdal.Dataset, file_path: str):
     print(f'origin: {origin}')
     print(f'pixel_size: {pixel_size}')
     nda_to_wavefront(to_ndarray(gdal_file), file_path, origin, pixel_size)
-
