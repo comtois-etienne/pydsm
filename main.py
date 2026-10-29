@@ -278,6 +278,18 @@ def RBC(args):
     )
 
 
+def RBC_TILES(args):
+    """Generate RBC Wavefront files for all tiles in a dataset."""
+    from pydsm.cmd import generate_rbc_wavefront_tiles
+    generate_rbc_wavefront_tiles(
+        args.tiles_dir,
+        args.save_dir,
+        args.offset,
+        args.verbose,
+        args.ignore_processed,
+    )
+
+
 # GENERAL COMMANDS
 
 def _silence():
@@ -318,6 +330,7 @@ COMMANDS = {
     'translation': _translation,
     'registration': registration,
     'rbc': RBC,
+    'rbc-tiles': RBC_TILES,
 }
 
 
@@ -436,6 +449,25 @@ def parser_setup():
     rbc_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode - Show the progression of each tree", default=False)
     rbc_parser.add_argument("--save-dir", type=str, help="Path to save the wavefront file", default='./')
 
+    rbc_tiles_parser = subparsers.add_parser(
+        "rbc-tiles",
+        help="Create RBC Wavefront files for every complete tile in a dataset",
+    )
+    rbc_tiles_parser.add_argument("tiles_dir", type=str, help="Directory containing tile subdirectories")
+    rbc_tiles_parser.add_argument("--offset", "--elevation-offset", type=float, default=False)
+    rbc_tiles_parser.add_argument("-v", "--verbose", action="store_true")
+    rbc_tiles_parser.add_argument(
+        "--ignore-processed",
+        action="store_true",
+        help="Skip tiles whose OBJ and metadata JSON already exist",
+    )
+    rbc_tiles_parser.add_argument(
+        "--save-dir",
+        type=str,
+        default="./rbc_tiles",
+        help="Directory where per-tile Wavefront files are saved",
+    )
+
     return parser
 
 
@@ -450,4 +482,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
