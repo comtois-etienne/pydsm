@@ -1,29 +1,32 @@
 import numpy as np
 import osgeo
-
-from skimage import measure
-from skimage.measure import label
-from skimage.measure import regionprops
-from skimage.transform import rotate
-from skimage.morphology import convex_hull_image
-from skimage.draw import polygon
-
-from scipy.spatial import Delaunay
+from pycityjson.model import CityObject, GeometryPrimitive
+from pycityjson.model.primitive import (
+    MultiLineString,
+    MultiPoint,
+    MultiSurface,
+    Solid,
+)
+from pycityjson.model.primitive import (
+    Point as CityPoint,
+)
 from scipy.ndimage import gaussian_filter
+from scipy.spatial import Delaunay
+from skimage import measure
+from skimage.draw import polygon
+from skimage.measure import label, regionprops
+from skimage.morphology import convex_hull_image
+from skimage.transform import rotate
 
-from .obj import WavefrontObject
-from .obj import WavefrontGroup
-from .obj import WavefrontVertex
-
-from .geo import to_ndarray as geo_to_ndarray
-from .geo import get_scales as geo_get_scales
-from .geo import get_coordinates_at_pixels as geo_get_coordinates_at_pixels
 from .geo import get_coordinate_at_pixel as geo_get_coordinate_at_pixel
-
-from .nda import shrink_mask as nda_shrink_mask
-from .nda import normalize as nda_normalize
+from .geo import get_coordinates_at_pixels as geo_get_coordinates_at_pixels
+from .geo import get_scales as geo_get_scales
+from .geo import get_size as geo_get_size
+from .geo import resize_like as geo_resize_like
+from .geo import to_ndarray as geo_to_ndarray
 from .nda import are_overlapping as nda_are_overlapping
-
+from .nda import normalize as nda_normalize
+from .nda import shrink_mask as nda_shrink_mask
 from .utils import *
 
 
@@ -382,8 +385,8 @@ def __get_rings_heights(lndsm: np.ndarray, mask_z: np.ndarray, ring_0: np.ndarra
 
 def __get_center_squares() -> tuple[np.ndarray, np.ndarray]:
     """
-    Triangulation of the center belt of squares of the RBH.   
-    The indexing is always the same for every RBH.  
+    Triangulation of the center belt of squares of the RBC.   
+    The indexing is always the same for every RBC.  
 
     :return: tuple of 2D numpy array of the center squares (squares indexes, triangles indexes)
     """
@@ -407,9 +410,9 @@ def __get_center_squares() -> tuple[np.ndarray, np.ndarray]:
     return np.array(square_indexes), np.array(triangles_indexes)
 
 
-def get_RBH_mesh(ndsm_array: np.ndarray, instance_mask: np.ndarray, scale: Scale) -> tuple[np.ndarray, np.ndarray]:
+def get_RBC_mesh(ndsm_array: np.ndarray, instance_mask: np.ndarray, scale: Scale) -> tuple[np.ndarray, np.ndarray]:
     """
-    The RBH is divided in 4 rings :  
+    The C is divided in 4 rings :  
     - ring 0: the top of the tree parralel to the ground  
     - ring 1: the top middle of the tree parralel to the ground  
     - ring 2: the bottom middle of the tree parralel to the ground  
@@ -426,7 +429,7 @@ def get_RBH_mesh(ndsm_array: np.ndarray, instance_mask: np.ndarray, scale: Scale
     - The contour is smoothed to remove small details.  
     - The convex hull of the mask is used to get the contour.  
     - The 8-sided polygons are divided in triangles using the Delaunay triangulation.  
-    - The sides of the polygon are not parallel to each other as in the standard RBH.  
+    - The sides of the polygon are not parallel to each other as in the standard RBC.  
     - The Delaunay method can cause the model to become concave when the Ring 1 and 3 are placed in 3D space.  
 
     :param ndsm_array: 2D numpy array of the NDSM (same size as the instance mask)
@@ -497,21 +500,22 @@ def get_mask_area(mask: np.ndarray, scale: Scale) -> float:
 
 def tree_modeling(
         ndsm: osgeo.gdal.Dataset, 
-        dtm: osgeo.gdal.Dataset, 
         instance_masks: np.ndarray, 
         rejection_region: np.ndarray, 
         uuid: str, 
+        dtm: osgeo.gdal.Dataset | float = 0.0,
         minimum_height: float=3.0, 
         minimum_radius: float=1.5, 
         elevation_offset: float | bool=True, 
         verbose=False
-    ) -> tuple[list[WavefrontObject], dict]:
+    ) -> tuple[list[CityObject], dict]:
     """
     Generate the wavefront objects from the instance masks of the trees.
-    Trees are modeled using the triangulated RBH polyhedron fitted to the tree.
+    Trees are modeled using the triangulated RBC polyhedron fitted to the tree.
 
     :param ndsm: osgeo.gdal.Dataset of the nDSM image
-    :param dtm: osgeo.gdal.Dataset of the DTM image (ground elevation)
+    :param dtm: osgeo.gdal.Dataset of the DTM image (ground elevation), or
+        a constant ground elevation in meters (default: 0.0)
     :param instance_masks: 2D numpy array of the instance masks of the trees (same size as the nDSM)
     :param rejection_region: 2D binary numpy array of trees to reject (same size as the nDSM) (value 1 = reject)
     :param uuid: UUID of the orthophoto
@@ -523,7 +527,7 @@ def tree_modeling(
         - if float, the given value is used  
     :param verbose: If True, print the processing information
     :return: Tuple of the wavefront objects and the metadata of the objects
-        - wavefront_objects: list of WavefrontObject
+        - wavefront_objects: list of pycityjson CityObject instances
         - objects_metadata: dict of the metadata of the objects with {uuid}_{mask_id} as key
             - mask_id: Integer id of the mask
             - origin_x: X coordinate of the origin in meters (same epsg as the nDSM)
@@ -535,7 +539,12 @@ def tree_modeling(
     """
     scale = geo_get_scales(ndsm)[0]
     ndsm_array = geo_to_ndarray(ndsm)
-    dtm_array = geo_to_ndarray(dtm)
+    if isinstance(dtm, (float, int)):
+        dtm_array = np.full(ndsm_array.shape, float(dtm), dtype=np.float32)
+    else:
+        if not np.allclose(geo_get_size(dtm), geo_get_size(ndsm), atol=1e-6):
+            raise ValueError("dtm and ndsm must cover the same spatial extent")
+        dtm_array = geo_to_ndarray(geo_resize_like(dtm, ndsm))
 
     unique_ids = np.unique(instance_masks)
     unique_ids = unique_ids[unique_ids != 0]
@@ -562,7 +571,12 @@ def tree_modeling(
         print(f'  {mask_id} : processing with area {area} and height {height}') if verbose else None
 
         name = f'{uuid}_{mask_id}'
-        points, indexes, origin = get_RBH_mesh(ndsm_array, instance_mask, scale=scale)
+        try:
+            points, indexes, origin = get_RBC_mesh(ndsm_array, instance_mask, scale=scale)
+        except ValueError as error:
+            if verbose:
+                print(f"  {mask_id} : skipped because its geometry is invalid ({error})")
+            continue
         points_geo = geo_get_coordinates_at_pixels(ndsm, points, precision=3)
         origin_geo = geo_get_coordinate_at_pixel(ndsm, origin, precision=3)
         elevation = round(float(dtm_array[origin[0], origin[1]]), 3)
@@ -578,10 +592,20 @@ def tree_modeling(
             'elevation_offset': elv_offset_val,
         }
 
-        group = WavefrontGroup.from_indexes_and_vertices('lod_cfd', indexes, points_geo)
-        group = group.translate(WavefrontVertex(x=0, y=0, z=elv_offset_val))
-        wavefront_object = WavefrontObject(name, sub_name='SolitaryVegetationObject', groups=[group])
+        points_geo = points_geo + np.array([0, 0, elv_offset_val])
+        faces = [
+            MultiLineString(
+                [MultiPoint([CityPoint(*points_geo[index]) for index in face])]
+            )
+            for face in indexes
+        ]
+        geometry = GeometryPrimitive(Solid([MultiSurface(faces)]), lod='cfd')
+        wavefront_object = CityObject(
+            cityobjects=None,
+            type='SolitaryVegetationObject',
+            geometries=[geometry],
+            uuid=name,
+        )
         wavefront_objects.append(wavefront_object)
 
     return wavefront_objects, objects_metadata
-

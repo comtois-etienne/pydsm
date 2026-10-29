@@ -25,6 +25,12 @@ Run the integration tests and Ruff with:
 .venv/bin/ruff check tests
 ```
 
+Tree modeling is implemented in `pydsm.rbc` and uses
+[pycityjson](https://github.com/comtois-etienne/pycityjson) for CityObject
+geometry and Wavefront export. The DTM argument to `tree_modeling` may be a
+constant elevation or a GDAL dataset covering the same spatial extent as the
+nDSM; lower-resolution DTM datasets are resized to the nDSM grid.
+
 Elevation tiles can be downloaded with `pydsm.map.load_dtm()` and
 `pydsm.map.load_dsm()`. Both functions return in-memory GDAL datasets that can
 be saved with `pydsm.geo.save_geotiff()`. The default source is Natural

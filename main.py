@@ -250,10 +250,10 @@ def registration(args):
     )
 
 
-def RBH(args):
+def RBC(args):
     """
     Generates geometry objects for trees from the masks and the ndsm.  
-    The triangulated rhombicuboctahedron (RBH) geometry is used to represent the trees. 
+    The triangulated rhombicuboctahedron (RBC) geometry is used to represent the trees. 
     The dtm is used to get the ground level of the trees.
     The orthophoto is used to get the rejection region of the trees. 
 
@@ -266,8 +266,8 @@ def RBH(args):
     :param args.verbose: bool, verbose mode to display the whole process (optional) (default: False)
     :return: None (saves the wavefront and metadata to disk)
     """
-    from pydsm.cmd import generate_rbh_wavefront
-    generate_rbh_wavefront(
+    from pydsm.cmd import generate_rbc_wavefront
+    generate_rbc_wavefront(
         args.masks,
         args.ndsm,
         args.dtm,
@@ -317,7 +317,7 @@ COMMANDS = {
     'rescale': _rescale,
     'translation': _translation,
     'registration': registration,
-    'rbh': RBH,
+    'rbc': RBC,
 }
 
 
@@ -426,15 +426,15 @@ def parser_setup():
     registration_parser.add_argument("--registration-path", type=str, help="Path to save the translation values")
     registration_parser.add_argument("--layer", type=str, help="Layer of the map (osm, streets, satellite)")
 
-    # rbh command
-    rbh_parser = subparsers.add_parser("rbh", help="Create a wavefront file containing RBH shaped trees from geotiffs and instance masks")
-    rbh_parser.add_argument("--masks", "--masks-path", type=str, help="Path to the masks instances", required=True)
-    rbh_parser.add_argument("--ndsm", "--ndsm-path", type=str, help="Path to the nDSM file", required=True)
-    rbh_parser.add_argument("--dtm", "--dtm-path", type=str, help="Path to the DTM file", required=True)
-    rbh_parser.add_argument("--ortho", "--ortho-path", type=str, help="Path to the orthophoto file containing the alpha channel", required=True)
-    rbh_parser.add_argument("--offset", "--elevation-offset", type=float, help="Elevation offset for the trees - The DTM values will be used if no offset is given", default=False)
-    rbh_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode - Show the progression of each tree", default=False)
-    rbh_parser.add_argument("--save-dir", type=str, help="Path to save the wavefront file", default='./')
+    # c command
+    rbc_parser = subparsers.add_parser("rbc", help="Create a wavefront file containing RBC shaped trees from geotiffs and instance masks")
+    rbc_parser.add_argument("--masks", "--masks-path", type=str, help="Path to the masks instances", required=True)
+    rbc_parser.add_argument("--ndsm", "--ndsm-path", type=str, help="Path to the nDSM file", required=True)
+    rbc_parser.add_argument("--dtm", "--dtm-path", type=str, help="Path to the DTM file", required=True)
+    rbc_parser.add_argument("--ortho", "--ortho-path", type=str, help="Path to the orthophoto file containing the alpha channel", required=True)
+    rbc_parser.add_argument("--offset", "--elevation-offset", type=float, help="Elevation offset for the trees - The DTM values will be used if no offset is given", default=False)
+    rbc_parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode - Show the progression of each tree", default=False)
+    rbc_parser.add_argument("--save-dir", type=str, help="Path to save the wavefront file", default='./')
 
     return parser
 

@@ -1,27 +1,22 @@
+import os
 from dataclasses import dataclass
-import matplotlib.patches as patches
-import pandas as pd
-import numpy as np
+
 import cv2
-import math
+import matplotlib.patches as patches
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from skimage.measure import label
 from skimage.morphology import disk
 from skimage.morphology import opening as binary_opening
-import os
 
-from skimage.measure import label
-
-from pathlib import Path
-from ultralytics.data.dataset import YOLODataset
-from ultralytics.utils import LOGGER
-
-from .rbh import get_contour as rbh_get_contour
-import pydsm.utils as utils
+import pydsm.const as const
 import pydsm.geo as geo
 import pydsm.nda as nda
 import pydsm.tile as tile
-import pydsm.const as const
+import pydsm.utils as utils
 
+from .rbc import get_contour as rbc_get_contour
 
 ########### RGBD Monkey Patching ###########
 """
@@ -34,11 +29,9 @@ to this line :
 `mosaic[y : y + h, x : x + w, :] = images[i][[3,2,1]].transpose(1, 2, 0) # Modified`
 """
 
-from ultralytics.data.base import IMG_FORMATS
-from ultralytics import YOLO # ensure YOLO is imported before monkey patching
 from PIL import Image
-import cv2
-
+from ultralytics import YOLO  # ensure YOLO is imported before monkey patching
+from ultralytics.data.base import IMG_FORMATS
 
 if cv2.__dict__.get('original_imread', None) is None:
     print("Monkey Patching 🐒 cv2.imread to add .npz tiles support for YOLO RGBD")
@@ -169,6 +162,7 @@ def anonymise_with_yolo(array: np.ndarray, model_name='yolov8n.pt') -> np.ndarra
     :return: 3D array of the image with blurred bounding boxes
     """
     from ultralytics import YOLO
+
     from pydsm.yolo import ObjectDetector
 
     model = YOLO(model_name)
@@ -247,7 +241,7 @@ def to_index_lines(instance_labels: np.ndarray, semantic_labels: np.ndarray | No
         if np.sum(instance) < 100: continue
 
         is_split = len(np.unique(label(instance)).tolist()) > 2
-        contour = rbh_get_contour(instance, edges=edges, convex_hull=is_split, drop_last=True) - np.array([100, 100])
+        contour = rbc_get_contour(instance, edges=edges, convex_hull=is_split, drop_last=True) - np.array([100, 100])
 
         instance = instance[100:-100, 100:-100]
         class_index = np.max(semantic_labels * instance)
@@ -512,4 +506,3 @@ def predict_from_geotiffs(model_paths: str | list[str], tiles_dir: str, pred_mod
                 continue
         t = predict_from_geotiff(model_paths, tiles_dir, tile_name, pred_mode, verbose=verbose)
         tile.save_tile(t_path, t)
-
