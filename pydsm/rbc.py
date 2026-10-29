@@ -577,6 +577,13 @@ def tree_modeling(
             if verbose:
                 print(f"  {mask_id} : skipped because its geometry is invalid ({error})")
             continue
+        if not (
+            0 <= origin[0] < dtm_array.shape[0]
+            and 0 <= origin[1] < dtm_array.shape[1]
+        ):
+            if verbose:
+                print(f"  {mask_id} : skipped because its origin is out of bounds")
+            continue
         points_geo = geo_get_coordinates_at_pixels(ndsm, points, precision=3)
         origin_geo = geo_get_coordinate_at_pixel(ndsm, origin, precision=3)
         elevation = round(float(dtm_array[origin[0], origin[1]]), 3)

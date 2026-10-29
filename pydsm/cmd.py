@@ -546,12 +546,15 @@ def generate_rbc_wavefront_tiles(
         save_dir: str,
         elevation_offset: float | bool = False,
         verbose: bool = False,
+        skip_processed: bool = False,
     ) -> None:
     """Generate RBC Wavefront files for every complete tile in a dataset.
 
     The dataset must contain the mandatory subdirectories defined in
     :mod:`pydsm.const`. The optional DTM directory may be absent or empty.
-    Files are paired by their tile identity.
+    Files are paired by their tile identity. When ``ignore_processed`` is
+    true, tiles with both expected output files already in ``save_dir`` are
+    skipped.
     """
     required_directories = (
         const.ORTHOPHOTO_SUBDIR,
@@ -627,6 +630,17 @@ def generate_rbc_wavefront_tiles(
             raise FileNotFoundError(
                 f"Missing {', '.join(missing)} input(s) for tile {stem}"
             )
+
+        output_uuid = os.path.splitext(os.path.basename(ortho_path))[0]
+        if skip_processed and all(
+            os.path.isfile(os.path.join(save_dir, filename))
+            for filename in (
+                f'{output_uuid}_trees.obj',
+                f'{output_uuid}_trees_metadata.json',
+            )
+        ):
+            _print(f'* Skipping already processed tile {output_uuid}')
+            continue
 
         generate_rbc_wavefront(
             masks_path=labels_path,

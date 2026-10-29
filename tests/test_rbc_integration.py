@@ -56,6 +56,32 @@ def test_tree_modeling_resizes_same_extent_dtm() -> None:
     assert objects[0].geometries
 
 
+def test_tree_modeling_skips_out_of_bounds_origin(monkeypatch) -> None:
+    ndsm, _, instance_masks, rejection_region = _inputs()
+    ndsm_array = geo.to_ndarray(ndsm)
+    original_get_rbc_mesh = rbc.get_RBC_mesh
+
+    def out_of_bounds_mesh(*args, **kwargs):
+        points, triangles, _ = original_get_rbc_mesh(
+            ndsm_array,
+            np.zeros_like(instance_masks),
+            geo.get_scales(ndsm)[0],
+        )
+        return points, triangles, np.array([ndsm_array.shape[0], 0])
+
+    monkeypatch.setattr(rbc, "get_RBC_mesh", out_of_bounds_mesh)
+    objects, metadata = rbc.tree_modeling(
+        ndsm=ndsm,
+        dtm=0.0,
+        instance_masks=instance_masks,
+        rejection_region=rejection_region,
+        uuid="integration",
+    )
+
+    assert objects == []
+    assert metadata == {}
+
+
 def test_public_rbc_functions_process_fixture() -> None:
     ndsm, _, instance_masks, _ = _inputs()
     ndsm_array = geo.to_ndarray(ndsm)
@@ -95,3 +121,33 @@ def test_generate_rbc_wavefront_tiles_allows_empty_dtm(tmp_path: Path) -> None:
     output_without_dtm = tmp_path / "output_without_dtm"
     cmd.generate_rbc_wavefront_tiles(str(tiles), str(output_without_dtm))
     assert next(output_without_dtm.glob("*_trees.obj")).exists()
+
+
+def test_generate_rbc_wavefront_tiles_ignores_processed_tiles(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    tiles = tmp_path / "tiles"
+    output = tmp_path / "output"
+    for subdirectory in ("orthophoto", "ndsm", "labels", "points"):
+        (tiles / subdirectory).mkdir(parents=True)
+
+    shutil.copy(NDSM_PATH, tiles / "ndsm" / NDSM_PATH.name)
+    shutil.copy(LABELS_PATH, tiles / "labels" / LABELS_PATH.name)
+    orthophoto_path = next((TILES / "orthophoto").glob("*.tif"))
+    shutil.copy(orthophoto_path, tiles / "orthophoto" / orthophoto_path.name)
+
+    output.mkdir()
+    output_uuid = orthophoto_path.stem
+    (output / f"{output_uuid}_trees.obj").touch()
+    (output / f"{output_uuid}_trees_metadata.json").touch()
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("processed tile was not skipped")
+
+    monkeypatch.setattr(cmd, "generate_rbc_wavefront", fail_if_called)
+    cmd.generate_rbc_wavefront_tiles(
+        str(tiles),
+        str(output),
+        skip_processed=True,
+    )
