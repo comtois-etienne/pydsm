@@ -25,6 +25,13 @@ Run the integration tests and Ruff with:
 .venv/bin/ruff check tests
 ```
 
+Elevation tiles can be downloaded with `pydsm.map.load_dtm()` and
+`pydsm.map.load_dsm()`. Both functions return in-memory GDAL datasets that can
+be saved with `pydsm.geo.save_geotiff()`. The default source is Natural
+Resources Canada's public HRDEM Mosaic WCS, which provides the `dtm` and `dsm`
+coverages without a token. A compatible WCS URL can be passed with
+`service_url`.
+
 
 ## pipeline example  
 
