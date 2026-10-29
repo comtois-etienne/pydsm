@@ -25,6 +25,21 @@ Run the integration tests and Ruff with:
 .venv/bin/ruff check tests
 ```
 
+For Conda and notebook development, create the named `pydsm` environment from
+[`environment.yml`](environment.yml):
+
+```sh
+conda env create -f environment.yml
+conda run -n pydsm python -m ipykernel install --user \
+  --name pydsm --display-name "Python (pydsm)"
+conda activate pydsm
+python -m pytest
+```
+
+Select **Python (pydsm)** as the kernel in an IPython or Jupyter notebook.
+The Conda environment installs GDAL before the project dependencies so the
+Python GDAL bindings use the matching native library.
+
 Tree modeling is implemented in `pydsm.rbc` and uses
 [pycityjson](https://github.com/comtois-etienne/pycityjson) for CityObject
 geometry and Wavefront export. The DTM argument to `tree_modeling` may be a
