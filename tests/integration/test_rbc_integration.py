@@ -13,6 +13,7 @@ TILE_ID = "40_299360_5036920"
 NDSM_PATH = next((TILES / "ndsm").glob(f"{TILE_ID} *.tif"))
 DTM_PATH = next((TILES / "dtm").glob(f"{TILE_ID} *.tif"))
 LABELS_PATH = next((TILES / "labels").glob(f"{TILE_ID} *.npz"))
+ORTHOPHOTO_PATH = next((TILES / "orthophoto").glob(f"{TILE_ID} *.tif"))
 
 
 def _inputs() -> tuple[gdal.Dataset, gdal.Dataset, np.ndarray, np.ndarray]:
@@ -108,10 +109,7 @@ def test_generate_rbc_wavefront_tiles_allows_empty_dtm(tmp_path: Path) -> None:
 
     shutil.copy(NDSM_PATH, tiles / "ndsm" / NDSM_PATH.name)
     shutil.copy(LABELS_PATH, tiles / "labels" / LABELS_PATH.name)
-    shutil.copy(
-        next((TILES / "orthophoto").glob("*.tif")),
-        tiles / "orthophoto" / next((TILES / "orthophoto").glob("*.tif")).name,
-    )
+    shutil.copy(ORTHOPHOTO_PATH, tiles / "orthophoto" / ORTHOPHOTO_PATH.name)
 
     cmd.generate_rbc_wavefront_tiles(str(tiles), str(output))
 
@@ -136,11 +134,10 @@ def test_generate_rbc_wavefront_tiles_ignores_processed_tiles(
 
     shutil.copy(NDSM_PATH, tiles / "ndsm" / NDSM_PATH.name)
     shutil.copy(LABELS_PATH, tiles / "labels" / LABELS_PATH.name)
-    orthophoto_path = next((TILES / "orthophoto").glob("*.tif"))
-    shutil.copy(orthophoto_path, tiles / "orthophoto" / orthophoto_path.name)
+    shutil.copy(ORTHOPHOTO_PATH, tiles / "orthophoto" / ORTHOPHOTO_PATH.name)
 
     output.mkdir()
-    output_uuid = orthophoto_path.stem
+    output_uuid = ORTHOPHOTO_PATH.stem
     (output / f"{output_uuid}_trees.obj").touch()
     (output / f"{output_uuid}_trees_metadata.json").touch()
 
@@ -163,8 +160,7 @@ def test_generate_rbc_cityjson_tiles_stores_metadata(tmp_path: Path) -> None:
 
     shutil.copy(NDSM_PATH, tiles / "ndsm" / NDSM_PATH.name)
     shutil.copy(LABELS_PATH, tiles / "labels" / LABELS_PATH.name)
-    orthophoto_path = next((TILES / "orthophoto").glob("*.tif"))
-    shutil.copy(orthophoto_path, tiles / "orthophoto" / orthophoto_path.name)
+    shutil.copy(ORTHOPHOTO_PATH, tiles / "orthophoto" / ORTHOPHOTO_PATH.name)
 
     cmd.generate_rbc_cityjson_tiles(str(tiles), str(output))
 

@@ -59,6 +59,25 @@ generate_rbc_cityjson_tiles(
 )
 ```
 
+To create a CityJSON `GroundSurface` from one DTM, use:
+
+```python
+from pycityjson.io import write_as_cityjson
+from pydsm.cmd import generate_cityjson_terrain
+
+terrain = generate_cityjson_terrain("/path/to/dtm.tif")
+write_as_cityjson(terrain, "/path/to/terrain.city.json", pretty=True)
+```
+
+The default spatial resolution is 2.5 m/px, producing a 16-by-16 terrain
+grid for a 40 m tile. Elevations are rounded to millimeters.
+To process a folder of DTM tiles, pass the folder path; one
+`*_ground.city.json` file is written per tile to `ground` by default:
+
+```python
+generate_cityjson_terrain("/path/to/tiles/dtm")
+```
+
 Elevation tiles can be downloaded with `pydsm.map.load_dtm()` and
 `pydsm.map.load_dsm()`. Both functions return in-memory GDAL datasets that can
 be saved with `pydsm.geo.save_geotiff()`. The default source is Natural

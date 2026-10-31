@@ -2,8 +2,9 @@ from pathlib import Path
 
 import numpy as np
 from osgeo import gdal
+from pycityjson.model import City
 
-from pydsm import geo
+from pydsm import cmd, geo
 from pydsm.map import load_dsm, load_dtm
 
 FIXTURE = Path(__file__).parents[2] / "tests" / "test_files" / "tiles" / "orthophoto" / (
@@ -31,6 +32,83 @@ def test_save_geotiff_round_trip_preserves_fixture(tmp_path: Path) -> None:
             source.GetRasterBand(band_number).ReadAsArray(),
             saved.GetRasterBand(band_number).ReadAsArray(),
         )
+
+
+def test_generate_cityjson_terrain_uses_fixed_grid_and_rounds_values() -> None:
+    dtm = next(
+        (Path(__file__).parents[2] / "tests" / "test_files" / "tiles" / "dtm").glob(
+            "40_300080_5037320 *.tif"
+        )
+    )
+
+    city = cmd.generate_cityjson_terrain(str(dtm))
+    ground_surface = city['cityobjects'].get_by_uuid('ground_surface')
+    assert ground_surface is not None
+    assert ground_surface.type == 'GroundSurface'
+    assert ground_surface.geometries[0].surface_count() == 225
+    vertices = np.unique(
+        np.asarray(ground_surface.get_vertices()).reshape(-1, 3),
+        axis=0,
+    )
+    assert len(vertices) == 256
+    assert not np.any(np.isclose(vertices[:, 2], 0))
+    assert all(
+        abs(round(vertex[2], 3) - vertex[2]) <= 0.0005
+        for vertex in vertices
+    )
+
+
+def test_generate_cityjson_terrain_has_matching_adjacent_boundary_points() -> None:
+    dtm_directory = Path(__file__).parents[2] / "tests" / "test_files" / "tiles" / "dtm"
+    first = cmd.generate_cityjson_terrain(
+        str(next(dtm_directory.glob("40_300080_5037320 *.tif")))
+    )
+    second = cmd.generate_cityjson_terrain(
+        str(next(dtm_directory.glob("40_300120_5037320 *.tif")))
+    )
+
+    def vertices(city: City) -> np.ndarray:
+        ground_surface = city['cityobjects'].get_by_uuid('ground_surface')
+        return np.unique(
+            np.asarray(ground_surface.get_vertices()).reshape(-1, 3),
+            axis=0,
+        )
+
+    first_boundary = vertices(first)
+    second_boundary = vertices(second)
+    first_boundary = first_boundary[
+        np.isclose(first_boundary[:, 0], 300120, rtol=0, atol=0.001)
+    ]
+    second_boundary = second_boundary[
+        np.isclose(second_boundary[:, 0], 300120, rtol=0, atol=0.001)
+    ]
+    assert {
+        tuple(point[:2]) for point in first_boundary
+    } == {
+        tuple(point[:2]) for point in second_boundary
+    }
+
+
+def test_generate_terrain_cityjson_tiles_processes_dtm_folder(tmp_path: Path) -> None:
+    dtm_directory = Path(__file__).parents[2] / "tests" / "test_files" / "tiles" / "dtm"
+    input_directory = tmp_path / "tiles"
+    dtm_input_directory = input_directory / "dtm"
+    output_directory = input_directory / "ground"
+    dtm_input_directory.mkdir(parents=True)
+    for pattern in ("40_300080_5037320 *.tif", "40_300120_5037320 *.tif"):
+        source = next(dtm_directory.glob(pattern))
+        source_copy = dtm_input_directory / source.name
+        source_copy.write_bytes(source.read_bytes())
+
+    cmd.generate_terrain_cityjson_tiles(
+        str(input_directory),
+        save_dir='ground',
+    )
+
+    output_directory = input_directory / 'ground'
+    outputs = sorted(output_directory.glob("*_ground.city.json"))
+    assert len(outputs) == 2
+    assert all(output.stat().st_size > 0 for output in outputs)
 
 
 def test_save_geotiff_creates_missing_parent_directory(tmp_path: Path) -> None:

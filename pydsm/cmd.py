@@ -11,6 +11,10 @@ import imageio.v3 as iio
 import numpy as np
 import pandas as pd
 import pycityjson.io as cjio
+from osgeo import gdal
+from pycityjson.model import CityObject, GeometryPrimitive
+from pycityjson.model.primitive import MultiLineString, MultiPoint, MultiSurface
+from pycityjson.model.primitive import Point as CityPoint
 from skimage.draw import polygon
 
 from pydsm import const
@@ -776,6 +780,146 @@ def generate_rbc_cityjson_tiles(
         city.set_geographical_extent()
         cjio.write_as_cityjson(city, cityjson_path, pretty=True)
         _print(f'* Saved to \'{cityjson_path}\'')
+
+
+def generate_cityjson_terrain(
+        dtm: str | gdal.Dataset,
+        spacial_resolution: float = 2.5,
+    ) -> cjio.City:
+    """
+    Generate one CityJSON GroundSurface model from a DTM.
+
+    :param dtm: path to a DTM GeoTIFF or an open GDAL DTM dataset.
+    :param spacial_resolution: target spatial resolution in meters per pixel.
+    :return: CityJSON city containing one GroundSurface object.
+    """
+    if spacial_resolution <= 0:
+        raise ValueError('spacial_resolution must be greater than zero')
+
+    return _generate_cityjson_terrain(dtm, spacial_resolution)
+
+
+def generate_terrain_cityjson_tiles(
+        tiles_dir: str,
+        save_dir: str = 'ground',
+        verbose: bool = False,
+        skip_processed: bool = False,
+    ) -> None:
+    """
+    Generate one CityJSON GroundSurface file for every DTM tile.
+
+    :param tiles_dir: directory containing the DTM subdirectory.
+    :param save_dir: output subdirectory relative to tiles_dir (default: ground).
+    :param verbose: whether to print each processed tile.
+    :param skip_processed: whether to skip existing CityJSON files.
+    :return: None.
+    """
+    dtm_directory = os.path.join(tiles_dir, const.DTM_SUBDIR)
+    if not os.path.isdir(dtm_directory):
+        raise FileNotFoundError(f'Missing DTM directory: {dtm_directory}')
+    dtm_paths = _get_dtm_paths(dtm_directory)
+    output_directory = os.path.join(tiles_dir, save_dir)
+    os.makedirs(output_directory, exist_ok=True)
+
+    for dtm_path in dtm_paths:
+        filename = f'{os.path.splitext(os.path.basename(dtm_path))[0]}.city.json'
+        output_path = os.path.join(output_directory, filename)
+        if skip_processed and os.path.isfile(output_path):
+            continue
+        if verbose:
+            _print(f'* Generating terrain CityJSON from {dtm_path}')
+        city = generate_cityjson_terrain(dtm_path)
+        cjio.write_as_cityjson(city, output_path, pretty=True)
+
+
+def _get_dtm_paths(dtm_directory: str) -> list[str]:
+    """
+    Find DTM GeoTIFF files in a directory.
+
+    :param dtm_directory: directory containing DTM files.
+    :return: sorted DTM file paths.
+    """
+    paths = sorted(
+        os.path.join(dtm_directory, filename)
+        for filename in os.listdir(dtm_directory)
+        if filename.lower().endswith(('.tif', '.tiff'))
+    )
+    if not paths:
+        raise FileNotFoundError(f'No DTM GeoTIFF files found in {dtm_directory}')
+    return paths
+
+
+def _generate_cityjson_terrain(
+        dtm: str | gdal.Dataset,
+        spacial_resolution: float,
+    ) -> cjio.City:
+    """
+    Generate one CityJSON GroundSurface from a DTM.
+
+    :param dtm: path to a DTM GeoTIFF or an open GDAL DTM dataset.
+    :param spacial_resolution: target spatial resolution in meters per pixel.
+    :return: CityJSON city containing one GroundSurface object.
+    """
+    dtm_dataset = geo.open_geotiff(dtm) if isinstance(dtm, str) else dtm
+    if dtm_dataset is None:
+        raise ValueError('dtm must be a readable GDAL dataset or GeoTIFF path')
+    if dtm_dataset.RasterCount != 1:
+        raise ValueError('dtm must contain exactly one raster band')
+
+    width, height = geo.get_size(dtm_dataset)
+    target_shape = (
+        max(2, round(height / spacial_resolution)),
+        max(2, round(width / spacial_resolution)),
+    )
+    resized_dtm = geo.resize(
+        dtm_dataset,
+        target_shape,
+        scale=spacial_resolution,
+    )
+    elevation = np.round(geo.to_ndarray(resized_dtm), 3)
+    origin_x, origin_y = geo.get_origin(resized_dtm)
+    x_coordinates = np.linspace(
+        origin_x,
+        origin_x + width,
+        target_shape[1],
+    )
+    y_coordinates = np.linspace(
+        origin_y,
+        origin_y - height,
+        target_shape[0],
+    )
+
+    vertices = np.empty((target_shape[0], target_shape[1], 3), dtype=float)
+    vertices[:, :, 0] = x_coordinates
+    vertices[:, :, 1] = y_coordinates[:, np.newaxis]
+    vertices[:, :, 2] = elevation
+
+    faces = []
+    for row in range(target_shape[0] - 1):
+        for column in range(target_shape[1] - 1):
+            cell = vertices[row:row + 2, column:column + 2]
+            faces.append(
+                MultiLineString(
+                    [MultiPoint([
+                        CityPoint(*cell[0, 0]),
+                        CityPoint(*cell[0, 1]),
+                        CityPoint(*cell[1, 1]),
+                        CityPoint(*cell[1, 0]),
+                        CityPoint(*cell[0, 0]),
+                    ])]
+                )
+            )
+
+    ground_surface = CityObject(
+        cityobjects=None,
+        type='GroundSurface',
+        geometries=[GeometryPrimitive(MultiSurface(faces), lod='2')],
+        uuid='ground_surface',
+    )
+    city = cjio.City()
+    city['cityobjects'].add_cityobject(ground_surface)
+    city.set_geographical_extent()
+    return city
 
 
 def extract_tiles(orthophoto_path: str, tiles_dir: str, date: str, tile_size: int = None, scale: float = None, verbose: bool = True, *, ndsm_path: str = None, dsm_path: str = None) -> None:
