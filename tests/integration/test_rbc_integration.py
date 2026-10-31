@@ -8,10 +8,11 @@ from pycityjson.model import CityObject
 
 from pydsm import cmd, geo, nda, rbc
 
-TILES = Path(__file__).parent / "test_files" / "tiles"
-NDSM_PATH = next((TILES / "ndsm").glob("*.tif"))
-DTM_PATH = next((TILES / "dtm").glob("*.tif"))
-LABELS_PATH = next((TILES / "labels").glob("*.npz"))
+TILES = Path(__file__).parents[2] / "tests" / "test_files" / "tiles"
+TILE_ID = "40_299360_5036920"
+NDSM_PATH = next((TILES / "ndsm").glob(f"{TILE_ID} *.tif"))
+DTM_PATH = next((TILES / "dtm").glob(f"{TILE_ID} *.tif"))
+LABELS_PATH = next((TILES / "labels").glob(f"{TILE_ID} *.npz"))
 
 
 def _inputs() -> tuple[gdal.Dataset, gdal.Dataset, np.ndarray, np.ndarray]:

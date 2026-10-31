@@ -6,7 +6,7 @@ from osgeo import gdal
 from pydsm import geo
 from pydsm.map import load_dsm, load_dtm
 
-FIXTURE = Path(__file__).parent / "test_files" / "tiles" / "orthophoto" / (
+FIXTURE = Path(__file__).parents[2] / "tests" / "test_files" / "tiles" / "orthophoto" / (
     "40_299360_5036920 (2023-07-21) (69m).tif"
 )
 
