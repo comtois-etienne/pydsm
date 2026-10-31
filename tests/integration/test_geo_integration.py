@@ -126,7 +126,11 @@ def test_generate_terrain_cityjson_tiles_corrects_dtm_at_target_grid_size(
     dtm_path.write_bytes(source.read_bytes())
     calls: list[int] = []
 
-    def correct_dtm(dataset: gdal.Dataset, subsampling_size: int) -> gdal.Dataset:
+    def correct_dtm(
+        dataset: gdal.Dataset,
+        subsampling_size: int,
+        fill_outside_mask: float | None,
+    ) -> gdal.Dataset:
         calls.append(subsampling_size)
         return dataset
 
@@ -137,7 +141,7 @@ def test_generate_terrain_cityjson_tiles_corrects_dtm_at_target_grid_size(
         correct_dtm=True,
     )
 
-    assert calls == [8]
+    assert calls == [17]
 
 
 def test_correct_dtm_fills_nodata_without_sentinel_leakage() -> None:
@@ -151,7 +155,11 @@ def test_correct_dtm_fills_nodata_without_sentinel_leakage() -> None:
     values[20, 20] = -9999
     source.GetRasterBand(1).WriteArray(values)
 
-    corrected = geo.correct_dtm(source, subsampling_size=8)
+    corrected = geo.correct_dtm(
+        source,
+        subsampling_size=8,
+        fill_outside_mask=None,
+    )
     corrected_values = corrected.ReadAsArray()
 
     assert corrected_values is not None
