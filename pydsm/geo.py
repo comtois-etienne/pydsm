@@ -423,9 +423,17 @@ def translation(gdal_file: osgeo.gdal.Dataset, translate: Coordinate) -> osgeo.g
     return nda_to_gdal(array, get_epsg(gdal_file), new_origin, abs(pixel_size[0]))
 
 
-def correct_dtm(dtm_gdal: osgeo.gdal.Dataset, subsampling_size=500, median_kernel_size=5) -> osgeo.gdal.Dataset:
+def correct_dtm(
+        dtm_gdal: osgeo.gdal.Dataset,
+        subsampling_size: int = 500,
+        median_kernel_size: int = 5,
+        fill_outside_mask: float = -9999.0,
+    ) -> osgeo.gdal.Dataset:
     """
-    Corrects the DTM by filling the gaps and smoothing the surface
+    Correct the DTM by filling gaps and smoothing the surface.
+
+    The returned dataset contains filled values for source nodata cells so
+    interpolation cannot mix nodata sentinels into neighboring elevations.
     
     :param dtm_gdal: gdal dataset of the DTM
     :param subsampling_size: size of the subsampling (default: 500)
@@ -444,8 +452,10 @@ def correct_dtm(dtm_gdal: osgeo.gdal.Dataset, subsampling_size=500, median_kerne
     dtm_smoothed = median_filter(dtm_simple, size=median_kernel_size)
 
     dtm_upsampled = cv2_resize(dtm_smoothed, (shape[1], shape[0]), interpolation=INTER_CUBIC)
-    dtm_upsampled = dtm_upsampled * mask
-    dtm_upsampled[~mask] = -9999.0
+
+    if fill_outside_mask is not None:
+        dtm_upsampled = dtm_upsampled * mask
+        dtm_upsampled[~mask] = fill_outside_mask
 
     dtm_corrected = to_gdal_like(dtm_upsampled, dtm_gdal)
     return dtm_corrected

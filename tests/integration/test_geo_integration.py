@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import numpy as np
-from osgeo import gdal
+from osgeo import gdal, osr
 from pycityjson.model import City
 
 from pydsm import cmd, geo
@@ -138,6 +138,25 @@ def test_generate_terrain_cityjson_tiles_corrects_dtm_at_target_grid_size(
     )
 
     assert calls == [8]
+
+
+def test_correct_dtm_fills_nodata_without_sentinel_leakage() -> None:
+    source = gdal.GetDriverByName('MEM').Create('', 40, 40, 1, gdal.GDT_Float32)
+    assert source is not None
+    source.SetGeoTransform((0, 1, 0, 40, 0, -1))
+    projection = osr.SpatialReference()
+    projection.ImportFromEPSG(3979)
+    source.SetProjection(projection.ExportToWkt())
+    values = np.full((40, 40), 10, dtype=np.float32)
+    values[20, 20] = -9999
+    source.GetRasterBand(1).WriteArray(values)
+
+    corrected = geo.correct_dtm(source, subsampling_size=8)
+    corrected_values = corrected.ReadAsArray()
+
+    assert corrected_values is not None
+    assert np.min(corrected_values) >= 10
+    assert np.max(corrected_values) <= 10
 
 
 def test_save_geotiff_creates_missing_parent_directory(tmp_path: Path) -> None:

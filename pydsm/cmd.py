@@ -83,7 +83,10 @@ def compute_ndsm(dsm_path: str, dtm_path: str, ndsm_path: str = None, correct_dt
 
     if correct_dtm:
         _print('  Correcting DTM values')
-        dtm = geo.correct_dtm(dtm)
+        res = geo.get_scales(dtm)[0]
+        width = geo.get_size(dtm)[0]
+        decimation = max(1, round(res / (width / 2.5)))
+        dtm = geo.correct_dtm(dtm, subsampling_size=decimation)
 
     _print(f'  Generating nDSM from \'{dsm_path}\' and \'{dtm_path}\'')
     capture_height = capture_height or 60.0
@@ -858,7 +861,7 @@ def _generate_terrain_cityjson_tile(
         width = geo.get_size(dtm)[0]
         res = geo.get_shape(dtm)[0]
         decimation = max(1, round(res / (width / spacial_resolution)))
-        dtm = geo.correct_dtm(dtm, subsampling_size=decimation)
+        dtm = geo.correct_dtm(dtm, subsampling_size=decimation, fill_outside_mask=None)
     return generate_cityjson_terrain(dtm, spacial_resolution)
 
 
