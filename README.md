@@ -69,13 +69,17 @@ terrain = generate_cityjson_terrain("/path/to/dtm.tif")
 write_as_cityjson(terrain, "/path/to/terrain.city.json", pretty=True)
 ```
 
-The default spatial resolution is 2.5 m/px, producing a 16-by-16 terrain
-grid for a 40 m tile. Elevations are rounded to millimeters.
-To process a folder of DTM tiles, pass the folder path; one
-`*_ground.city.json` file is written per tile to `ground` by default:
+The default spatial resolution is 5 m/px, producing an 8-by-8 terrain grid
+for a 40 m tile. Elevations are rounded to millimeters. To process a folder of
+DTM tiles, use:
 
 ```python
-generate_cityjson_terrain("/path/to/tiles/dtm")
+from pydsm.cmd import generate_terrain_cityjson_tiles
+
+generate_terrain_cityjson_tiles(
+    "/path/to/tiles",
+    correct_dtm=True,
+)
 ```
 
 Elevation tiles can be downloaded with `pydsm.map.load_dtm()` and

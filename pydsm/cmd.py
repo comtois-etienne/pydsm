@@ -784,7 +784,7 @@ def generate_rbc_cityjson_tiles(
 
 def generate_cityjson_terrain(
         dtm: str | gdal.Dataset,
-        spacial_resolution: float = 2.5,
+        spacial_resolution: float = 5,
     ) -> cjio.City:
     """
     Generate one CityJSON GroundSurface model from a DTM.
@@ -802,6 +802,8 @@ def generate_cityjson_terrain(
 def generate_terrain_cityjson_tiles(
         tiles_dir: str,
         save_dir: str = 'ground',
+        spacial_resolution: float = 5,
+        correct_dtm: bool = False,
         verbose: bool = False,
         skip_processed: bool = False,
     ) -> None:
@@ -810,6 +812,8 @@ def generate_terrain_cityjson_tiles(
 
     :param tiles_dir: directory containing the DTM subdirectory.
     :param save_dir: output subdirectory relative to tiles_dir (default: ground).
+    :param spacial_resolution: target spatial resolution in meters per pixel.
+    :param correct_dtm: whether to correct each DTM before export.
     :param verbose: whether to print each processed tile.
     :param skip_processed: whether to skip existing CityJSON files.
     :return: None.
@@ -828,8 +832,34 @@ def generate_terrain_cityjson_tiles(
             continue
         if verbose:
             _print(f'* Generating terrain CityJSON from {dtm_path}')
-        city = generate_cityjson_terrain(dtm_path)
+        city = _generate_terrain_cityjson_tile(
+            dtm_path,
+            spacial_resolution,
+            correct_dtm,
+        )
         cjio.write_as_cityjson(city, output_path, pretty=True)
+
+
+def _generate_terrain_cityjson_tile(
+        dtm_path: str,
+        spacial_resolution: float,
+        correct_dtm: bool,
+    ) -> cjio.City:
+    """
+    Generate one terrain CityJSON model, optionally correcting its DTM.
+
+    :param dtm_path: path to the DTM GeoTIFF.
+    :param spacial_resolution: target spatial resolution in meters per pixel.
+    :param correct_dtm: whether to correct the DTM before export.
+    :return: CityJSON city containing one GroundSurface object.
+    """
+    dtm = geo.open_geotiff(dtm_path)
+    if correct_dtm:
+        width = geo.get_size(dtm)[0]
+        res = geo.get_shape(dtm)[0]
+        decimation = max(1, round(res / (width / spacial_resolution)))
+        dtm = geo.correct_dtm(dtm, subsampling_size=decimation)
+    return generate_cityjson_terrain(dtm, spacial_resolution)
 
 
 def _get_dtm_paths(dtm_directory: str) -> list[str]:

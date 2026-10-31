@@ -45,12 +45,12 @@ def test_generate_cityjson_terrain_uses_fixed_grid_and_rounds_values() -> None:
     ground_surface = city['cityobjects'].get_by_uuid('ground_surface')
     assert ground_surface is not None
     assert ground_surface.type == 'GroundSurface'
-    assert ground_surface.geometries[0].surface_count() == 225
+    assert ground_surface.geometries[0].surface_count() == 49
     vertices = np.unique(
         np.asarray(ground_surface.get_vertices()).reshape(-1, 3),
         axis=0,
     )
-    assert len(vertices) == 256
+    assert len(vertices) == 64
     assert not np.any(np.isclose(vertices[:, 2], 0))
     assert all(
         abs(round(vertex[2], 3) - vertex[2]) <= 0.0005
@@ -106,9 +106,38 @@ def test_generate_terrain_cityjson_tiles_processes_dtm_folder(tmp_path: Path) ->
     )
 
     output_directory = input_directory / 'ground'
-    outputs = sorted(output_directory.glob("*_ground.city.json"))
+    outputs = sorted(output_directory.glob("*.city.json"))
     assert len(outputs) == 2
     assert all(output.stat().st_size > 0 for output in outputs)
+
+
+def test_generate_terrain_cityjson_tiles_corrects_dtm_at_target_grid_size(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    dtm_directory = tmp_path / 'tiles' / 'dtm'
+    dtm_directory.mkdir(parents=True)
+    source = next(
+        (Path(__file__).parents[2] / 'tests' / 'test_files' / 'tiles' / 'dtm').glob(
+            '40_300080_5037320 *.tif'
+        )
+    )
+    dtm_path = dtm_directory / source.name
+    dtm_path.write_bytes(source.read_bytes())
+    calls: list[int] = []
+
+    def correct_dtm(dataset: gdal.Dataset, subsampling_size: int) -> gdal.Dataset:
+        calls.append(subsampling_size)
+        return dataset
+
+    monkeypatch.setattr(geo, 'correct_dtm', correct_dtm)
+    cmd.generate_terrain_cityjson_tiles(
+        str(tmp_path / 'tiles'),
+        spacial_resolution=5,
+        correct_dtm=True,
+    )
+
+    assert calls == [8]
 
 
 def test_save_geotiff_creates_missing_parent_directory(tmp_path: Path) -> None:
