@@ -5,7 +5,7 @@ from osgeo import gdal, osr
 from pycityjson.model import City
 
 from pydsm import cmd, geo
-from pydsm.map import load_dsm, load_dtm
+from pydsm.sat import load_dsm, load_dtm
 
 FIXTURE = Path(__file__).parents[2] / "tests" / "test_files" / "tiles" / "orthophoto" / (
     "40_299360_5036920 (2023-07-21) (69m).tif"

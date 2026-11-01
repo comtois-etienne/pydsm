@@ -20,7 +20,7 @@ from pycityjson.model.primitive import Point as CityPoint
 from skimage.draw import polygon
 
 import pydsm.geo as geo
-import pydsm.map as map
+import pydsm.sat as sat
 import pydsm.nda as nda
 import pydsm.rbc as rbc
 import pydsm.shp as shp
@@ -82,15 +82,15 @@ def _download_cityjson_tile(
     """Download and save imagery, DTM, and DSM for one tile."""
     datasets = (
         (const.ORTHOPHOTO_SUBDIR, _download_with_retry(
-            map.load_imagery, 'imagery', verbose, epsg=epsg, origin=origin, dimension=size,
+            sat.load_imagery, 'imagery', verbose, epsg=epsg, origin=origin, dimension=size,
             pixel_size=spacial_resolution,
         )),
         (const.DTM_SUBDIR, _download_with_retry(
-            map.load_dtm, 'DTM', verbose, epsg=epsg, origin=origin, dimension=size,
+            sat.load_dtm, 'DTM', verbose, epsg=epsg, origin=origin, dimension=size,
             pixel_size=spacial_resolution,
         )),
         (const.DSM_SUBDIR, _download_with_retry(
-            map.load_dsm, 'DSM', verbose, epsg=epsg, origin=origin, dimension=size,
+            sat.load_dsm, 'DSM', verbose, epsg=epsg, origin=origin, dimension=size,
             pixel_size=spacial_resolution,
         )),
     )
