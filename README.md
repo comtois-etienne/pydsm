@@ -2,6 +2,55 @@
 
 DSM, DTM, nDSM and Ortophoto tools
 
+## Repository structure
+
+The package separates reusable domain logic from command workflows:
+
+- `pydsm/const.py` defines tile-directory names and project constants.
+- `pydsm/cpa.py` contains RGB-D copy-paste augmentation.
+- `pydsm/geo.py` contains GeoTIFF I/O, reprojection, resampling, and terrain
+  operations.
+- `pydsm/nda.py` contains NumPy image and array processing.
+- `pydsm/rbc.py` models trees with Rhombicuboctahedra.
+- `pydsm/resnet.py` contains ResNet training workflows.
+- `pydsm/sat.py` downloads satellite imagery, DTM, and DSM data.
+- `pydsm/shp.py` contains shapefile operations.
+- `pydsm/utils.py` contains shared path, file, string, and coordinate helpers.
+- `pydsm/yolo.py` creates YOLO datasets and runs predictions.
+- `pydsm/cmd.py` composes these modules into file and tile workflows.
+- `main.py` is the command-line adapter; CLI handlers call functions in
+  `pydsm.cmd` rather than implementing processing logic themselves.
+
+### Key function examples
+
+```python
+from pydsm import cpa, const, geo, nda, rbc, resnet, sat, shp, utils, yolo
+
+dataset = geo.open_geotiff('tile.tif')
+array = geo.to_ndarray(dataset)
+scaled = nda.clip_rescale(array, const.CLIP_HEIGHT)
+elevation = sat.load_dtm(2950, (299360, 5036920))
+```
+
+The higher-level workflows include:
+
+```python
+from pydsm.cmd import (
+    generate_rbc_cityjson_tiles,
+    generate_terrain_cityjson_tiles,
+    load_tile_in_cityjson,
+)
+
+load_tile_in_cityjson(
+    '/data/tiles',
+    'city.city.json',
+    spacial_resolution=0.3,
+    verbose=True,
+)
+generate_terrain_cityjson_tiles('/data/tiles', correct_dtm=True)
+generate_rbc_cityjson_tiles('/data/tiles', '/data/cityjson')
+```
+
 ## Development environment
 
 Create the project virtual environment with Python 3.12 or newer, then install

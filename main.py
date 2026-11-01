@@ -290,6 +290,54 @@ def RBC_TILES(args):
     )
 
 
+def RBC_CITYJSON_TILES(args: argparse.Namespace) -> None:
+    """Generate CityJSON RBC files for all tiles."""
+    from pydsm.cmd import generate_rbc_cityjson_tiles
+    generate_rbc_cityjson_tiles(
+        args.tiles_dir,
+        args.save_dir,
+        args.offset,
+        args.verbose,
+        args.ignore_processed,
+    )
+
+
+def TERRAIN(args: argparse.Namespace) -> None:
+    """Generate one CityJSON terrain model from a DTM."""
+    from pydsm.cmd import generate_cityjson_terrain
+    from pycityjson.io import write_as_cityjson
+
+    city = generate_cityjson_terrain(args.dtm_path, args.spatial_resolution)
+    write_as_cityjson(city, args.save_path, pretty=True)
+
+
+def TERRAIN_TILES(args: argparse.Namespace) -> None:
+    """Generate CityJSON terrain files for all DTM tiles."""
+    from pydsm.cmd import generate_terrain_cityjson_tiles
+    generate_terrain_cityjson_tiles(
+        args.tiles_dir,
+        args.save_dir,
+        args.spatial_resolution,
+        args.correct_dtm,
+        args.verbose,
+        args.ignore_processed,
+    )
+
+
+def SAT_CITYJSON(args: argparse.Namespace) -> None:
+    """Download satellite and elevation tiles covering a CityJSON model."""
+    from pydsm.cmd import load_tile_in_cityjson
+    load_tile_in_cityjson(
+        args.tiles_dir,
+        args.cityjson_path,
+        args.size,
+        args.spatial_resolution,
+        args.bounding_box,
+        not args.no_skip_existing,
+        args.verbose,
+    )
+
+
 # GENERAL COMMANDS
 
 def _silence():
@@ -331,6 +379,10 @@ COMMANDS = {
     'registration': registration,
     'rbc': RBC,
     'rbc-tiles': RBC_TILES,
+    'rbc-cityjson-tiles': RBC_CITYJSON_TILES,
+    'terrain': TERRAIN,
+    'terrain-tiles': TERRAIN_TILES,
+    'sat-cityjson': SAT_CITYJSON,
 }
 
 
@@ -467,6 +519,47 @@ def parser_setup():
         default="./rbc_tiles",
         help="Directory where per-tile Wavefront files are saved",
     )
+
+    rbc_cityjson_parser = subparsers.add_parser(
+        "rbc-cityjson-tiles",
+        help="Create one CityJSON RBC file for every complete tile",
+    )
+    rbc_cityjson_parser.add_argument("tiles_dir", type=str)
+    rbc_cityjson_parser.add_argument("--offset", "--elevation-offset", type=float, default=False)
+    rbc_cityjson_parser.add_argument("-v", "--verbose", action="store_true")
+    rbc_cityjson_parser.add_argument("--ignore-processed", action="store_true")
+    rbc_cityjson_parser.add_argument("--save-dir", type=str, default="./rbc_cityjson")
+
+    terrain_parser = subparsers.add_parser(
+        "terrain",
+        help="Create a CityJSON terrain model from one DTM",
+    )
+    terrain_parser.add_argument("dtm_path", type=str)
+    terrain_parser.add_argument("save_path", type=str)
+    terrain_parser.add_argument("--spatial-resolution", type=float, default=5)
+
+    terrain_tiles_parser = subparsers.add_parser(
+        "terrain-tiles",
+        help="Create CityJSON terrain files for a DTM tile directory",
+    )
+    terrain_tiles_parser.add_argument("tiles_dir", type=str)
+    terrain_tiles_parser.add_argument("--save-dir", type=str, default="ground")
+    terrain_tiles_parser.add_argument("--spatial-resolution", type=float, default=5)
+    terrain_tiles_parser.add_argument("--correct-dtm", action="store_true")
+    terrain_tiles_parser.add_argument("--ignore-processed", action="store_true")
+    terrain_tiles_parser.add_argument("-v", "--verbose", action="store_true")
+
+    sat_cityjson_parser = subparsers.add_parser(
+        "sat-cityjson",
+        help="Download tiles covering a CityJSON model",
+    )
+    sat_cityjson_parser.add_argument("tiles_dir", type=str)
+    sat_cityjson_parser.add_argument("cityjson_path", type=str)
+    sat_cityjson_parser.add_argument("--size", type=float, default=40)
+    sat_cityjson_parser.add_argument("--spatial-resolution", type=float, default=0.3)
+    sat_cityjson_parser.add_argument("--bounding-box", action="store_true")
+    sat_cityjson_parser.add_argument("--no-skip-existing", action="store_true")
+    sat_cityjson_parser.add_argument("-v", "--verbose", action="store_true")
 
     return parser
 
