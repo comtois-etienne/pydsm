@@ -246,6 +246,37 @@ def display_epsg(path: str):
         _print('* Unsupported file format')
 
 
+def merge_geotiffs(
+    geotiffs_dir: str,
+    save_path: str = 'merged.tif',
+    spacial_resolution: float | None = None,
+) -> None:
+    """
+    Merge all GeoTIFF files in a directory into one GeoTIFF.
+
+    :param geotiffs_dir: directory containing the GeoTIFF tiles.
+    :param save_path: path where the merged GeoTIFF is saved.
+    :param spacial_resolution: target pixel size, or None to preserve it.
+    :return: None.
+    """
+    if spacial_resolution is not None and spacial_resolution <= 0:
+        raise ValueError('spacial_resolution must be greater than zero')
+    paths = sorted(
+        os.path.join(geotiffs_dir, filename)
+        for filename in os.listdir(geotiffs_dir)
+        if filename.lower().endswith(('.tif', '.tiff'))
+    )
+    if not paths:
+        raise FileNotFoundError(f'No GeoTIFF files found in {geotiffs_dir}')
+
+    tiles = [geo.open_geotiff(path) for path in paths]
+    if spacial_resolution is not None:
+        tiles = [geo.rescale(tile, spacial_resolution) for tile in tiles]
+    merged = geo.merge_tiles(tiles)
+    geo.save_geotiff(merged, save_path)
+    _print(f'* Saved merged GeoTIFF to \'{save_path}\'')
+
+
 def reproject_geotiff(path: str, save_path: str = None, epsg=4326):
     """
     Reprojects a geotiff file to a new EPSG code  

@@ -338,6 +338,16 @@ def SAT_CITYJSON(args: argparse.Namespace) -> None:
     )
 
 
+def MERGE_GEOTIFFS(args: argparse.Namespace) -> None:
+    """Merge GeoTIFF files from a directory."""
+    from pydsm.cmd import merge_geotiffs
+    merge_geotiffs(
+        args.geotiffs_dir,
+        args.save_path,
+        args.spatial_resolution,
+    )
+
+
 # GENERAL COMMANDS
 
 def _silence():
@@ -383,6 +393,7 @@ COMMANDS = {
     'terrain': TERRAIN,
     'terrain-tiles': TERRAIN_TILES,
     'sat-cityjson': SAT_CITYJSON,
+    'merge-geotiffs': MERGE_GEOTIFFS,
 }
 
 
@@ -560,6 +571,14 @@ def parser_setup():
     sat_cityjson_parser.add_argument("--bounding-box", action="store_true")
     sat_cityjson_parser.add_argument("--no-skip-existing", action="store_true")
     sat_cityjson_parser.add_argument("-v", "--verbose", action="store_true")
+
+    merge_parser = subparsers.add_parser(
+        "merge-geotiffs",
+        help="Merge all GeoTIFF files from a directory",
+    )
+    merge_parser.add_argument("geotiffs_dir", type=str)
+    merge_parser.add_argument("--save-path", type=str, default="merged.tif")
+    merge_parser.add_argument("--spatial-resolution", type=float, default=None)
 
     return parser
 
