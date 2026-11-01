@@ -7,4 +7,5 @@ dependencies:
   - pip
   - pip:
       - -e .[test]
+      - yolo_rgbd @ git+https://github.com/comtois-etienne/yolo_rgbd.git
       - ipykernel>=6.29

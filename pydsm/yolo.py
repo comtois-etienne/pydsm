@@ -1,14 +1,10 @@
 import os
 from dataclasses import dataclass
 
-import cv2
-import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from skimage.measure import label
-from skimage.morphology import disk
-from skimage.morphology import opening as binary_opening
 
 import pydsm.const as const
 import pydsm.geo as geo
@@ -16,117 +12,12 @@ import pydsm.nda as nda
 import pydsm.tile as tile
 import pydsm.utils as utils
 
+from yolo_rgbd.prediction import ObjectDetector as RGBDObjectDetector
+from yolo_rgbd.prediction import predict_from_array
+
 from .rbc import get_contour as rbc_get_contour
 
-########### RGBD Monkey Patching ###########
-"""
-Optional, for viewing images during training
-in ultralytics.utils.plotting.py
-change original line in function `plot_images` :
-`mosaic[y : y + h, x : x + w, :] = images[i].transpose(1, 2, 0) # Original`
-
-to this line :
-`mosaic[y : y + h, x : x + w, :] = images[i][[3,2,1]].transpose(1, 2, 0) # Modified`
-"""
-
-from PIL import Image
-from ultralytics import YOLO  # ensure YOLO is imported before monkey patching
-from ultralytics.data.base import IMG_FORMATS
-
-if cv2.__dict__.get('original_imread', None) is None:
-    print("Monkey Patching 🐒 cv2.imread to add .npz tiles support for YOLO RGBD")
-    cv2.original_imread = cv2.imread
-
-if Image.__dict__.get('original_open', None) is None:
-    print("Monkey Patching 🐒 PIL.Image.open to add .npz tiles support for YOLO RGBD")
-    Image.original_open = Image.open
-
-
-def fake_cv2_imread(file_path):
-    # print('Called fake_imread')
-    if utils.get_extension(file_path) == 'npz':
-        t = tile.open_tile_npz(file_path)
-        return t.rgbd()
-    else:
-        return cv2.original_imread(file_path)
-
-
-def fake_pil_open(file_path):
-    # print('Called fake_open')
-    if utils.get_extension(file_path) == 'npz':
-        t = tile.open_tile_npz(file_path)
-        rgbd = t.rgbd()
-        pil_im = Image.fromarray(rgbd, mode='RGBA')
-        pil_im.format = 'NPZ'
-        return pil_im
-    else:
-        return Image.original_open(file_path)
-
-
-IMG_FORMATS.add("npz")
-cv2.imread = fake_cv2_imread
-Image.open = fake_pil_open
-
-
 ########### Anonymisation ###########
-
-
-coco_classes = {0: 'person', 1: 'bicycle', 2: 'car', 3: 'motorcycle', 4: 'airplane', 5: 'bus', 6: 'train', 7: 'truck', 8: 'boat', 9: 'traffic light', 10: 'fire hydrant', 11: 'stop sign', 12: 'parking meter', 13: 'bench', 14: 'bird', 15: 'cat', 16: 'dog', 17: 'horse', 18: 'sheep', 19: 'cow', 20: 'elephant', 21: 'bear', 22: 'zebra', 23: 'giraffe', 24: 'backpack', 25: 'umbrella', 26: 'handbag', 27: 'tie', 28: 'suitcase', 29: 'frisbee', 30: 'skis', 31: 'snowboard', 32: 'sports ball', 33: 'kite', 34: 'baseball bat', 35: 'baseball glove', 36: 'skateboard', 37: 'surfboard', 38: 'tennis racket', 39: 'bottle', 40: 'wine glass', 41: 'cup', 42: 'fork', 43: 'knife', 44: 'spoon', 45: 'bowl', 46: 'banana', 47: 'apple', 48: 'sandwich', 49: 'orange', 50: 'broccoli', 51: 'carrot', 52: 'hot dog', 53: 'pizza', 54: 'donut', 55: 'cake', 56: 'chair', 57: 'couch', 58: 'potted plant', 59: 'bed', 60: 'dining table', 61: 'toilet', 62: 'tv', 63: 'laptop', 64: 'mouse', 65: 'remote', 66: 'keyboard', 67: 'cell phone', 68: 'microwave', 69: 'oven', 70: 'toaster', 71: 'sink', 72: 'refrigerator', 73: 'book', 74: 'clock', 75: 'vase', 76: 'scissors', 77: 'teddy bear', 78: 'hair drier', 79: 'toothbrush'}
-
-
-def _get_objs(res):
-    columns=['xmin', 'ymin', 'xmax', 'ymax', 'xcenter', 'score', 'class', 'name']
-    df = pd.DataFrame(columns=columns)
-    for r in res:
-        for i in range(len(r.boxes.cls)):
-            xyxy = np.array(r.boxes.xyxy[i].cpu(), dtype=int)
-            df = pd.concat([df, pd.DataFrame({
-                    'xmin': xyxy[0],
-                    'ymin': xyxy[1],
-                    'xmax': xyxy[2],
-                    'ymax': xyxy[3],
-                    'xcenter': int((xyxy[0] + xyxy[2]) / 2),
-                    'score': float(r.boxes.conf[i]),
-                    'class': int(r.boxes.cls[i]),
-                    'name': coco_classes[int(r.boxes.cls[i])],
-                }, index=[0])],
-            ) 
-    return df
-
-
-def plot_obj(ax, obj, color='r', linewidth=2):
-    rect = patches.Rectangle((obj['xmin'], obj['ymin']), obj['xmax'] - obj['xmin'], obj['ymax'] - obj['ymin'], linewidth=linewidth, edgecolor=color, facecolor='none')
-    ax.add_patch(rect)
-
-
-def plot_objs(ax, objs, color='r', linewidth=2):
-    for i in range(len(objs)):
-        plot_obj(ax, objs.iloc[i], color=color, linewidth=linewidth)
-
-
-class ObjectDetector:
-
-    def __init__(self, model):
-        self.model = model
-        self.results = None
-
-    def detect(self, image, verbose=False, imgsz=640):
-        self.results = self.model(image, verbose=verbose, imgsz=imgsz)
-        return self.results
-
-    def get_objs(self, score=0.5):
-        objs = _get_objs(self.results)
-        return objs[objs['score'] >= score]
-
-    def get_objs_by_name(self, cls, score=0.5):
-        objs = self.get_objs(score)
-        return objs[objs['name'] == cls]
-
-    def get_objs_by_class(self, cls, score=0.5):
-        objs = self.get_objs(score)
-        return objs[objs['class'] == cls]
-
-
 def __gaussian_blur_from_boxes(array: np.ndarray, boxes: pd.DataFrame, sigma: float = 5.0) -> np.ndarray:
     """
     :param ndarray: 3D array of the image
@@ -163,13 +54,11 @@ def anonymise_with_yolo(array: np.ndarray, model_name='yolov8n.pt') -> np.ndarra
     """
     from ultralytics import YOLO
 
-    from pydsm.yolo import ObjectDetector
-
     model = YOLO(model_name)
-    detector = ObjectDetector(model)
+    detector = RGBDObjectDetector(model)
     size = (max(array.shape) + 32) // 32 * 32
     detector.detect(array, imgsz=size)
-    boxes = detector.get_objs_by_name('person', 0.2)
+    boxes = detector.get_objs_by_class(0, 0.2) # class 0 is person, confidence threshold 0.2
     return __gaussian_blur_from_boxes(array, boxes)
 
 
@@ -364,83 +253,6 @@ def load_rgbd(orthophoto_path: str, ndsm_path: str, clip_height : float = const.
     return np.dstack((rgb, d))
 
 
-def predict_instances(model_path: str, image: np.ndarray, confidence=const.CONFIDENCE_THRESHOLD) -> tuple[list[np.array], list[float], list[int]]:
-    """
-    Predict the instance segmentation masks in one image using a YOLO model.
-
-    :param model_path: str, path to the YOLO model trained on RGB-D or RGB images
-    :param image: np.ndarray (dtype=unint8), input RGB-D or RGB image as a numpy array of shape (H, W, 4) (RGBD) or (H, W, 3) (RGB)
-    :param confidence: float, confidence threshold for predictions
-    :return: tuple of lists containing:
-        - list of np.ndarray, predicted instance segmentation masks of shape (H, W) with binary values (0 or 1)
-        - list of float, confidence scores for each predicted mask
-        - list of int, class labels for each predicted mask
-    """
-    model = YOLO(model_path)
-    results = model.predict(source=image, conf=confidence, verbose=False)
-
-    orig_shape = image.shape[:2]
-    if results[0].masks is None:
-        return [np.zeros(orig_shape, dtype=np.uint16)], [0.0], [0]
-
-    masks = results[0].masks.data.cpu().numpy()
-    confs = results[0].boxes.conf.cpu().numpy()
-    classes = [int(c) for c in results[0].boxes.cls.cpu().numpy()]
-
-    pred_shape = masks[0].shape[:2]
-    if pred_shape != orig_shape:
-        masks = [nda.rescale_nearest_neighbour(mask, orig_shape) for mask in masks]
-
-    return masks, confs, classes
-
-
-def clean_prediction(masks: list[np.ndarray], confs: list[float], classes: list[int]) -> tuple[np.ndarray]:
-    """
-    Merges the predicted instance segmentation masks into a single instance mask and a semantic mask. 
-    Removes holes, applys non-maximum suppression (NMS), and assigs instance and semantic labels.
-
-    :param masks: list of np.ndarray, predicted instance segmentation masks of shape (H, W) with binary values (0 or 1)
-    :param confs: list of float, confidence scores for each predicted mask
-    :param classes: list of int, class labels for each predicted mask
-    :return: tuple containing:
-        - np.ndarray, instance mask of shape (H, W) with integer values representing instance labels (0 for background, 1 for first instance, 2 for second instance, etc.)
-        - np.ndarray, semantic mask of shape (H, W) with integer values representing class labels (0 for background, 1 for first class, 2 for second class, etc.)
-        - np.ndarray, confidence mask of shape (H, W) with float values representing confidence scores for each pixel
-    """
-    masks = [nda.get_biggest_mask(mask) for mask in masks]
-    masks = [nda.remove_holes(mask) for mask in masks]
-    kept_masks = nda.nms(masks, confs, const.IOU_THRESHOLD)[::-1]
-    kept_masks_index = [np.where(np.all(masks == m, axis=(1, 2)))[0][0] for m in kept_masks]
-
-    out_shape = masks[0].shape[:2]
-    instances = np.zeros(out_shape, dtype=np.uint16)
-    semantics = np.zeros(out_shape, dtype=np.uint16)
-    confidences = np.zeros(out_shape, dtype=np.float32)
-
-    for i, mask in enumerate(kept_masks):
-        instances[mask > 0] = i + 1
-
-    new_instances = np.zeros_like(instances)
-    instances = nda.remove_small_masks(instances, min_area=const.MIN_MASK_SIZE)
-    for i in np.unique(instances):
-        if i == 0: continue
-        mask = instances == i
-        mask = binary_opening(mask, disk(const.REMOVE_CRACKS_SIZE))
-        mask = nda.get_biggest_mask(mask)
-        new_instances[mask > 0] = i
-    instances = new_instances
-
-    kept_masks = [instances == (i + 1) for i in range(instances.max())] # clears the removed small masks
-
-    for i, mask in enumerate(kept_masks):
-        index = kept_masks_index[i]
-        semantics[mask > 0] = classes[index] + 1
-        confidences[mask > 0] = confs[index]
-
-    instances = nda.relabel(instances)
-    return instances, semantics, confidences
-
-
 def predict_from_geotiff(model_paths: str | list[str], tiles_dir: str, tile_name: str, pred_mode='rgb', verbose=False) -> None:
     """
     Predict the instance segmentation masks in one tile using a YOLO model.
@@ -463,15 +275,12 @@ def predict_from_geotiff(model_paths: str | list[str], tiles_dir: str, tile_name
     rgb, d = image[:, :, :3], image[:, :, 3]
     image = rgb if pred_mode == 'rgb' else image
 
-    masks, confs, classes = [], [], []
-    for model_path in model_paths:
-        ms, cs, cls = predict_instances(model_path, image, thresh)
-        masks.extend(ms)
-        classes.extend(cls)
-        confs.extend([c * thresh if cl == 0 else c for c, cl in zip(cs, cls)])
-
-    instances, semantics, confidences = clean_prediction(masks, confs, classes)
-    confidences[confidences < thresh] *= (1/thresh)
+    instances, semantics, confidences = predict_from_array(
+        model_paths,
+        image,
+        pred_mode=pred_mode,
+        confidence=thresh,
+    )
 
     t = tile.Tile(rgb, d, instances, semantics)
     t.confidence_labels = confidences
