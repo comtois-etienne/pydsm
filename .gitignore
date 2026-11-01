@@ -437,3 +437,4 @@ $RECYCLE.BIN/
 
 # End of https://www.toptal.com/developers/gitignore/api/python,visualstudiocode,pycharm,java,maven,macos,windows
 .ctx.md
+.vscode/settings.json
