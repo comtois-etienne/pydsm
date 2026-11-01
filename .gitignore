@@ -436,3 +436,4 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.toptal.com/developers/gitignore/api/python,visualstudiocode,pycharm,java,maven,macos,windows
+.ctx.md
