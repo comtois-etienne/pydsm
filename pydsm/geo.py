@@ -348,7 +348,7 @@ def to_cmap(gdal_file: osgeo.gdal.Dataset, cmap: str = 'terrain', clip_height: f
     """
     array = to_ndarray(gdal_file)
     array = nda_clip_rescale(array, clip_height)
-    array = nda_to_uint8(array, norm=False)
+    array = nda_to_uint8(array, norm=True)
     array_cmap = nda_to_cmap(array, cmap=cmap, nrm=False)
     array_cmap = nda_to_uint8(array_cmap, norm=False)
     return array_cmap
@@ -481,7 +481,59 @@ def correct_dtm(
     return dtm_corrected
 
 
-def to_ndsm(dsm_gdal: osgeo.gdal.Dataset, dtm_gdal: osgeo.gdal.Dataset, capture_height=120.0, round_to_millimeters=True) -> np.ndarray:
+def to_ndsm_corrected(
+    dsm_gdal: osgeo.gdal.Dataset,
+    dtm_gdal: osgeo.gdal.Dataset,
+    capture_height: float = 500.0,
+    correct_dtm: bool = False,
+    resize_gdal: osgeo.gdal.Dataset | None = None,
+) -> osgeo.gdal.Dataset:
+    """
+    Create an nDSM after optionally resizing and correcting the DTM.
+
+    :param dsm_gdal: GDAL dataset containing the DSM.
+    :param dtm_gdal: GDAL dataset containing the DTM.
+    :param capture_height: maximum vegetation height to retain.
+    :param correct_dtm: whether to correct extreme DTM values.
+    :param resize_gdal: optional dataset whose shape should be used.
+    :return: GDAL dataset containing the nDSM.
+    """
+    if resize_gdal is not None:
+        target_shape = get_shape(resize_gdal)
+        if get_shape(dsm_gdal) != target_shape:
+            dsm_gdal = resize_like(dsm_gdal, resize_gdal)
+        if get_shape(dtm_gdal) != target_shape:
+            dtm_gdal = resize_like(dtm_gdal, resize_gdal)
+    if get_shape(dsm_gdal) != get_shape(dtm_gdal):
+        raise ValueError('The DSM and DTM must have the same dimensions')
+    if correct_dtm:
+        resolution = get_scales(dtm_gdal)[0]
+        width = get_size(dtm_gdal)[0]
+        decimation = max(1, round(resolution / (width / 2.5)))
+        dtm_gdal = _correct_dtm_values(dtm_gdal, decimation)
+    return to_ndsm(dsm_gdal, dtm_gdal, capture_height=capture_height)
+
+
+def _correct_dtm_values(
+    dtm_gdal: osgeo.gdal.Dataset,
+    subsampling_size: int,
+) -> osgeo.gdal.Dataset:
+    """
+    Correct extreme values in a DTM dataset.
+
+    :param dtm_gdal: GDAL dataset containing the DTM.
+    :param subsampling_size: DTM correction decimation.
+    :return: corrected GDAL dataset.
+    """
+    return correct_dtm(dtm_gdal, subsampling_size=subsampling_size)
+
+
+def to_ndsm(
+    dsm_gdal: osgeo.gdal.Dataset,
+    dtm_gdal: osgeo.gdal.Dataset,
+    capture_height: float = 500.0,
+    round_to_millimeters: bool = True,
+) -> osgeo.gdal.Dataset:
     """
     :param dsm_gdal: gdal dataset of the DSM
     :param dtm_gdal: gdal dataset of the DTM

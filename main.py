@@ -31,6 +31,17 @@ def _ndsm(args):
     )
 
 
+def _ndsm_dir(args):
+    """Compute nDSM files for matching DSM and DTM tiles."""
+    from pydsm.cmd import compute_ndsm_dir
+    compute_ndsm_dir(
+        args.tiles_dir,
+        args.correct_dtm,
+        args.capture_height,
+        args.cmap_dir,
+    )
+
+
 def _epsg(args):
     """
     Displays the EPSG code of a file
@@ -394,6 +405,7 @@ COMMANDS = {
     'terrain-tiles': TERRAIN_TILES,
     'sat-cityjson': SAT_CITYJSON,
     'merge-geotiffs': MERGE_GEOTIFFS,
+    'ndsm-dir': _ndsm_dir,
 }
 
 
@@ -411,6 +423,15 @@ def parser_setup():
     parser_ndsm.add_argument("--correct-dtm", action="store_true", help="Correct extreme DTM values")
     parser_ndsm.add_argument("--capture-height", type=float, help="Height of the drone during the capture (default: 60.0)")
     parser_ndsm.add_argument("--resize", type=str, help="Resize the DSM and DTM to the orthophoto shape")
+
+    parser_ndsm_dir = subparsers.add_parser(
+        'ndsm-dir',
+        help='Generate nDSM files for DSM and DTM tiles',
+    )
+    parser_ndsm_dir.add_argument('tiles_dir', type=str)
+    parser_ndsm_dir.add_argument('--correct-dtm', action='store_true')
+    parser_ndsm_dir.add_argument('--capture-height', type=float, default=60.0)
+    parser_ndsm_dir.add_argument('--cmap-dir', type=str, default=None)
 
     # epsg command
     parser_epsg = subparsers.add_parser("epsg", help="Get the EPSG code of a file (GeoTIFF or Shapefile)")

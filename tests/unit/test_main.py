@@ -22,3 +22,9 @@ def test_parser_includes_cityjson_workflows() -> None:
         'tiles',
         'city.json',
     ]).command == 'sat-cityjson'
+    assert parser.parse_args([
+        'ndsm-dir',
+        'tiles',
+        '--cmap-dir',
+        'ndsm-cmap',
+    ]).command == 'ndsm-dir'

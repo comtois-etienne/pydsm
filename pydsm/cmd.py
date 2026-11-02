@@ -6,6 +6,7 @@ Commands for processing geotiff files
 import os
 import time
 import webbrowser
+from glob import glob
 from datetime import date
 from typing import Callable
 
@@ -200,7 +201,14 @@ def _print(string: str, end: str = '\n'):
         _ = os.system(f'say \"{string}\"')
 
 
-def compute_ndsm(dsm_path: str, dtm_path: str, ndsm_path: str = None, correct_dtm: bool = False, capture_height: float = 60.0, resize: str = None):
+def compute_ndsm(
+    dsm_path: str,
+    dtm_path: str,
+    ndsm_path: str | None = None,
+    correct_dtm: bool = False,
+    capture_height: float = 500.0,
+    resize: str | None = None,
+) -> str:
     """
     Computes the nDSM from a DSM and DTM  
 
@@ -210,38 +218,70 @@ def compute_ndsm(dsm_path: str, dtm_path: str, ndsm_path: str = None, correct_dt
     :param correct_dtm: bool, removes extreme DTM values (optional)  
     :param capture_height: float, height of the drone during the capture (optional) (default: 60.0)  
     :param resize: str, path to the orthophoto to resize the DSM and DTM (optional)  
-    :return: None (saves the nDSM to disk)  
+    :return: path to the saved nDSM GeoTIFF.
     """
     _print('* Opening the geotiffs')
     dsm = geo.open_geotiff(dsm_path)
     dtm = geo.open_geotiff(dtm_path)
 
+    orthophoto = None
     if resize:
         _print('  Resizing DSM and DTM to the orthophoto shape')
         orthophoto = geo.open_geotiff(resize)
-        shape_ortho = geo.get_shape(orthophoto)
-        dsm = geo.resize_like(dsm, orthophoto) if geo.get_shape(dsm) != shape_ortho else dsm
-        dtm = geo.resize_like(dtm, orthophoto) if geo.get_shape(dtm) != shape_ortho else dtm
-
-    if geo.get_shape(dsm) != geo.get_shape(dtm):
-        _print('* Error: DSM and DTM have different shapes')
-        _print('  Consider resizing them to the orthophoto shape')
-        return
 
     if correct_dtm:
         _print('  Correcting DTM values')
-        res = geo.get_scales(dtm)[0]
-        width = geo.get_size(dtm)[0]
-        decimation = max(1, round(res / (width / 2.5)))
-        dtm = geo.correct_dtm(dtm, subsampling_size=decimation)
 
     _print(f'  Generating nDSM from \'{dsm_path}\' and \'{dtm_path}\'')
     capture_height = capture_height or 60.0
-    ndsm = geo.to_ndsm(dsm, dtm, capture_height=capture_height)
+    ndsm = geo.to_ndsm_corrected(
+        dsm,
+        dtm,
+        capture_height=capture_height,
+        correct_dtm=correct_dtm,
+        resize_gdal=orthophoto,
+    )
 
     ndsm_path = ndsm_path or utils.append_file_to_path(utils.get_folder_path(dsm_path), 'ndsm.tif')
     geo.save_geotiff(ndsm, ndsm_path)
     _print(f'  Saved to \'{ndsm_path}\'')
+    return ndsm_path
+
+
+def compute_ndsm_dir(
+    tiles_dir: str,
+    correct_dtm: bool = False,
+    capture_height: float = 500.0,
+    cmap_dir: str | None = None,
+) -> None:
+    """
+    Compute nDSM files for matching DSM and DTM files in a tiles directory.
+
+    :param tiles_dir: directory containing DSM and DTM subdirectories.
+    :param correct_dtm: whether to correct extreme DTM values.
+    :param capture_height: maximum vegetation height to retain.
+    :param cmap_dir: optional subdirectory for RGB nDSM renderings.
+    """
+    dsm_dir = os.path.join(tiles_dir, const.DSM_SUBDIR)
+    dtm_dir = os.path.join(tiles_dir, const.DTM_SUBDIR)
+    ndsm_dir = os.path.join(tiles_dir, const.NDSM_SUBDIR)
+    os.makedirs(ndsm_dir, exist_ok=True)
+    if cmap_dir is not None:
+        os.makedirs(os.path.join(tiles_dir, cmap_dir), exist_ok=True)
+    for dsm_path in sorted(glob(os.path.join(dsm_dir, '*.tif'))):
+        filename = os.path.basename(dsm_path)
+        dtm_path = os.path.join(dtm_dir, filename)
+        if not os.path.isfile(dtm_path):
+            _print(f'Skipping \'{dsm_path}\': matching DTM not found')
+            continue
+        ndsm_path = os.path.join(ndsm_dir, filename)
+        output_path = compute_ndsm(
+            dsm_path, dtm_path, ndsm_path, correct_dtm, capture_height,
+        )
+        if cmap_dir is not None:
+            ndsm = geo.open_geotiff(output_path)
+            cmap_path = os.path.join(tiles_dir, cmap_dir, f'{os.path.splitext(filename)[0]}.png')
+            iio.imwrite(cmap_path, geo.to_cmap(ndsm))
 
 
 def display_epsg(path: str):
