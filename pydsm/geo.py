@@ -22,6 +22,9 @@ from .nda import dsm_extract_mask as nda_dsm_extract_mask
 from .nda import downsample as nda_downsample
 from .nda import get_border_coords as nda_get_border_coords
 from .nda import crop_resize as nda_crop_resize
+from .nda import clip_rescale as nda_clip_rescale
+from .nda import to_uint8 as nda_to_uint8
+from .nda import to_cmap as nda_to_cmap
 
 from .shp import open_shapefile as shp_read_coords
 from .shp import reproject as shp_reproject
@@ -332,6 +335,23 @@ def to_xyz(gdal_file: osgeo.gdal.Dataset) -> np.ndarray:
     coordinates = get_coordinates_at_all_pixels(gdal_file) # x, y
     nda = to_ndarray(gdal_file) # z
     return np.dstack((coordinates, nda))
+
+
+def to_cmap(gdal_file: osgeo.gdal.Dataset, cmap: str = 'terrain', clip_height: float = 500.0) -> np.ndarray:
+    """
+    Converts the dataset to a colormap. Useful for visualizing DSMs and DTMs. 
+
+    :param gdal_file: gdal dataset (dsm or dtm)
+    :param cmap: colormap to use (default: 'terrain')
+    :param clip_height: height to clip the values (default: 500.0)
+    :return: array of the colormap
+    """
+    array = to_ndarray(gdal_file)
+    array = nda_clip_rescale(array, clip_height)
+    array = nda_to_uint8(array, norm=False)
+    array_cmap = nda_to_cmap(array, cmap=cmap, nrm=False)
+    array_cmap = nda_to_uint8(array_cmap, norm=False)
+    return array_cmap
 
 
 def to_gdal_like(nda: np.ndarray, gdal_like: gdal.Dataset) -> gdal.Dataset:
