@@ -44,6 +44,21 @@ def _ndsm_dir(args):
     )
 
 
+def _predict_tile(args):
+    """Predict and save one tile or all tiles in an organized directory."""
+    from pydsm.cmd import predict_tile, predict_tiles
+    prediction_function = predict_tile if args.tile_name else predict_tiles
+    prediction_function(
+        args.model_paths,
+        args.tiles_dir,
+        *([args.tile_name] if args.tile_name else []),
+        args.pred_mode,
+        args.model_input_size,
+        args.model_input_ndsm_max_value,
+        args.verbose,
+    )
+
+
 def _epsg(args):
     """
     Displays the EPSG code of a file
@@ -408,6 +423,7 @@ COMMANDS = {
     'sat-cityjson': SAT_CITYJSON,
     'merge-geotiffs': MERGE_GEOTIFFS,
     'ndsm-dir': _ndsm_dir,
+    'predict-tile': _predict_tile,
 }
 
 
@@ -436,6 +452,23 @@ def parser_setup():
     parser_ndsm_dir.add_argument('--capture-height', type=float, default=60.0)
     parser_ndsm_dir.add_argument('--cmap-dir', type=str, default=None)
     parser_ndsm_dir.add_argument('-v', '--verbose', action='store_true')
+
+    predict_parser = subparsers.add_parser(
+        'predict-tile',
+        help='Predict one orthophoto and nDSM tile',
+    )
+    predict_parser.add_argument(
+        '--model-path',
+        dest='model_paths',
+        action='append',
+        required=True,
+    )
+    predict_parser.add_argument('tiles_dir', type=str)
+    predict_parser.add_argument('tile_name', type=str, nargs='?', default=None)
+    predict_parser.add_argument('--pred-mode', choices=['rgb', 'rgbd'], default='rgbd')
+    predict_parser.add_argument('--model-input-size', type=float, default=40)
+    predict_parser.add_argument('--model-input-ndsm-max-value', type=float, default=25.5)
+    predict_parser.add_argument('-v', '--verbose', action='store_true')
 
     # epsg command
     parser_epsg = subparsers.add_parser("epsg", help="Get the EPSG code of a file (GeoTIFF or Shapefile)")

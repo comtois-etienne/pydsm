@@ -13,6 +13,7 @@ PREDICTED_TILES_SUBDIR = 'labels_pred' # optional
 ########### CONSTANTS FOR WHOLE PROJECT ###########
 
 CLIP_HEIGHT = 25.5  # in meters, for depth channel normalization in RGBD YOLO models
+TILE_SIZE = 40.0 # 40m by default
 SEMANTIC_DICT = { 'BACKGROUND': 0, 'UNKNOWN': 1 }
 DISTRIBUTION = [0.0, 1.0]
 

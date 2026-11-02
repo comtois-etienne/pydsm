@@ -1,4 +1,5 @@
 import os
+from math import log2
 from dataclasses import dataclass
 
 import matplotlib.pyplot as plt
@@ -253,6 +254,84 @@ def load_rgbd(orthophoto_path: str, ndsm_path: str, clip_height : float = const.
     return np.dstack((rgb, d))
 
 
+def _split_count(size: float, model_input_size: float) -> int:
+    """Return the number of four-way splits required for a tile size."""
+    if size < model_input_size or size % model_input_size:
+        raise ValueError('Tile size must be a multiple of model_input_size')
+    ratio = size / model_input_size
+    count = int(log2(ratio))
+    if 2 ** count != ratio:
+        raise ValueError('Tile size must be model_input_size multiplied by 2^n')
+    return count
+
+
+def _combine_prediction_arrays(
+    arrays: list[np.ndarray],
+    combine_instances: bool,
+) -> np.ndarray:
+    """Combine four prediction arrays while preserving quadrant order."""
+    if combine_instances:
+        return nda.combine_four_instances(arrays)
+    return np.block([[arrays[0], arrays[1]], [arrays[2], arrays[3]]])
+
+
+def predict_tile(
+    model_paths: str | list[str],
+    orthophoto_path: str,
+    ndsm_path: str,
+    pred_mode: str = 'rgbd',
+    model_input_size: float = 40,
+    model_input_ndsm_max_value: float = 25.5,
+) -> tile.Tile:
+    """
+    Predict a tile by splitting it into model-sized quadrants.
+
+    :param model_paths: YOLO model path or paths.
+    :param orthophoto_path: path to the orthophoto GeoTIFF.
+    :param ndsm_path: path to the nDSM GeoTIFF.
+    :param pred_mode: prediction mode accepted by yolo_rgbd.
+    :param model_input_size: physical side length expected by the model.
+    :param model_input_ndsm_max_value: nDSM height clipped before prediction.
+    :return: tile containing the recombined predictions.
+    """
+    image = load_rgbd(
+        orthophoto_path,
+        ndsm_path,
+        clip_height=model_input_ndsm_max_value,
+    )
+    size = geo.get_size(geo.open_geotiff(orthophoto_path))[0]
+    split_count = _split_count(size, model_input_size)
+    images = [image]
+    for _ in range(split_count):
+        images = [part for current in images for part in nda.split_four(current)]
+
+    prediction_images = [part[:, :, :3] if pred_mode == 'rgb' else part for part in images]
+    predictions = [
+        predict_from_array(
+            model_paths,
+            part,
+            pred_mode=pred_mode,
+            confidence=const.CONFIDENCE_THRESHOLD,
+        )
+        for part in prediction_images
+    ]
+    for _ in range(split_count):
+        predictions = [
+            tuple(
+                _combine_prediction_arrays(
+                    [prediction[index] for prediction in predictions[offset:offset + 4]],
+                    index == 0,
+                )
+                for index in range(3)
+            )
+            for offset in range(0, len(predictions), 4)
+        ]
+    instances, semantics, confidences = predictions[0]
+    result = tile.Tile(image[:, :, :3], image[:, :, 3], instances, semantics)
+    result.confidence_labels = confidences
+    return result
+
+
 def predict_from_geotiff(model_paths: str | list[str], tiles_dir: str, tile_name: str, pred_mode='rgb', verbose=False) -> None:
     """
     Predict the instance segmentation masks in one tile using a YOLO model.
@@ -264,26 +343,16 @@ def predict_from_geotiff(model_paths: str | list[str], tiles_dir: str, tile_name
     :param verbose: bool, whether to display the prediction results
     :return: None, saves the prediction results as Tile (numpy array) on disk in const.PREDICTION_SUBDIR
     """
-    thresh = const.CONFIDENCE_THRESHOLD
     model_paths = [model_paths] if isinstance(model_paths, str) else model_paths
     tile_name = utils.remove_extension(tile_name)
 
-    image = load_rgbd(
-        os.path.join(tiles_dir, const.ORTHOPHOTO_SUBDIR, f'{tile_name}.tif'),
-        os.path.join(tiles_dir, const.NDSM_SUBDIR, f'{tile_name}.tif')
-    )
-    rgb, d = image[:, :, :3], image[:, :, 3]
-    image = rgb if pred_mode == 'rgb' else image
-
-    instances, semantics, confidences = predict_from_array(
+    t = predict_tile(
         model_paths,
-        image,
+        os.path.join(tiles_dir, const.ORTHOPHOTO_SUBDIR, f'{tile_name}.tif'),
+        os.path.join(tiles_dir, const.NDSM_SUBDIR, f'{tile_name}.tif'),
         pred_mode=pred_mode,
-        confidence=thresh,
     )
 
-    t = tile.Tile(rgb, d, instances, semantics)
-    t.confidence_labels = confidences
     if verbose: 
         tile.display_tile(t)
         plt.imshow(t.confidence_labels, vmin=0, vmax=1, cmap='hot', interpolation='nearest')
