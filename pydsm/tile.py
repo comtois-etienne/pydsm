@@ -253,7 +253,7 @@ def remove_holes(instance_labels: np.ndarray) -> np.ndarray:
     return new_instance_labels
 
 
-def remove_small_masks(tile: Tile, min_area=const.MIN_MASK_SIZE) -> Tile:
+def remove_small_masks(tile: Tile, min_area: int | None = None) -> Tile:
     """
     Removes all instances with an area lower or equal to `min_area`  
     The instances are relabeled to find unconnected parts of instances  
@@ -262,6 +262,12 @@ def remove_small_masks(tile: Tile, min_area=const.MIN_MASK_SIZE) -> Tile:
     :param min_area: int, rejects masks with lower or equal area (default=20*20=400)
     :return: Tile, a tile with modified (or not) instance_labels and semantic_labels
     """
+    if min_area is None:
+        min_area = nda._scaled_mask_parameter(
+            const.MIN_MASK_SIZE,
+            tile.instance_labels.shape,
+            area=True,
+        )
     labeled = label(tile.instance_labels)
     for v in np.unique(labeled):
         mask = (labeled == v)
@@ -764,4 +770,3 @@ def select_tiles(tiles_dir: str, sub_dir: str = 'dataset') -> list[str]:
         if is_tile_pastable(t, const.MAX_INSTANCES, const.MIN_GROUND_RATIO, const.MAX_GROUND_HEIGHT):
             selected_tiles.append(tile_name)
     return selected_tiles
-

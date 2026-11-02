@@ -10,6 +10,7 @@ from .nda import rescale_nearest_neighbour as nda_rescale_nearest_neighbour
 from .nda import is_mask_touching_border as nda_is_mask_touching_border
 from .nda import get_biggest_mask as nda_get_biggest_mask
 from .nda import remove_holes as nda_remove_holes
+from .nda import _scaled_mask_parameter as nda_scaled_mask_parameter
 from .nda import is_mask_inside as nda_is_mask_inside
 from .nda import augmentation as nda_augmentation
 from .utils import get_uuid
@@ -184,7 +185,11 @@ def pad_local_tile(tile: Tile, x=0, y=0, tile_size=2000):
     return Tile(ortho, ndsm, instances, semantics)
 
 
-def get_copy_paste_tile(copy_tile: Tile, paste_tile: Tile, remove_cracks=const.REMOVE_CRACKS_SIZE) -> Tile:
+def get_copy_paste_tile(
+    copy_tile: Tile,
+    paste_tile: Tile,
+    remove_cracks: int | None = None,
+) -> Tile:
     """
     Get the mask of the visible part of the ndsm in copy_tile  
     The resulting mask might be empty if the object is hidden under another  
@@ -195,6 +200,11 @@ def get_copy_paste_tile(copy_tile: Tile, paste_tile: Tile, remove_cracks=const.R
     :param remove_cracks: int, the crack size in the masks to remove (caused by the intersection of the ndsm)  
     :return: Tile, containing the visible part of copy_tile when intersected with paste_tile
     """
+    if remove_cracks is None:
+        remove_cracks = nda_scaled_mask_parameter(
+            const.REMOVE_CRACKS_SIZE,
+            copy_tile.instance_labels.shape,
+        )
     max_ndsm = np.maximum(copy_tile.ndsm, paste_tile.ndsm)
     mask = (max_ndsm == copy_tile.ndsm) * copy_tile.instance_labels
     if remove_cracks:
@@ -231,7 +241,12 @@ def copy_paste(copy_tile: Tile, paste_tile: Tile, min_area_ratio=0.4) -> Tile:
 
     # no paste if too small
     if area_ratio < min_area_ratio: return paste_tile
-    if area_after < const.MIN_MASK_SIZE: return paste_tile
+    min_area = nda_scaled_mask_parameter(
+        const.MIN_MASK_SIZE,
+        paste_tile.instance_labels.shape,
+        area=True,
+    )
+    if area_after < min_area: return paste_tile
     
     # orthophotox
     copy_ortho = (copy_tile.orthophoto * np.dstack([array_mask]*3))
@@ -388,4 +403,3 @@ def create_random_tiles(tiles_dir: str, copy_sub_dir='regular_tiles', save_sub_d
         if display: display_tile(paste_tile, colorbar=False)
 
         save_tile(npz_path, paste_tile)
-

@@ -26,6 +26,25 @@ from .utils import *
 import pydsm.const as const
 
 
+def _scaled_mask_parameter(
+    value: int,
+    shape: tuple[int, ...],
+    area: bool = False,
+) -> int:
+    """
+    Scale a mask parameter from the 2000-pixel reference tile.
+
+    :param value: reference parameter value.
+    :param shape: input mask shape.
+    :param area: whether the parameter represents an area.
+    :return: scaled integer parameter with a minimum value of one.
+    """
+    tile_size = min(shape[:2])
+    ratio = tile_size / 2000
+    scaled = value * ratio ** 2 if area else value * ratio
+    return max(1, round(scaled))
+
+
 """
 This file contains functions to manipulate numpy arrays (nda).  
 
@@ -890,7 +909,10 @@ def replace_value_inplace(instances: np.ndarray, old_values: list, new_values: l
     return array
 
 
-def remove_small_masks(instances: np.ndarray, min_area=const.MIN_MASK_SIZE) -> np.ndarray:
+def remove_small_masks(
+    instances: np.ndarray,
+    min_area: int | None = None,
+) -> np.ndarray:
     """
     Removes all instances with an area lower or equal to `min_area`
 
@@ -898,7 +920,12 @@ def remove_small_masks(instances: np.ndarray, min_area=const.MIN_MASK_SIZE) -> n
     :param min_area: int, rejects masks with lower or equal area (default=20*20=400)
     :return: np.ndarray, array with small masks removed
     """
-    # labeled = label(instances)
+    if min_area is None:
+        min_area = _scaled_mask_parameter(
+            const.MIN_MASK_SIZE,
+            instances.shape,
+            area=True,
+        )
     for v in np.unique(instances):
         mask = (instances == v)
         if np.sum(mask) > min_area:
@@ -953,7 +980,15 @@ def stack_horizontal(left: np.ndarray, right: np.ndarray) -> np.ndarray:
     return relabel(stacked)
 
 
-def get_border_touching_instances(instances: np.ndarray, *, tolerance=const.PIXEL_TOLERANCE, top=True, bottom=True, left=True, right=True) -> np.ndarray:
+def get_border_touching_instances(
+    instances: np.ndarray,
+    *,
+    tolerance: int | None = None,
+    top: bool = True,
+    bottom: bool = True,
+    left: bool = True,
+    right: bool = True,
+) -> np.ndarray:
     """
     Split the instances into two masks: border-touching and non-border-touching (inside) instances.
 
@@ -964,6 +999,8 @@ def get_border_touching_instances(instances: np.ndarray, *, tolerance=const.PIXE
     :param right: whether to consider the right border
     :return: (border_instances, inside_instances)
     """
+    if tolerance is None:
+        tolerance = _scaled_mask_parameter(const.PIXEL_TOLERANCE, instances.shape)
     border_instances = np.zeros_like(instances)
     inside_instances = np.zeros_like(instances)
 
@@ -978,7 +1015,12 @@ def get_border_touching_instances(instances: np.ndarray, *, tolerance=const.PIXE
     return border_instances, inside_instances
 
 
-def get_complete_mask(mask: np.ndarray, instances: np.ndarray, pixel_tolerance=const.PIXEL_TOLERANCE, circle_tolerance=const.CIRCLE_TOLERANCE) -> np.ndarray:
+def get_complete_mask(
+    mask: np.ndarray,
+    instances: np.ndarray,
+    pixel_tolerance: int | None = None,
+    circle_tolerance: float = const.CIRCLE_TOLERANCE,
+) -> np.ndarray:
     """
     1. Dilate the input mask by the given tolerance.
     2. Find which instance in `instances` touches with the dilated mask.
@@ -994,6 +1036,9 @@ def get_complete_mask(mask: np.ndarray, instances: np.ndarray, pixel_tolerance=c
     :param circle_tolerance: tolerance in deviation from perfect circle to accept a match
     :return: complete binary mask corresponding to the instance in which the input mask is found (might be the same as input mask)
     """
+    if pixel_tolerance is None:
+        pixel_tolerance = _scaled_mask_parameter(const.PIXEL_TOLERANCE, mask.shape)
+
     def dev(v):
         return v - 1.0 if v > 1.0 else 1.0 - v
     
@@ -1258,4 +1303,3 @@ class SubimageGenerator:
             self.i += 1
 
         raise StopIteration
-
