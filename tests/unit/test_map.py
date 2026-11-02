@@ -85,18 +85,56 @@ def test_download_with_retry_reports_failure_and_retry(
     capsys,
 ) -> None:
     attempts = 0
+    waits: list[int] = []
 
     def loader() -> object:
         nonlocal attempts
         attempts += 1
-        if attempts == 1:
+        if attempts < 4:
             raise RuntimeError('temporary failure')
         return object()
 
-    monkeypatch.setattr(cmd.time, 'sleep', lambda _: None)
+    monkeypatch.setattr(cmd.time, 'sleep', waits.append)
 
     result = cmd._download_with_retry(loader, 'imagery', True)
 
     assert result is not None
-    assert attempts == 2
+    assert attempts == 4
+    assert waits == [10, 20, 40]
     assert 'Failed imagery; retrying in 10 seconds.' in capsys.readouterr().out
+
+
+def test_load_tile_in_cityjson_skips_permanently_failed_tile(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    monkeypatch.setattr(cmd.cjio, 'read_cityjson', lambda _: _City())
+    failed_origins: list[tuple[float, float]] = []
+
+    def download_tile(
+        tiles_dir: str,
+        name: str,
+        epsg: int,
+        origin: tuple[float, float],
+        size: float,
+        spacial_resolution: float,
+        verbose: bool,
+    ) -> str:
+        failed_origins.append(origin)
+        if origin == (0.0, 160.0):
+            raise RuntimeError('service unavailable')
+        return str(tmp_path / f'{name}.tif')
+
+    monkeypatch.setattr(cmd, '_download_cityjson_tile', download_tile)
+
+    paths = cmd.load_tile_in_cityjson(
+        str(tmp_path),
+        'city.json',
+        size=80,
+        verbose=True,
+    )
+
+    assert len(paths) == 4
+    assert len(failed_origins) == 4
+    assert 'Skipping failed tile:' in capsys.readouterr().out

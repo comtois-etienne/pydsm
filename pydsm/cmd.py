@@ -34,21 +34,34 @@ def _download_with_retry(
     loader: Callable[..., gdal.Dataset],
     label: str,
     verbose: bool,
+    max_attempts: int = 4,
     **kwargs: object,
 ) -> gdal.Dataset:
-    """Download a dataset and retry one failed request after ten seconds."""
-    try:
-        return loader(**kwargs)
-    except RuntimeError:
-        if verbose:
-            _print(f'Failed {label}; retrying in 10 seconds.')
-        time.sleep(10)
+    """Download a dataset with exponential backoff after failures.
+
+    :param loader: dataset download function.
+    :param label: dataset label used in status messages.
+    :param verbose: whether to print retry messages.
+    :param max_attempts: maximum number of download attempts.
+    :param kwargs: arguments passed to the loader.
+    :return: downloaded GDAL dataset.
+    """
+    if max_attempts < 1:
+        raise ValueError('max_attempts must be greater than zero')
+    wait_seconds = 10
+    for attempt in range(max_attempts):
         try:
             return loader(**kwargs)
         except RuntimeError:
+            if attempt == max_attempts - 1:
+                if verbose:
+                    _print(f'Failed {label} after {max_attempts} attempts.')
+                raise
             if verbose:
-                _print(f'Failed {label} after retry.')
-            raise
+                _print(f'Failed {label}; retrying in {wait_seconds} seconds.')
+            time.sleep(wait_seconds)
+            wait_seconds *= 2
+    raise RuntimeError(f'Unable to download {label}')
 
 
 def _tile_origins(
@@ -151,9 +164,13 @@ def load_tile_in_cityjson(
             continue
         if verbose:
             _print(f'Processing tile: {name}')
-        _download_cityjson_tile(
-            tiles_dir, name, epsg, origin, size, spacial_resolution, verbose,
-        )
+        try:
+            _download_cityjson_tile(
+                tiles_dir, name, epsg, origin, size, spacial_resolution, verbose,
+            )
+        except RuntimeError as error:
+            if verbose:
+                _print(f'Skipping failed tile: {name} ({error})')
     return paths
 
 
