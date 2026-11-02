@@ -13,6 +13,7 @@ cache
 processed
 logs
 .bak
+bak/*
 *.png
 *.jpg
 *.tif
