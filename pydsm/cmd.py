@@ -208,6 +208,7 @@ def compute_ndsm(
     correct_dtm: bool = False,
     capture_height: float = 500.0,
     resize: str | None = None,
+    verbose: bool = False,
 ) -> str:
     """
     Computes the nDSM from a DSM and DTM  
@@ -218,21 +219,26 @@ def compute_ndsm(
     :param correct_dtm: bool, removes extreme DTM values (optional)  
     :param capture_height: float, height of the drone during the capture (optional) (default: 60.0)  
     :param resize: str, path to the orthophoto to resize the DSM and DTM (optional)  
+    :param verbose: whether to print processing messages.
     :return: path to the saved nDSM GeoTIFF.
     """
-    _print('* Opening the geotiffs')
+    if verbose:
+        _print('* Opening the geotiffs')
     dsm = geo.open_geotiff(dsm_path)
     dtm = geo.open_geotiff(dtm_path)
 
     orthophoto = None
     if resize:
-        _print('  Resizing DSM and DTM to the orthophoto shape')
+        if verbose:
+            _print('  Resizing DSM and DTM to the orthophoto shape')
         orthophoto = geo.open_geotiff(resize)
 
     if correct_dtm:
-        _print('  Correcting DTM values')
+        if verbose:
+            _print('  Correcting DTM values')
 
-    _print(f'  Generating nDSM from \'{dsm_path}\' and \'{dtm_path}\'')
+    if verbose:
+        _print(f'  Generating nDSM from \'{dsm_path}\' and \'{dtm_path}\'')
     capture_height = capture_height or 60.0
     ndsm = geo.to_ndsm_corrected(
         dsm,
@@ -244,7 +250,8 @@ def compute_ndsm(
 
     ndsm_path = ndsm_path or utils.append_file_to_path(utils.get_folder_path(dsm_path), 'ndsm.tif')
     geo.save_geotiff(ndsm, ndsm_path)
-    _print(f'  Saved to \'{ndsm_path}\'')
+    if verbose:
+        _print(f'  Saved to \'{ndsm_path}\'')
     return ndsm_path
 
 
@@ -253,6 +260,7 @@ def compute_ndsm_dir(
     correct_dtm: bool = False,
     capture_height: float = 500.0,
     cmap_dir: str | None = None,
+    verbose: bool = False,
 ) -> None:
     """
     Compute nDSM files for matching DSM and DTM files in a tiles directory.
@@ -261,27 +269,36 @@ def compute_ndsm_dir(
     :param correct_dtm: whether to correct extreme DTM values.
     :param capture_height: maximum vegetation height to retain.
     :param cmap_dir: optional subdirectory for RGB nDSM renderings.
+    :param verbose: whether to print processing messages.
     """
     dsm_dir = os.path.join(tiles_dir, const.DSM_SUBDIR)
     dtm_dir = os.path.join(tiles_dir, const.DTM_SUBDIR)
     ndsm_dir = os.path.join(tiles_dir, const.NDSM_SUBDIR)
+
     os.makedirs(ndsm_dir, exist_ok=True)
+
     if cmap_dir is not None:
         os.makedirs(os.path.join(tiles_dir, cmap_dir), exist_ok=True)
     for dsm_path in sorted(glob(os.path.join(dsm_dir, '*.tif'))):
         filename = os.path.basename(dsm_path)
         dtm_path = os.path.join(dtm_dir, filename)
         if not os.path.isfile(dtm_path):
-            _print(f'Skipping \'{dsm_path}\': matching DTM not found')
+            if verbose:
+                _print(f'Skipping \'{dsm_path}\': matching DTM not found')
             continue
         ndsm_path = os.path.join(ndsm_dir, filename)
         output_path = compute_ndsm(
-            dsm_path, dtm_path, ndsm_path, correct_dtm, capture_height,
+            dsm_path,
+            dtm_path,
+            ndsm_path,
+            correct_dtm,
+            capture_height,
+            verbose=verbose,
         )
         if cmap_dir is not None:
             ndsm = geo.open_geotiff(output_path)
             cmap_path = os.path.join(tiles_dir, cmap_dir, f'{os.path.splitext(filename)[0]}.png')
-            iio.imwrite(cmap_path, geo.to_cmap(ndsm))
+            iio.imwrite(cmap_path, geo.to_cmap(ndsm, clip_height=capture_height))
 
 
 def display_epsg(path: str):

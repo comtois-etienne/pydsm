@@ -27,4 +27,5 @@ def test_parser_includes_cityjson_workflows() -> None:
         'tiles',
         '--cmap-dir',
         'ndsm-cmap',
+        '--verbose',
     ]).command == 'ndsm-dir'

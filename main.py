@@ -27,7 +27,8 @@ def _ndsm(args):
         args.ndsm_path, 
         args.correct_dtm, 
         args.capture_height, 
-        args.resize
+        args.resize,
+        args.verbose,
     )
 
 
@@ -39,6 +40,7 @@ def _ndsm_dir(args):
         args.correct_dtm,
         args.capture_height,
         args.cmap_dir,
+        args.verbose,
     )
 
 
@@ -423,6 +425,7 @@ def parser_setup():
     parser_ndsm.add_argument("--correct-dtm", action="store_true", help="Correct extreme DTM values")
     parser_ndsm.add_argument("--capture-height", type=float, help="Height of the drone during the capture (default: 60.0)")
     parser_ndsm.add_argument("--resize", type=str, help="Resize the DSM and DTM to the orthophoto shape")
+    parser_ndsm.add_argument("-v", "--verbose", action="store_true")
 
     parser_ndsm_dir = subparsers.add_parser(
         'ndsm-dir',
@@ -432,6 +435,7 @@ def parser_setup():
     parser_ndsm_dir.add_argument('--correct-dtm', action='store_true')
     parser_ndsm_dir.add_argument('--capture-height', type=float, default=60.0)
     parser_ndsm_dir.add_argument('--cmap-dir', type=str, default=None)
+    parser_ndsm_dir.add_argument('-v', '--verbose', action='store_true')
 
     # epsg command
     parser_epsg = subparsers.add_parser("epsg", help="Get the EPSG code of a file (GeoTIFF or Shapefile)")

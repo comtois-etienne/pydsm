@@ -24,17 +24,22 @@ def test_compute_ndsm_dir_uses_tile_subdirectories(
         ndsm_path: str,
         correct_dtm: bool,
         capture_height: float,
+        verbose: bool,
     ) -> str:
         calls.append((dsm_path, dtm_path, ndsm_path))
         return ndsm_path
 
     monkeypatch.setattr(cmd, 'compute_ndsm', compute)
     monkeypatch.setattr(cmd.geo, 'open_geotiff', lambda _: object())
-    monkeypatch.setattr(cmd.geo, 'to_cmap', lambda _: np.zeros((2, 2, 3), dtype=np.uint8))
+    monkeypatch.setattr(
+        cmd.geo,
+        'to_cmap',
+        lambda _, **kwargs: np.zeros((2, 2, 3), dtype=np.uint8),
+    )
     written: list[str] = []
     monkeypatch.setattr(cmd.iio, 'imwrite', lambda path, _: written.append(path))
 
-    cmd.compute_ndsm_dir(str(tiles_dir), cmap_dir='cmap')
+    cmd.compute_ndsm_dir(str(tiles_dir), cmap_dir='cmap', verbose=True)
 
     assert calls == [(
         str(dsm_dir / 'tile.tif'),
