@@ -47,3 +47,33 @@ def test_compute_ndsm_dir_uses_tile_subdirectories(
         str(tiles_dir / 'ndsm' / 'tile.tif'),
     )]
     assert written == [str(tiles_dir / 'cmap' / 'tile.png')]
+
+
+def test_predict_tiles_processes_all_orthophotos(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    orthophoto_dir = tmp_path / 'orthophoto'
+    orthophoto_dir.mkdir()
+    (orthophoto_dir / 'b.tif').touch()
+    (orthophoto_dir / 'a.tif').touch()
+    processed: list[str] = []
+
+    def predict(
+        model_paths,
+        tiles_dir: str,
+        tile_name: str,
+        pred_mode: str,
+        model_input_size: float,
+        model_input_ndsm_max_value: float,
+        verbose: bool,
+    ) -> str:
+        processed.append(tile_name)
+        return str(tmp_path / f'{tile_name}.npz')
+
+    monkeypatch.setattr(cmd, 'predict_tile', predict)
+
+    paths = cmd.predict_tiles('model.pt', str(tmp_path))
+
+    assert processed == ['a', 'b']
+    assert paths == [str(tmp_path / 'a.npz'), str(tmp_path / 'b.npz')]
