@@ -1,0 +1,396 @@
+"""
+Commands for processing geotiff files
+"""
+
+
+import os
+import time
+import webbrowser
+
+import imageio.v3 as iio
+import numpy as np
+import pandas as pd
+from skimage.draw import polygon
+
+import pydsm.geo as geo
+import pydsm.nda as nda
+import pydsm.shp as shp
+import pydsm.utils as utils
+
+
+from pydsm.cmd import _print
+
+
+def compute_ndsm(
+    dsm_path: str,
+    dtm_path: str,
+    ndsm_path: str | None = None,
+    correct_dtm: bool = False,
+    capture_height: float = 500.0,
+    resize: str | None = None,
+    verbose: bool = False,
+) -> str:
+    """
+    Computes the nDSM from a DSM and DTM  
+
+    :param dsm_path: str, path to the DSM (mandatory)  
+    :param dtm_path: str, path to the DTM (mandatory)  
+    :param ndsm_path: str, path to save the nDSM (optional)  
+    :param correct_dtm: bool, removes extreme DTM values (optional)  
+    :param capture_height: float, height of the drone during the capture (optional) (default: 60.0)  
+    :param resize: str, path to the orthophoto to resize the DSM and DTM (optional)  
+    :param verbose: whether to print processing messages.
+    :return: path to the saved nDSM GeoTIFF.
+    """
+    if verbose:
+        _print('* Opening the geotiffs')
+    dsm = geo.open_geotiff(dsm_path)
+    dtm = geo.open_geotiff(dtm_path)
+
+    orthophoto = None
+    if resize:
+        if verbose:
+            _print('  Resizing DSM and DTM to the orthophoto shape')
+        orthophoto = geo.open_geotiff(resize)
+
+    if correct_dtm:
+        if verbose:
+            _print('  Correcting DTM values')
+
+    if verbose:
+        _print(f'  Generating nDSM from \'{dsm_path}\' and \'{dtm_path}\'')
+    capture_height = capture_height or 60.0
+    ndsm = geo.to_ndsm_corrected(
+        dsm,
+        dtm,
+        capture_height=capture_height,
+        correct_dtm=correct_dtm,
+        resize_gdal=orthophoto,
+    )
+
+    ndsm_path = ndsm_path or utils.append_file_to_path(utils.get_folder_path(dsm_path), 'ndsm.tif')
+    geo.save_geotiff(ndsm, ndsm_path)
+    if verbose:
+        _print(f'  Saved to \'{ndsm_path}\'')
+    return ndsm_path
+
+
+
+def display_epsg(path: str):
+    """
+    Displays the EPSG code of a file
+
+    :param path: str, path to the file (mandatory)
+    """
+    ext = utils.get_extension(path)
+    if ext == 'shp':
+        epsg = shp.get_epsg(path)
+        _print(f'* Shapefile EPSG {epsg}')
+    elif ext == 'tif':
+        gdal = geo.open_geotiff(path)
+        epsg = geo.get_epsg(gdal)
+        _print(f'* GeoTIFF EPSG {epsg}')
+    else:
+        epsg = None
+        _print('* Unsupported file format')
+
+
+
+def merge_geotiffs(
+    geotiffs_dir: str,
+    save_path: str = 'merged.tif',
+    spacial_resolution: float | None = None,
+) -> None:
+    """
+    Merge all GeoTIFF files in a directory into one GeoTIFF.
+
+    :param geotiffs_dir: directory containing the GeoTIFF tiles.
+    :param save_path: path where the merged GeoTIFF is saved.
+    :param spacial_resolution: target pixel size, or None to preserve it.
+    :return: None.
+    """
+    if spacial_resolution is not None and spacial_resolution <= 0:
+        raise ValueError('spacial_resolution must be greater than zero')
+    paths = sorted(
+        os.path.join(geotiffs_dir, filename)
+        for filename in os.listdir(geotiffs_dir)
+        if filename.lower().endswith(('.tif', '.tiff'))
+    )
+    if not paths:
+        raise FileNotFoundError(f'No GeoTIFF files found in {geotiffs_dir}')
+
+    tiles = [geo.open_geotiff(path) for path in paths]
+    if spacial_resolution is not None:
+        tiles = [geo.rescale(tile, spacial_resolution) for tile in tiles]
+    merged = geo.merge_tiles(tiles)
+    geo.save_geotiff(merged, save_path)
+    _print(f'* Saved merged GeoTIFF to \'{save_path}\'')
+
+
+
+def reproject_geotiff(path: str, save_path: str = None, epsg=4326):
+    """
+    Reprojects a geotiff file to a new EPSG code  
+
+    :param path: str, path to the geotiff file (mandatory)  
+    :param save_path: str, path to save the reprojected file (optional)  
+    :param epsg: int, new EPSG code (optional) (default: 4326)  
+    :return: None (saves the reprojected file to disk)  
+    """
+    gdal = geo.open_geotiff(path)
+    source_epsg = geo.get_epsg(gdal)
+    _print(f'* Reprojecting from EPSG:{source_epsg} to EPSG:{epsg}')
+    reprojected = geo.reproject(gdal, epsg)
+
+    save_path = save_path or f'{utils.remove_extension(path)}_{epsg}.tif'
+    geo.save_geotiff(reprojected, save_path)
+    _print(f'  Saved to \'{save_path}\'')
+
+
+
+def to_xyz(path: str, save_path: str = None):
+    """
+    Calculates the XYZ coordinates from a geotiff file (dtm, dsm, ndsm, etc.)
+    Not recommended for large files. Use the geotiff directly instead.
+
+    :param path: str, path to the geotiff file (mandatory)
+    :param save_path: str, path to save the XYZ file (optional)
+    :return: None (saves the XYZ file to disk as a compressed numpy file (.npz))
+    """
+    _print('* Warning: The data generated by this command can be very large')
+    _print('* Consider querying the geotiff file directly instead')
+    save_path = save_path or f'{utils.remove_extension(path)}.npz'
+    gdal = geo.open_geotiff(path)
+    epsg = geo.get_epsg(gdal)
+    _print(f'* Generating XYZ from EPSG {epsg}')
+    xyz = geo.to_xyz(gdal)
+    nda.write_numpy(save_path, data=xyz, metadata={'epsg': epsg})
+    _print(f'* Saved to \'{save_path}\'')
+
+
+
+def to_cmap(path: str, cmap: str = None, save_path: str = None, downsample: int = None):
+    """
+    Converts a geotiff (dsm, dtm, ndsm) file to a colormap png
+
+    :param path: str, path to the geotiff file (mandatory)
+    :param cmap: str, colormap name (optional) (default: viridis)
+    :param save_path: str, path to save the colormap (optional)
+    :return: None (saves the colormap to disk)
+    """
+    downsample = downsample or 2
+    downsample = int(downsample)
+    cmap = cmap or 'viridis'
+    save_path = save_path or f'{utils.remove_extension(path)}_{cmap}.jpg'
+    _print(f'* Opening \'{path}\'')
+    gdal = geo.open_geotiff(path)
+    array = geo.to_ndarray(gdal)
+
+    if downsample > 1:
+        _print(f'  Downsampling by a factor of {downsample}')
+        array = nda.downsample(array, downsample)
+
+    _print(f'  Generating {cmap} colormap from \'{path}\'')
+    if cmap == 'rgb':
+        array = nda.to_uint8(array)
+    elif np.min(array) == 0.0:
+        array = nda.to_cmap(array, cmap=cmap)
+        array = nda.to_uint8(array)
+    else:
+        array = nda.dsm_to_cmap(array, cmap=cmap)
+    
+    array = array[..., :3]
+    iio.imwrite(save_path, array)
+    _print(f'  Saved to \'{save_path}\'')
+
+
+
+def overlay_values(path: str, y: int, x: int, h: int, w: int, cmap: str = None, save_path: str = None, region: bool = False, downscale: int = None):
+    """
+    Overlays the pixel values over each pixel of a cropped portion of an image
+
+    :param path: str, path to the image file (mandatory)
+    :param y: int, Y coordinate of the top left corner (mandatory)
+    :param x: int, X coordinate of the top left corner (mandatory)
+    :param h: int, height of the cropped image (mandatory)
+    :param w: int, width of the cropped image (mandatory)
+    :param cmap: str, colormap name (optional) (default: viridis)
+    :param save_path: str, path of the croped region (optional)
+    :param region: bool, overlay the region over the original image (optional)
+    :param downscale: int, downscale factor for the image for performance reasons (optional)
+    :return: None (saves the overlayed image to disk)
+    """
+    cmap = cmap or 'viridis'
+    save_path = save_path or f'{utils.remove_extension(path)}_{cmap}_values.png'
+    x2, y2 = x + w, y + h
+    gdal = geo.open_geotiff(path)
+    array = geo.to_ndarray(gdal)
+
+    if downscale:
+        array = nda.downsample(array, downscale)
+        x, y, x2, y2 = x // downscale, y // downscale, x2 // downscale, y2 // downscale
+
+    if region:
+        _print(f'* Generating {cmap} colormap of \'{path}\'')
+        region_path = save_path.replace('_values.png', '_region.png')
+        array_cmap = nda.to_cmap(array, cmap=cmap)
+        array_cmap = nda.to_uint8(array_cmap)
+        rr, cc = polygon([y, y, y2, y2], [x, x2, x2, x], shape=array.shape)
+        array_cmap[rr, cc] = array_cmap[rr, cc] // 2
+        iio.imwrite(region_path, array_cmap)
+        _print(f'* Saved to \'{region_path}\'')
+
+    _print(f'* Overlaying values of \'{path}\'')
+    array = array[y:y2, x:x2]
+    round_value = 0 if array.dtype == int else 3
+    overlayed = nda.overlay_values(array, cmap=cmap, round_value=round_value)
+    iio.imwrite(save_path, overlayed)
+    _print(f'* Saved to \'{save_path}\'')
+
+
+
+def display_geotiff_info(path: str):
+    """
+    Displays information about a geotiff file
+
+    :param path: str, path to the geotiff file (mandatory)
+    :return: None (displays the information to the console)
+    """
+    gdal = geo.open_geotiff(path)
+    _print(f'* Information about \'{path}\'')
+
+    _print('* Raster info:')
+    _print(f'  Shape: {geo.get_shape(gdal)}')
+
+    dtype = geo.get_dtype(gdal)
+    if dtype in utils.DTYPE_TO_NP.keys():
+        _print(f'  Dtype unit: {utils.DTYPE_TO_NP[dtype].__name__}')
+    _print(f'  Dtype number: {dtype}')
+
+    _print('* Geo info:')
+    _print(f'  EPSG:{geo.get_epsg(gdal)}')
+    _print(f'  Origin: {geo.get_origin(gdal)}')
+    _print(f'  Center: {geo.get_center(gdal)}')
+    _print(f'  Size: {geo.get_size(gdal)} m')
+    _print(f'  Scale: {geo.get_scales(gdal)[0]} m/px')
+
+
+
+def resize_geotiff_like(geotiff_path: str, geotiff_like_path: str, save_path: str = None):
+    """
+    Resize a geotiff file  
+    `Warning` the resized geotiff will break the georeferencing
+
+    :param geotiff_path: str, path to the geotiff file (mandatory)
+    :param geotiff_like_path: str, path to the geotiff file to get the shape from (mandatory)
+    :param save_path: str, path to save the resized (optional)
+    :return: None (saves the resized geotiff to disk)
+    """
+    save_path = save_path or f'{utils.remove_extension(geotiff_path)}_resized.tif' 
+    gdal = geo.open_geotiff(geotiff_path)
+    gdal_like = geo.open_geotiff(geotiff_like_path)
+    _print(f'* Resizing from {geo.get_shape(gdal)} to {geo.get_shape(gdal_like)}')
+    resized = geo.resize_like(gdal, gdal_like)
+    geo.save_geotiff(resized, save_path)
+    _print(f'* Saved to \'{save_path}\'')
+
+
+
+def rescale_geotiff(geotiff_path: str, scale: float, save_path: str = None):
+    """
+    Rescale a geotiff file from its original scale to a new scale
+
+    :param geotiff_path: str, path to the geotiff file (mandatory)
+    :param scale: float, scale factor in meters/px (mandatory)
+    :param save_path: str, path to save the rescaled (optional)
+    :return: None (saves the rescaled geotiff to disk)
+    """
+    save_path = save_path or f'{utils.remove_extension(geotiff_path)}_rescale.tif'
+    gdal = geo.open_geotiff(geotiff_path)
+    _print(f'* Rescaling from {geo.get_scales(gdal)[0]}m/px to {scale}m/px')
+    rescaled = geo.rescale(gdal, scale)
+    geo.save_geotiff(rescaled, save_path)
+    _print(f'* Saved to \'{save_path}\'')
+
+
+
+def translate_geotiff(geotiff_path: str, x: float, y: float, save_path: str = None):
+    """
+    2D translation of a geotiff file
+
+    :param geotiff_path: str, path to the geotiff file (mandatory)
+    :param x: float, X translation (mandatory)
+    :param y: float, Y translation (mandatory)
+    :param save_path: str, path to save the translated geotiff (optional)
+    :return: None (saves the translated geotiff to disk)
+    """
+    save_path = save_path or f'{utils.remove_extension(geotiff_path)}_translated.tif'
+    gdal = geo.open_geotiff(geotiff_path)
+
+    if geo.get_epsg(gdal) == utils.CRS_GPS:
+        _print('* Warning: The translation in meters does not work with GPS coordinates')
+        _print('  Consider reprojecting the geotiff to a Cartesian coordinate system')
+        return
+
+    _print(f'* Translating \'{geotiff_path}\' by {x}m X and {y}m Y')
+    translated = geo.translation(gdal, (x, y))
+    geo.save_geotiff(translated, save_path)
+    _print(f'  Saved to \'{save_path}\'')
+
+
+
+def geotiff_registration(
+        geotiff_path: str, 
+        save_path: str = None, 
+        translate: bool = True, 
+        registration_path: str = None, 
+        layer: str = None
+    ):
+    """
+    Register a geotiff file onto the osm map using a translation  
+    The geotiff file is translated to the selected point on the map  
+
+    :param geotiff_path: str, path to the geotiff file (mandatory)
+    :param save_path: str, path to save the registered geotiff (optional)
+    :param translate: bool, translate the geotiff to the selected point (False will simply save the translation values) (optional)
+    :param registration_path: str, path to save the translation values (optional)
+    :param layer: str, layer of the map (osm, streets, satellite) (optional) (default: osm)
+    :return: None (saves the registered geotiff to disk and the translation values to a csv file)
+    """
+    layer = layer or 'satellite'
+    csv_path = registration_path or utils.append_file_to_path(utils.get_folder_path(geotiff_path), 'translate.csv')
+    save_path = save_path or f'{utils.remove_extension(geotiff_path)}_registered.tif'
+    geotiff = geo.open_geotiff(geotiff_path)
+    url = utils.epsgio_link_from_coord(geo.get_center(geotiff), geo.get_epsg(geotiff), layer=layer)
+
+    _print(f'* Registering \'{geotiff_path}\' onto the OSM map')
+    _print('  Please select a point on the map to register the geotiff')
+    _print(f'  Opening {url} in 3s...', end=' ')
+    time.sleep(1)
+    _print('2s...', end=' ')
+    time.sleep(1)
+    _print('1s...')
+    time.sleep(1)
+    webbrowser.open(url)
+
+    link = input('* Paste the link of the map here and press enter: ')
+    osm_coord = utils.epsgio_link_to_coord(link)
+    _print(f'  The selected coordinate is {osm_coord}')
+
+    _print('* Please select the same point on the geotiff')
+    geo_coord = geo.get_coordinate_on_click(geotiff)
+    x = round(osm_coord[0] - geo_coord[0], 1)
+    y = round(osm_coord[1] - geo_coord[1], 1)
+    _print(f'  Translation values: {x} {y} (x, y)')
+
+    df = pd.DataFrame({'x': [x], 'y': [y]})
+    df.to_csv(csv_path, index=False)
+    _print(f'  Saved to \'{csv_path}\'')
+
+    if translate:
+        _print(f'* Translating {geotiff_path} by {x}m X and {y}m Y')
+        translated = geo.translation(geotiff, (x, y))
+        geo.save_geotiff(translated, save_path)
+        _print(f'  Saved to \'{save_path}\'')
+
+

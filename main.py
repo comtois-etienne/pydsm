@@ -1,4 +1,4 @@
-#!/opt/anaconda3/envs/geo/bin/python
+#!/opt/anaconda3/envs/pydsm/bin/python
 
 import argparse
 import time
@@ -20,7 +20,7 @@ def _ndsm(args):
     :param args.resize: str, path to the orthophoto to resize the DSM and DTM (optional)
     :return: None (saves the nDSM to disk)
     """
-    from pydsm.cmd import compute_ndsm
+    from pydsm.geo_cmd import compute_ndsm
     compute_ndsm(
         args.dsm_path, 
         args.dtm_path, 
@@ -66,7 +66,7 @@ def _epsg(args):
     :param args.path: str, path to the file (mandatory)
     :return: None (prints the EPSG code to the console)
     """
-    from pydsm.cmd import display_epsg
+    from pydsm.geo_cmd import display_epsg
     display_epsg(args.path)
 
 
@@ -79,7 +79,7 @@ def _reproject(args):
     :param args.epsg: int, new EPSG code (optional) (default: 4326)
     :return: None (saves the reprojected file to disk)
     """
-    from pydsm.cmd import reproject_geotiff
+    from pydsm.geo_cmd import reproject_geotiff
     reproject_geotiff(args.path, args.save_path, args.epsg)
 
 
@@ -92,7 +92,7 @@ def _xyz(args):
     :param args.save_path: str, path to save the XYZ file (optional)
     :return: None (saves the XYZ file to disk as a compressed numpy file (.npz))
     """
-    from pydsm.cmd import to_xyz
+    from pydsm.geo_cmd import to_xyz
     to_xyz(args.path, args.save_path)
 
 
@@ -105,7 +105,7 @@ def _cmap(args):
     :param args.save_path: str, path to save the colormap (optional)
     :return: None (saves the colormap to disk)
     """
-    from pydsm.cmd import to_cmap
+    from pydsm.geo_cmd import to_cmap
     to_cmap(args.path, args.cmap, args.save_path)
 
 
@@ -124,7 +124,7 @@ def _values(args):
     :param args.downscale: int, downscale factor for the image for performance reasons (optional)
     :return: None (saves the overlayed image to disk)
     """
-    from pydsm.cmd import overlay_values
+    from pydsm.geo_cmd import overlay_values
     overlay_values(
         args.path, 
         args.y, 
@@ -154,7 +154,7 @@ def _shapefile(args):
     :param args.shapefile_path: str, path to save the shapefile (mandatory)
     :param args.epsg: int, EPSG code for the coordinate system (optional)
     """
-    from pydsm.cmd import csv_to_shapefile
+    from pydsm.shp_cmd import csv_to_shapefile
     csv_to_shapefile(args.csv_path, args.shapefile_path, args.epsg)
 
 
@@ -167,7 +167,7 @@ def _crop(args):
     :param args.save_path: str, path to save the cropped geotiff (optional)
     :param args.dilate: float, dilation factor around the shapefile (optional) (default: 15.0m)
     """
-    from pydsm.cmd import crop_geotiff
+    from pydsm.shp_cmd import crop_geotiff
     crop_geotiff(args.geotiff_path, args.shapefile_path, args.save_path, args.dilate)
 
 
@@ -188,7 +188,7 @@ def _zones(args):
     :param args.translate_file: str, path that contains the translation values (optional)
     :return: None (saves the zones to disk as geotiffs)
     """
-    from pydsm.cmd import extract_by_zone
+    from pydsm.shp_cmd import extract_by_zone
     extract_by_zone(
         args.geotiff_paths, 
         args.geotiff_base_path, 
@@ -210,7 +210,7 @@ def _info(args):
     :param args.path: str, path to the geotiff file (mandatory)
     :return: None (displays the information to the console)
     """
-    from pydsm.cmd import display_geotiff_info
+    from pydsm.geo_cmd import display_geotiff_info
     display_geotiff_info(args.path)
 
 
@@ -224,7 +224,7 @@ def _resize(args):
     :param args.save_path: str, path to save the resized (optional)
     :return: None (saves the resized geotiff to disk)
     """
-    from pydsm.cmd import resize_geotiff_like
+    from pydsm.geo_cmd import resize_geotiff_like
     resize_geotiff_like(args.geotiff_path, args.geotiff_like_path, args.save_path)
 
 
@@ -237,7 +237,7 @@ def _rescale(args):
     :param args.save_path: str, path to save the rescaled (optional)
     :return: None (saves the rescaled geotiff to disk)
     """
-    from pydsm.cmd import rescale_geotiff
+    from pydsm.geo_cmd import rescale_geotiff
     rescale_geotiff(args.geotiff_path, args.scale, args.save_path)
 
 
@@ -251,7 +251,7 @@ def _translation(args):
     :param args.save_path: str, path to save the translated geotiff (optional)
     :return: None (saves the translated geotiff to disk)
     """
-    from pydsm.cmd import translate_geotiff
+    from pydsm.geo_cmd import translate_geotiff
     translate_geotiff(args.geotiff_path, args.x, args.y, args.save_path)
 
 
@@ -267,7 +267,7 @@ def registration(args):
     :param args.layer: str, layer of the map (osm, streets, satellite) (optional) (default: osm)
     :return: None (saves the registered geotiff to disk and the translation values to a csv file)
     """
-    from pydsm.cmd import geotiff_registration
+    from pydsm.geo_cmd import geotiff_registration
     _unsilence()
     geotiff_registration(
         args.geotiff_path, 
@@ -294,7 +294,7 @@ def RBC(args):
     :param args.verbose: bool, verbose mode to display the whole process (optional) (default: False)
     :return: None (saves the wavefront and metadata to disk)
     """
-    from pydsm.cmd import generate_rbc_wavefront
+    from pydsm.rbc_cmd import generate_rbc_wavefront
     generate_rbc_wavefront(
         args.masks,
         args.ndsm,
@@ -308,7 +308,7 @@ def RBC(args):
 
 def RBC_TILES(args):
     """Generate RBC Wavefront files for all tiles in a dataset."""
-    from pydsm.cmd import generate_rbc_wavefront_tiles
+    from pydsm.rbc_cmd import generate_rbc_wavefront_tiles
     generate_rbc_wavefront_tiles(
         args.tiles_dir,
         args.save_dir,
@@ -320,7 +320,7 @@ def RBC_TILES(args):
 
 def RBC_CITYJSON_TILES(args: argparse.Namespace) -> None:
     """Generate CityJSON RBC files for all tiles."""
-    from pydsm.cmd import generate_rbc_cityjson_tiles
+    from pydsm.rbc_cmd import generate_rbc_cityjson_tiles
     generate_rbc_cityjson_tiles(
         args.tiles_dir,
         args.save_dir,
@@ -332,7 +332,7 @@ def RBC_CITYJSON_TILES(args: argparse.Namespace) -> None:
 
 def TERRAIN(args: argparse.Namespace) -> None:
     """Generate one CityJSON terrain model from a DTM."""
-    from pydsm.cmd import generate_cityjson_terrain
+    from pydsm.rbc_cmd import generate_cityjson_terrain
     from pycityjson.io import write_as_cityjson
 
     city = generate_cityjson_terrain(args.dtm_path, args.spatial_resolution)
@@ -341,7 +341,7 @@ def TERRAIN(args: argparse.Namespace) -> None:
 
 def TERRAIN_TILES(args: argparse.Namespace) -> None:
     """Generate CityJSON terrain files for all DTM tiles."""
-    from pydsm.cmd import generate_terrain_cityjson_tiles
+    from pydsm.rbc_cmd import generate_terrain_cityjson_tiles
     generate_terrain_cityjson_tiles(
         args.tiles_dir,
         args.save_dir,
@@ -354,7 +354,7 @@ def TERRAIN_TILES(args: argparse.Namespace) -> None:
 
 def SAT_CITYJSON(args: argparse.Namespace) -> None:
     """Download satellite and elevation tiles covering a CityJSON model."""
-    from pydsm.cmd import load_tile_in_cityjson
+    from pydsm.sat_cmd import load_tile_in_cityjson
     load_tile_in_cityjson(
         args.tiles_dir,
         args.cityjson_path,
@@ -368,7 +368,7 @@ def SAT_CITYJSON(args: argparse.Namespace) -> None:
 
 def MERGE_GEOTIFFS(args: argparse.Namespace) -> None:
     """Merge GeoTIFF files from a directory."""
-    from pydsm.cmd import merge_geotiffs
+    from pydsm.geo_cmd import merge_geotiffs
     merge_geotiffs(
         args.geotiffs_dir,
         args.save_path,
