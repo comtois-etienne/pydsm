@@ -1,10 +1,11 @@
 #!/opt/anaconda3/envs/pydsm/bin/python
 
 import argparse
-import time
 import os
 import sys
+import time
 
+from pydsm import const
 
 # COMMANDS
 
@@ -57,6 +58,38 @@ def _predict_tile(args):
         args.model_input_ndsm_max_value,
         args.verbose,
     )
+
+
+def _export_png_tile(args):
+    """Export one tile or all tiles as RGBA PNG files."""
+    from pydsm.cmd import export_png_tile, export_png_tiles
+    clip_height = args.clip_height
+    if args.tile_name:
+        export_png_tile(
+            os.path.join(args.tiles_dir, const.ORTHOPHOTO_SUBDIR, f'{args.tile_name}.tif'),
+            os.path.join(args.tiles_dir, const.NDSM_SUBDIR, f'{args.tile_name}.tif'),
+            os.path.join(args.tiles_dir, const.RGBA_PNG_TILES_SUBDIR, f'{args.tile_name}.png'),
+            clip_height,
+            args.verbose,
+        )
+    else:
+        export_png_tiles(args.tiles_dir, clip_height, args.verbose)
+
+
+def _export_npz_tile(args):
+    """Export one tile or all tiles as four-channel NPZ files."""
+    from pydsm.cmd import export_npz_tile, export_npz_tiles
+    clip_height = None if args.no_clip else args.clip_height
+    if args.tile_name:
+        export_npz_tile(
+            os.path.join(args.tiles_dir, const.ORTHOPHOTO_SUBDIR, f'{args.tile_name}.tif'),
+            os.path.join(args.tiles_dir, const.NDSM_SUBDIR, f'{args.tile_name}.tif'),
+            os.path.join(args.tiles_dir, const.RGBA_NPZ_TILES_SUBDIR, f'{args.tile_name}.npz'),
+            clip_height,
+            args.verbose,
+        )
+    else:
+        export_npz_tiles(args.tiles_dir, clip_height, args.verbose)
 
 
 def _epsg(args):
@@ -424,6 +457,8 @@ COMMANDS = {
     'merge-geotiffs': MERGE_GEOTIFFS,
     'ndsm-dir': _ndsm_dir,
     'predict-tile': _predict_tile,
+    'export-png-tile': _export_png_tile,
+    'export-npz-tile': _export_npz_tile,
 }
 
 
@@ -469,6 +504,17 @@ def parser_setup():
     predict_parser.add_argument('--model-input-size', type=float, default=40)
     predict_parser.add_argument('--model-input-ndsm-max-value', type=float, default=25.5)
     predict_parser.add_argument('-v', '--verbose', action='store_true')
+
+    for name, help_text in (
+        ('export-png-tile', 'Export one or all tiles as RGBA PNG files'),
+        ('export-npz-tile', 'Export one or all tiles as four-channel NPZ files'),
+    ):
+        export_parser = subparsers.add_parser(name, help=help_text)
+        export_parser.add_argument('tiles_dir', type=str)
+        export_parser.add_argument('tile_name', type=str, nargs='?', default=None)
+        export_parser.add_argument('--clip-height', type=float, default=25.5)
+        export_parser.add_argument('--no-clip', action='store_true')
+        export_parser.add_argument('-v', '--verbose', action='store_true')
 
     # epsg command
     parser_epsg = subparsers.add_parser("epsg", help="Get the EPSG code of a file (GeoTIFF or Shapefile)")

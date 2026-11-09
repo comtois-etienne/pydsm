@@ -62,7 +62,13 @@ from pydsm.sat_cmd import (
     _tile_origins,
 )
 from pydsm.shp_cmd import crop_geotiff, csv_to_shapefile, extract_by_zone
-from pydsm.tile_cmd import extract_tiles
+from pydsm.tile_cmd import (
+    export_npz_tile,
+    export_npz_tiles,
+    export_png_tile,
+    export_png_tiles,
+    extract_tiles,
+)
 from pydsm.yolo_cmd import predict_tile
 from pydsm import sat_cmd, tile_cmd, yolo_cmd
 

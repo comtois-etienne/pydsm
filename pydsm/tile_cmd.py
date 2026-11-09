@@ -5,15 +5,147 @@ Commands for processing geotiff files
 
 import os
 from glob import glob
+from typing import Callable
 
 import imageio.v3 as iio
+import numpy as np
 
 import pydsm.geo as geo
+import pydsm.nda as nda
 from pydsm import const
 from pydsm.geo_cmd import compute_ndsm
 
 
 from pydsm.cmd import _print
+
+
+def _read_tile_arrays(
+    orthophoto_path: str,
+    ndsm_path: str,
+    clip_height: float | None,
+) -> np.ndarray:
+    """Read and combine orthophoto and nDSM arrays as four channels."""
+    orthophoto = geo.to_ndarray(geo.open_geotiff(orthophoto_path))
+    ndsm = geo.to_ndarray(geo.open_geotiff(ndsm_path))
+    orthophoto = nda.to_uint8(nda.normalize(orthophoto))
+    if clip_height is None:
+        ndsm_array = ndsm.astype(float)
+    else:
+        ndsm_array = nda.to_uint8(
+            nda.clip_rescale(ndsm, clip_height),
+            norm=False,
+        )
+    if ndsm_array.ndim == 2:
+        ndsm_array = ndsm_array[..., np.newaxis]
+    return np.concatenate((orthophoto, ndsm_array), axis=-1)
+
+
+def export_png_tile(
+    orthophoto_path: str,
+    ndsm_path: str,
+    save_path: str,
+    clip_height: float = const.CLIP_HEIGHT,
+    verbose: bool = False,
+) -> None:
+    """
+    Export an orthophoto and nDSM tile as an RGBA PNG.
+
+    :param orthophoto_path: path to the orthophoto GeoTIFF.
+    :param ndsm_path: path to the nDSM GeoTIFF.
+    :param save_path: path to the output PNG.
+    :param clip_height: nDSM value represented by 255.
+    :param verbose: whether to print the exported path.
+    :return: None.
+    """
+    array = _read_tile_arrays(orthophoto_path, ndsm_path, clip_height)
+    os.makedirs(os.path.dirname(save_path) or '.', exist_ok=True)
+    iio.imwrite(save_path, array)
+    if verbose:
+        _print(f'Exported PNG tile to \'{save_path}\'')
+
+
+def export_npz_tile(
+    orthophoto_path: str,
+    ndsm_path: str,
+    save_path: str,
+    clip_height: float | None = const.CLIP_HEIGHT,
+    verbose: bool = False,
+) -> None:
+    """
+    Export an orthophoto and nDSM tile as a four-channel NumPy archive.
+
+    :param orthophoto_path: path to the orthophoto GeoTIFF.
+    :param ndsm_path: path to the nDSM GeoTIFF.
+    :param save_path: path to the output NPZ.
+    :param clip_height: nDSM value represented by 255, or None for floats.
+    :param verbose: whether to print the exported path.
+    :return: None.
+    """
+    array = _read_tile_arrays(orthophoto_path, ndsm_path, clip_height)
+    os.makedirs(os.path.dirname(save_path) or '.', exist_ok=True)
+    nda.write_numpy(save_path, data=array)
+    if verbose:
+        _print(f'Exported NPZ tile to \'{save_path}\'')
+
+
+def _export_tiles(
+    tiles_dir: str,
+    output_subdir: str,
+    exporter: Callable[[str, str, str, float | None, bool], None],
+    clip_height: float | None,
+    verbose: bool,
+) -> list[str]:
+    """Export all matching orthophoto and nDSM tiles."""
+    orthophoto_dir = os.path.join(tiles_dir, const.ORTHOPHOTO_SUBDIR)
+    ndsm_dir = os.path.join(tiles_dir, const.NDSM_SUBDIR)
+    output_dir = os.path.join(tiles_dir, output_subdir)
+    paths: list[str] = []
+    for orthophoto_path in sorted(glob(os.path.join(orthophoto_dir, '*.tif'))):
+        name = os.path.splitext(os.path.basename(orthophoto_path))[0]
+        ndsm_path = os.path.join(ndsm_dir, f'{name}.tif')
+        if not os.path.isfile(ndsm_path):
+            continue
+        extension = '.png' if output_subdir == const.RGBA_PNG_TILES_SUBDIR else '.npz'
+        save_path = os.path.join(output_dir, f'{name}{extension}')
+        exporter(orthophoto_path, ndsm_path, save_path, clip_height, verbose)
+        paths.append(save_path)
+    return paths
+
+
+def export_png_tiles(
+    tiles_dir: str,
+    clip_height: float = const.CLIP_HEIGHT,
+    verbose: bool = False,
+) -> list[str]:
+    """
+    Export all orthophoto and nDSM tiles as RGBA PNG files.
+
+    :param tiles_dir: directory containing orthophoto and nDSM subdirectories.
+    :param clip_height: nDSM value represented by 255.
+    :param verbose: whether to print exported paths.
+    :return: paths to the exported PNG files.
+    """
+    return _export_tiles(
+        tiles_dir, const.RGBA_PNG_TILES_SUBDIR, export_png_tile, clip_height, verbose,
+    )
+
+
+def export_npz_tiles(
+    tiles_dir: str,
+    clip_height: float | None = const.CLIP_HEIGHT,
+    verbose: bool = False,
+) -> list[str]:
+    """
+    Export all orthophoto and nDSM tiles as four-channel NPZ files.
+
+    :param tiles_dir: directory containing orthophoto and nDSM subdirectories.
+    :param clip_height: nDSM value represented by 255, or None for floats.
+    :param verbose: whether to print exported paths.
+    :return: paths to the exported NPZ files.
+    """
+    return _export_tiles(
+        tiles_dir, const.RGBA_NPZ_TILES_SUBDIR, export_npz_tile, clip_height, verbose,
+    )
 
 
 def compute_ndsm_dir(
