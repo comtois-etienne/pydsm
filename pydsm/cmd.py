@@ -7,6 +7,7 @@ import os
 import time
 import webbrowser
 from glob import glob
+from typing import Any
 from datetime import date
 from typing import Callable
 
@@ -304,7 +305,7 @@ def compute_ndsm_dir(
 
 
 def predict_tile(
-    model_paths: str | list[str],
+    models: str | list[str] | Any | list[Any],
     tiles_dir: str,
     tile_name: str,
     pred_mode: str = 'rgbd',
@@ -315,7 +316,7 @@ def predict_tile(
     """
     Predict and save one tile from an organized tiles directory.
 
-    :param model_paths: YOLO model path or paths.
+    :param models: YOLO model path, paths, loaded model, or loaded models.
     :param tiles_dir: directory containing orthophoto and nDSM subdirectories.
     :param tile_name: tile filename with or without extension.
     :param pred_mode: prediction mode accepted by yolo_rgbd.
@@ -328,7 +329,7 @@ def predict_tile(
     if verbose:
         _print(f'Processing prediction for tile: {tile_name}')
     result = yolo.predict_tile(
-        model_paths,
+        models,
         os.path.join(tiles_dir, const.ORTHOPHOTO_SUBDIR, f'{tile_name}.tif'),
         os.path.join(tiles_dir, const.NDSM_SUBDIR, f'{tile_name}.tif'),
         pred_mode,
@@ -343,7 +344,7 @@ def predict_tile(
 
 
 def predict_tiles(
-    model_paths: str | list[str],
+    models: str | list[str] | Any | list[Any],
     tiles_dir: str,
     pred_mode: str = 'rgbd',
     model_input_size: float = 40,
@@ -354,7 +355,7 @@ def predict_tiles(
     """
     Predict and save every orthophoto tile in an organized directory.
 
-    :param model_paths: YOLO model path or paths.
+    :param models: YOLO model path, paths, loaded model, or loaded models.
     :param tiles_dir: directory containing orthophoto and nDSM subdirectories.
     :param pred_mode: prediction mode accepted by yolo_rgbd.
     :param model_input_size: physical side length expected by the model.
@@ -364,6 +365,7 @@ def predict_tiles(
     :return: paths to the saved predictions.
     """
     orthophoto_dir = os.path.join(tiles_dir, const.ORTHOPHOTO_SUBDIR)
+    models = yolo.load_models(models)
     tile_names = sorted(
         utils.remove_extension(os.path.basename(path))
         for path in glob(os.path.join(orthophoto_dir, '*.tif'))
@@ -378,7 +380,7 @@ def predict_tiles(
             paths.append(prediction_path)
             continue
         paths.append(predict_tile(
-            model_paths,
+            models,
             tiles_dir,
             tile_name,
             pred_mode,

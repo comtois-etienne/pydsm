@@ -49,7 +49,7 @@ def _predict_tile(args):
     from pydsm.cmd import predict_tile, predict_tiles
     prediction_function = predict_tile if args.tile_name else predict_tiles
     prediction_function(
-        args.model_paths,
+        args.models,
         args.tiles_dir,
         *([args.tile_name] if args.tile_name else []),
         args.pred_mode,
@@ -459,7 +459,7 @@ def parser_setup():
     )
     predict_parser.add_argument(
         '--model-path',
-        dest='model_paths',
+        dest='models',
         action='append',
         required=True,
     )

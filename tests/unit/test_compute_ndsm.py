@@ -72,6 +72,7 @@ def test_predict_tiles_processes_all_orthophotos(
         return str(tmp_path / f'{tile_name}.npz')
 
     monkeypatch.setattr(cmd, 'predict_tile', predict)
+    monkeypatch.setattr(cmd.yolo, 'load_models', lambda models: models)
 
     paths = cmd.predict_tiles('model.pt', str(tmp_path))
 

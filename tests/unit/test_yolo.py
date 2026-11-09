@@ -24,6 +24,7 @@ def test_predict_tile_splits_and_recombines_80_meter_tile(monkeypatch) -> None:
     monkeypatch.setattr(yolo, 'load_rgbd', lambda *args, **kwargs: image)
     monkeypatch.setattr(yolo.geo, 'open_geotiff', lambda _: object())
     monkeypatch.setattr(yolo.geo, 'get_size', lambda _: (80.0, 80.0))
+    monkeypatch.setattr(yolo, 'load_models', lambda models: models)
     monkeypatch.setattr(yolo, 'predict_from_array', predict)
     monkeypatch.setattr(
         yolo.nda,
@@ -39,3 +40,13 @@ def test_predict_tile_splits_and_recombines_80_meter_tile(monkeypatch) -> None:
     np.testing.assert_array_equal(result.instance_labels[:4, 4:], 2)
     np.testing.assert_array_equal(result.instance_labels[4:, :4], 3)
     np.testing.assert_array_equal(result.instance_labels[4:, 4:], 4)
+
+
+def test_load_models_injects_loaded_models(monkeypatch) -> None:
+    loaded: list[str] = []
+    monkeypatch.setattr(yolo, 'load_yolo_model', lambda path: loaded.append(path) or path)
+
+    models = yolo.load_models(['first.pt', 'second.pt'])
+
+    assert models == ['first.pt', 'second.pt']
+    assert loaded == ['first.pt', 'second.pt']

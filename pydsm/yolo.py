@@ -1,6 +1,8 @@
 import os
 from math import log2
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,9 +16,27 @@ import pydsm.tile as tile
 import pydsm.utils as utils
 
 from yolo_rgbd.prediction import ObjectDetector as RGBDObjectDetector
+from yolo_rgbd.prediction import load_yolo_model
 from yolo_rgbd.prediction import predict_from_array
 
 from .rbc import get_contour as rbc_get_contour
+
+
+def load_models(
+    models: str | list[str] | Any | list[Any],
+) -> Any | list[Any]:
+    """
+    Load model paths once while preserving already injected models.
+
+    :param models: model path, paths, loaded model, or loaded models.
+    :return: loaded model or list of loaded models.
+    """
+    model_list = models if isinstance(models, list) else [models]
+    loaded = [
+        load_yolo_model(model) if isinstance(model, (str, Path)) else model
+        for model in model_list
+    ]
+    return loaded[0] if isinstance(models, (str, Path)) else loaded
 
 ########### Anonymisation ###########
 def __gaussian_blur_from_boxes(array: np.ndarray, boxes: pd.DataFrame, sigma: float = 5.0) -> np.ndarray:
@@ -276,7 +296,7 @@ def _combine_prediction_arrays(
 
 
 def predict_tile(
-    model_paths: str | list[str],
+    models: str | list[str] | Any | list[Any],
     orthophoto_path: str,
     ndsm_path: str,
     pred_mode: str = 'rgbd',
@@ -286,7 +306,7 @@ def predict_tile(
     """
     Predict a tile by splitting it into model-sized quadrants.
 
-    :param model_paths: YOLO model path or paths.
+    :param models: YOLO model path, paths, loaded model, or loaded models.
     :param orthophoto_path: path to the orthophoto GeoTIFF.
     :param ndsm_path: path to the nDSM GeoTIFF.
     :param pred_mode: prediction mode accepted by yolo_rgbd.
@@ -294,6 +314,7 @@ def predict_tile(
     :param model_input_ndsm_max_value: nDSM height clipped before prediction.
     :return: tile containing the recombined predictions.
     """
+    models = load_models(models)
     image = load_rgbd(
         orthophoto_path,
         ndsm_path,
@@ -308,7 +329,7 @@ def predict_tile(
     prediction_images = [part[:, :, :3] if pred_mode == 'rgb' else part for part in images]
     predictions = [
         predict_from_array(
-            model_paths,
+            models,
             part,
             pred_mode=pred_mode,
             confidence=const.CONFIDENCE_THRESHOLD,
@@ -332,22 +353,27 @@ def predict_tile(
     return result
 
 
-def predict_from_geotiff(model_paths: str | list[str], tiles_dir: str, tile_name: str, pred_mode='rgb', verbose=False) -> None:
+def predict_from_geotiff(
+    models: str | list[str] | Any | list[Any],
+    tiles_dir: str,
+    tile_name: str,
+    pred_mode: str = 'rgb',
+    verbose: bool = False,
+) -> tile.Tile:
     """
     Predict the instance segmentation masks in one tile using a YOLO model.
 
-    :param model_path: str, path to the YOLO model trained on RGB-D images
+    :param models: YOLO model path, paths, loaded model, or loaded models.
     :param tiles_dir: str, path to the directory containing the tiles
     :param tile_name: str, name of the tile (with or without extension)
     :param pred_mode: str, 'rgb' or 'rgbd', whether to use only RGB channels or RGB-D channels for prediction
     :param verbose: bool, whether to display the prediction results
     :return: None, saves the prediction results as Tile (numpy array) on disk in const.PREDICTION_SUBDIR
     """
-    model_paths = [model_paths] if isinstance(model_paths, str) else model_paths
     tile_name = utils.remove_extension(tile_name)
 
     t = predict_tile(
-        model_paths,
+        models,
         os.path.join(tiles_dir, const.ORTHOPHOTO_SUBDIR, f'{tile_name}.tif'),
         os.path.join(tiles_dir, const.NDSM_SUBDIR, f'{tile_name}.tif'),
         pred_mode=pred_mode,
@@ -362,11 +388,17 @@ def predict_from_geotiff(model_paths: str | list[str], tiles_dir: str, tile_name
     return t
 
 
-def predict_from_geotiffs(model_paths: str | list[str], tiles_dir: str, pred_mode='rgb', verbose=False, skip_existing=False) -> None:
+def predict_from_geotiffs(
+    models: str | list[str] | Any | list[Any],
+    tiles_dir: str,
+    pred_mode: str = 'rgb',
+    verbose: bool = False,
+    skip_existing: bool = False,
+) -> None:
     """
     Predict the instance segmentation masks in multiple tiles using the combined prediction from multiple YOLO models.
 
-    :param model_paths: list[str], path to the YOLO models trained on RGB-D or RGB images
+    :param models: YOLO model path, paths, loaded model, or loaded models.
     :param tiles_dir: str, path to the directory containing the tiles
     :param tile_names: list[str], names of the tiles (with or without extension)
     :param pred_mode: str, 'rgb' or 'rgbd', whether to use only RGB channels or RGB-D channels for prediction
@@ -374,6 +406,7 @@ def predict_from_geotiffs(model_paths: str | list[str], tiles_dir: str, pred_mod
     :param skip_existing: bool, whether to skip tiles that already have prediction results saved
     :return: None, saves the prediction results as Tile (numpy array) on disk in const.PREDICTION_SUBDIR
     """
+    models = load_models(models)
     tile_names = [utils.remove_extension(f) for f in os.listdir(os.path.join(tiles_dir, const.ORTHOPHOTO_SUBDIR)) if f.endswith('.tif')]
     tile_names = sorted(tile_names)
     for tile_name in tile_names:
@@ -382,5 +415,5 @@ def predict_from_geotiffs(model_paths: str | list[str], tiles_dir: str, pred_mod
             if os.path.exists(t_path):
                 if verbose: print(f'Skipping existing prediction for tile \'{tile_name}\'')
                 continue
-        t = predict_from_geotiff(model_paths, tiles_dir, tile_name, pred_mode, verbose=verbose)
+        t = predict_from_geotiff(models, tiles_dir, tile_name, pred_mode, verbose=verbose)
         tile.save_tile(t_path, t)
