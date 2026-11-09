@@ -8,6 +8,9 @@ INSTANCE_LABELS_SUBDIR = 'labels' # mandatory
 SEMANTIC_POINTS_SUBDIR = 'points' # mandatory
 INSTANCES_TILES_SUBDIR = 'instances' # optional
 PREDICTED_TILES_SUBDIR = 'labels_pred' # optional
+RGBA_PNG_TILES_SUBDIR = 'rgba' # optional
+RGBA_NPZ_FL_TILES_SUBDIR = 'npz_float' # optional
+RGBA_NPZ_INT_TILES_SUBDIR = 'npz_uint8' # optional
 
 
 ########### CONSTANTS FOR WHOLE PROJECT ###########
