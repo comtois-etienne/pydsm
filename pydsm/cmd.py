@@ -7,8 +7,6 @@ import pycityjson.io as cjio
 import time
 
 import pydsm.geo as geo
-import pydsm.yolo as yolo
-from pydsm import const
 import pydsm.utils as utils
 
 MUTE_SPEECH = True
@@ -69,8 +67,7 @@ from pydsm.tile_cmd import (
     export_png_tiles,
     extract_tiles,
 )
-from pydsm.yolo_cmd import predict_tile
-from pydsm import sat_cmd, tile_cmd, yolo_cmd
+from pydsm import sat_cmd, tile_cmd
 
 
 def compute_ndsm_dir(*args, **kwargs):
@@ -94,10 +91,3 @@ def _download_with_retry(*args, **kwargs):
     sat_cmd.time = time
     sat_cmd._print = _print
     return sat_cmd._download_with_retry(*args, **kwargs)
-
-
-def predict_tiles(*args, **kwargs):
-    """Compatibility wrapper for :func:`pydsm.yolo_cmd.predict_tiles`."""
-    yolo_cmd.yolo = yolo
-    yolo_cmd.predict_tile = predict_tile
-    return yolo_cmd.predict_tiles(*args, **kwargs)

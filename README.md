@@ -16,7 +16,7 @@ The package separates reusable domain logic from command workflows:
 - `pydsm/sat.py` downloads satellite imagery, DTM, and DSM data.
 - `pydsm/shp.py` contains shapefile operations.
 - `pydsm/utils.py` contains shared path, file, string, and coordinate helpers.
-- `pydsm/yolo.py` creates YOLO datasets and runs predictions.
+- `pydsm/yolo.py` creates YOLO-format datasets.
 - `pydsm/cmd.py` composes these modules into file and tile workflows.
 - `main.py` is the command-line adapter; CLI handlers call functions in
   `pydsm.cmd` rather than implementing processing logic themselves.

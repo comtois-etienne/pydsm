@@ -29,16 +29,3 @@ def test_parser_includes_cityjson_workflows() -> None:
         'ndsm-cmap',
         '--verbose',
     ]).command == 'ndsm-dir'
-    assert parser.parse_args([
-        'predict-tile',
-        '--model-path',
-        'model.pt',
-        'tiles',
-        'tile.tif',
-    ]).command == 'predict-tile'
-    assert parser.parse_args([
-        'predict-tile',
-        '--model-path',
-        'model.pt',
-        'tiles',
-    ]).tile_name is None

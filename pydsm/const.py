@@ -7,7 +7,6 @@ DSM_SUBDIR = 'dsm' # optional
 INSTANCE_LABELS_SUBDIR = 'labels' # mandatory
 SEMANTIC_POINTS_SUBDIR = 'points' # mandatory
 INSTANCES_TILES_SUBDIR = 'instances' # optional
-PREDICTED_TILES_SUBDIR = 'labels_pred' # optional
 RGBA_PNG_TILES_SUBDIR = 'rgba' # optional
 RGBA_NPZ_TILES_SUBDIR = 'npz' # optional
 
@@ -19,13 +18,6 @@ TILE_SIZE = 40.0 # 40m by default
 SEMANTIC_DICT = { 'BACKGROUND': 0, 'UNKNOWN': 1 }
 DISTRIBUTION = [0.0, 1.0]
 
-
-########### YOLO PREDICTIONS ###########
-
-RGBD = True
-
-CONFIDENCE_THRESHOLD = 0.2  # confidence threshold for YOLO predictions
-IOU_THRESHOLD = 0.5  # IoU threshold for YOLO predictions
 
 PIXEL_TOLERANCE = 24  # in pixels, tolerance for combining 2 instances
 CIRCLE_TOLERANCE = 0.3  # in ratio, tolerance for combining 2 instances
@@ -126,4 +118,3 @@ def tree_species_distribution() -> list:
     Precalculated distribution of tree species to rebalance the dataset
     """
     return [0.0, 0.0, 0.039, 0.043, 0.046, 0.054, 0.059, 0.065, 0.065, 0.066, 0.068, 0.069, 0.068, 0.071, 0.071, 0.072, 0.072, 0.072]
-

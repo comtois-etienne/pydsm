@@ -1,48 +1,26 @@
 import os
-from math import log2
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 from skimage.measure import label
 
-import pydsm.const as const
-import pydsm.geo as geo
 import pydsm.nda as nda
 import pydsm.tile as tile
-import pydsm.utils as utils
-
-from yolo_rgbd.prediction import ObjectDetector as RGBDObjectDetector
-from yolo_rgbd.prediction import load_yolo_model
-from yolo_rgbd.prediction import predict_from_array
 
 from .rbc import get_contour as rbc_get_contour
 
 
-def load_models(
-    models: str | list[str] | Any | list[Any],
-) -> Any | list[Any]:
-    """
-    Load model paths once while preserving already injected models.
-
-    :param models: model path, paths, loaded model, or loaded models.
-    :return: loaded model or list of loaded models.
-    """
-    model_list = models if isinstance(models, list) else [models]
-    loaded = [
-        load_yolo_model(model) if isinstance(model, (str, Path)) else model
-        for model in model_list
-    ]
-    return loaded[0] if isinstance(models, (str, Path)) else loaded
-
 ########### Anonymisation ###########
-def __gaussian_blur_from_boxes(array: np.ndarray, boxes: pd.DataFrame, sigma: float = 5.0) -> np.ndarray:
+def __gaussian_blur_from_boxes(
+    array: np.ndarray,
+    boxes: np.ndarray,
+    sigma: float = 5.0,
+) -> np.ndarray:
     """
     :param ndarray: 3D array of the image
-    :param boxes: DataFrame with the bounding boxes (xmin, ymin, xmax, ymax)
+    :param boxes: array of bounding boxes (xmin, ymin, xmax, ymax)
     :param sigma: sigma of the Gaussian filter
     :return: 3D array of the image with blurred bounding boxes
     """
@@ -51,8 +29,7 @@ def __gaussian_blur_from_boxes(array: np.ndarray, boxes: pd.DataFrame, sigma: fl
     array = nda.normalize(array)
     mask = np.zeros_like(array, dtype=np.float64)
     means = array.copy()
-    for _, obj in boxes.iterrows():
-        xmin, ymin, xmax, ymax = obj[['xmin', 'ymin', 'xmax', 'ymax']]
+    for xmin, ymin, xmax, ymax in boxes.astype(int):
         mean = np.mean(array[ymin:ymax, xmin:xmax], axis=(0, 1))
         mask[ymin:ymax, xmin:xmax] = 1
         means[ymin:ymax, xmin:xmax] = mean
@@ -66,7 +43,24 @@ def __gaussian_blur_from_boxes(array: np.ndarray, boxes: pd.DataFrame, sigma: fl
     return new_array
 
 
-def anonymise_with_yolo(array: np.ndarray, model_name='yolov8n.pt') -> np.ndarray:
+def _person_boxes(model: Any, array: np.ndarray, size: int) -> np.ndarray:
+    """Return person bounding boxes from an Ultralytics prediction."""
+    results = model.predict(
+        array,
+        imgsz=size,
+        classes=[0],
+        conf=0.2,
+        verbose=False,
+    )
+    if not results or results[0].boxes is None:
+        return np.empty((0, 4), dtype=int)
+    return results[0].boxes.xyxy.cpu().numpy()
+
+
+def anonymise_with_yolo(
+    array: np.ndarray,
+    model_name: str = 'yolov8n.pt',
+) -> np.ndarray:
     """
     Blur the bounding boxes humans in the image using a Gaussian filter.
     
@@ -76,11 +70,11 @@ def anonymise_with_yolo(array: np.ndarray, model_name='yolov8n.pt') -> np.ndarra
     from ultralytics import YOLO
 
     model = YOLO(model_name)
-    detector = RGBDObjectDetector(model)
     size = (max(array.shape) + 32) // 32 * 32
-    detector.detect(array, imgsz=size)
-    boxes = detector.get_objs_by_class(0, 0.2) # class 0 is person, confidence threshold 0.2
+    boxes = _person_boxes(model, array, size)
     return __gaussian_blur_from_boxes(array, boxes)
+
+
 
 
 ########### Segmentation Training Dataset ###########
@@ -245,175 +239,3 @@ def save_one_indexlines(dir_npz: str, dir_labels: str, class_index=1, class_coun
     target_class[(class_index - 1)] = 1
     remap_dict = dict(zip(source_class, target_class))
     save_indexlines(dir_npz, dir_labels, edges_per_instance, remap_dict, visualize=visualize)
-
-
-########### Segmentation Prediction ###########
-
-
-def load_rgbd(orthophoto_path: str, ndsm_path: str, clip_height : float = const.CLIP_HEIGHT) -> np.ndarray:
-    """
-    Load and normalize the rgbd image from an orthophoto (geoTIFF) and ndsm (geoTIFF)  
-    The rgb part is normalized and converted to uint8  
-    the d part has its values above the `clip_height` clipped and then scaled to uint8
-    - where `0` equals to 0.0 meters 
-    - and `255` equals to 'clip_height' in meters
-    Refer to the model specifications for the clip_height
-
-    :param orthophoto_path: str, path to the orthophoto (geoTIFF)
-    :param ndsm_path: str, path to the ndsm (geoTIFF)
-    :param clip_height: float, ceiling of the ndsm on which the model has been trained on
-    :return: np.ndarray, rgbd array with dtype uint8 for the YOLO model prediction
-    """
-    rgb = geo.to_ndarray(geo.open_geotiff(orthophoto_path))[..., :3]
-    rgb = nda.to_uint8(rgb, norm=True)
-
-    d = geo.to_ndarray(geo.open_geotiff(ndsm_path))
-    d = nda.clip_rescale(d, clip_height)
-    d = nda.to_uint8(d, norm=False)
-
-    return np.dstack((rgb, d))
-
-
-def _split_count(size: float, model_input_size: float) -> int:
-    """Return the number of four-way splits required for a tile size."""
-    if size < model_input_size or size % model_input_size:
-        raise ValueError('Tile size must be a multiple of model_input_size')
-    ratio = size / model_input_size
-    count = int(log2(ratio))
-    if 2 ** count != ratio:
-        raise ValueError('Tile size must be model_input_size multiplied by 2^n')
-    return count
-
-
-def _combine_prediction_arrays(
-    arrays: list[np.ndarray],
-    combine_instances: bool,
-) -> np.ndarray:
-    """Combine four prediction arrays while preserving quadrant order."""
-    if combine_instances:
-        return nda.combine_four_instances(arrays)
-    return np.block([[arrays[0], arrays[1]], [arrays[2], arrays[3]]])
-
-
-def predict_tile(
-    models: str | list[str] | Any | list[Any],
-    orthophoto_path: str,
-    ndsm_path: str,
-    pred_mode: str = 'rgbd',
-    model_input_size: float = 40,
-    model_input_ndsm_max_value: float = 25.5,
-) -> tile.Tile:
-    """
-    Predict a tile by splitting it into model-sized quadrants.
-
-    :param models: YOLO model path, paths, loaded model, or loaded models.
-    :param orthophoto_path: path to the orthophoto GeoTIFF.
-    :param ndsm_path: path to the nDSM GeoTIFF.
-    :param pred_mode: prediction mode accepted by yolo_rgbd.
-    :param model_input_size: physical side length expected by the model.
-    :param model_input_ndsm_max_value: nDSM height clipped before prediction.
-    :return: tile containing the recombined predictions.
-    """
-    models = load_models(models)
-    image = load_rgbd(
-        orthophoto_path,
-        ndsm_path,
-        clip_height=model_input_ndsm_max_value,
-    )
-    size = geo.get_size(geo.open_geotiff(orthophoto_path))[0]
-    split_count = _split_count(size, model_input_size)
-    images = [image]
-    for _ in range(split_count):
-        images = [part for current in images for part in nda.split_four(current)]
-
-    prediction_images = [part[:, :, :3] if pred_mode == 'rgb' else part for part in images]
-    predictions = [
-        predict_from_array(
-            models,
-            part,
-            pred_mode=pred_mode,
-            confidence=const.CONFIDENCE_THRESHOLD,
-        )
-        for part in prediction_images
-    ]
-    for _ in range(split_count):
-        predictions = [
-            tuple(
-                _combine_prediction_arrays(
-                    [prediction[index] for prediction in predictions[offset:offset + 4]],
-                    index == 0,
-                )
-                for index in range(3)
-            )
-            for offset in range(0, len(predictions), 4)
-        ]
-    instances, semantics, confidences = predictions[0]
-    result = tile.Tile(image[:, :, :3], image[:, :, 3], instances, semantics)
-    result.confidence_labels = confidences
-    return result
-
-
-def predict_from_geotiff(
-    models: str | list[str] | Any | list[Any],
-    tiles_dir: str,
-    tile_name: str,
-    pred_mode: str = 'rgb',
-    verbose: bool = False,
-) -> tile.Tile:
-    """
-    Predict the instance segmentation masks in one tile using a YOLO model.
-
-    :param models: YOLO model path, paths, loaded model, or loaded models.
-    :param tiles_dir: str, path to the directory containing the tiles
-    :param tile_name: str, name of the tile (with or without extension)
-    :param pred_mode: str, 'rgb' or 'rgbd', whether to use only RGB channels or RGB-D channels for prediction
-    :param verbose: bool, whether to display the prediction results
-    :return: None, saves the prediction results as Tile (numpy array) on disk in const.PREDICTION_SUBDIR
-    """
-    tile_name = utils.remove_extension(tile_name)
-
-    t = predict_tile(
-        models,
-        os.path.join(tiles_dir, const.ORTHOPHOTO_SUBDIR, f'{tile_name}.tif'),
-        os.path.join(tiles_dir, const.NDSM_SUBDIR, f'{tile_name}.tif'),
-        pred_mode=pred_mode,
-    )
-
-    if verbose: 
-        tile.display_tile(t)
-        plt.imshow(t.confidence_labels, vmin=0, vmax=1, cmap='hot', interpolation='nearest')
-        plt.colorbar(label='Confidence', orientation='vertical')
-        plt.show()
-
-    return t
-
-
-def predict_from_geotiffs(
-    models: str | list[str] | Any | list[Any],
-    tiles_dir: str,
-    pred_mode: str = 'rgb',
-    verbose: bool = False,
-    skip_existing: bool = False,
-) -> None:
-    """
-    Predict the instance segmentation masks in multiple tiles using the combined prediction from multiple YOLO models.
-
-    :param models: YOLO model path, paths, loaded model, or loaded models.
-    :param tiles_dir: str, path to the directory containing the tiles
-    :param tile_names: list[str], names of the tiles (with or without extension)
-    :param pred_mode: str, 'rgb' or 'rgbd', whether to use only RGB channels or RGB-D channels for prediction
-    :param verbose: bool, whether to display the prediction results
-    :param skip_existing: bool, whether to skip tiles that already have prediction results saved
-    :return: None, saves the prediction results as Tile (numpy array) on disk in const.PREDICTION_SUBDIR
-    """
-    models = load_models(models)
-    tile_names = [utils.remove_extension(f) for f in os.listdir(os.path.join(tiles_dir, const.ORTHOPHOTO_SUBDIR)) if f.endswith('.tif')]
-    tile_names = sorted(tile_names)
-    for tile_name in tile_names:
-        t_path = os.path.join(tiles_dir, const.PREDICTED_TILES_SUBDIR, f'{tile_name}.npz')
-        if skip_existing:
-            if os.path.exists(t_path):
-                if verbose: print(f'Skipping existing prediction for tile \'{tile_name}\'')
-                continue
-        t = predict_from_geotiff(models, tiles_dir, tile_name, pred_mode, verbose=verbose)
-        tile.save_tile(t_path, t)
